@@ -18,14 +18,6 @@ import {
    5. En la consola: Firestore Database → Crear base de datos
       → Comenzar en "modo de prueba" → listo ✅
    ════════════════════════════════════════════════════════════════════ */
-const FIREBASE_CONFIG = {
-  apiKey:            "AIzaSyA0EId0QaEgk363fTQAtjMeFHo2ME73mkc",
-  authDomain:        "mr-papachos.firebaseapp.com",
-  projectId:         "mr-papachos",
-  storageBucket:     "mr-papachos.firebasestorage.app",
-  messagingSenderId: "1010366048108",
-  appId:             "1:1010366048108:web:0761fe7bb96d94f32bb549",
-};
 
 // Inicializa Firebase solo una vez (compatible con hot reload)
 const _fbApp = getApps().length ? getApps()[0] : initializeApp(FIREBASE_CONFIG);
