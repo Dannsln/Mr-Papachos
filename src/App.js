@@ -228,7 +228,7 @@ export default function App() {
 
   const draftTotal = draft.items.reduce((s, i) => s + i.price * i.qty, 0);
 
-  // ── Acciones de pedido ────────────────────────────────────────────────────
+ // ── Acciones de pedido ────────────────────────────────────────────────────
   const submitOrder = async () => {
     if (!draft.table.trim() || !draft.items.length) return;
     const order = { id: Date.now().toString(), ...draft, total: draftTotal, status:"pendiente", createdAt: new Date().toISOString() };
@@ -241,7 +241,7 @@ export default function App() {
   const markPaid = async (id) => {
     const o = orders.find(x => x.id === id);
     if (!o) return;
-    const finished = { ...o, status:"pagado", paidAt: new Date().toISOString() };
+    const finished = { ...o, status:"pagado", paidAt: new Date().toISOString(), createdAt: new Date().toISOString() };
     await FS.addHistory(finished);
     setHistory(h => [finished, ...h]);
     await saveOrders(orders.filter(x => x.id !== id));
@@ -251,7 +251,7 @@ export default function App() {
   const cancelOrder = async (id) => {
     const o = orders.find(x => x.id === id);
     if (!o) return;
-    const finished = { ...o, status:"cancelado", cancelledAt: new Date().toISOString() };
+    const finished = { ...o, status:"cancelado", cancelledAt: new Date().toISOString(), createdAt: new Date().toISOString() };
     await FS.addHistory(finished);
     setHistory(h => [finished, ...h]);
     await saveOrders(orders.filter(x => x.id !== id));
