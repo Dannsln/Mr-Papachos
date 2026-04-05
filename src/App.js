@@ -1,25 +1,850 @@
-import logo from './logo.svg';
-import './App.css';
+import { useState, useEffect} from "react";
+import { initializeApp, getApps } from "firebase/app";
+import {
+  getFirestore,
+  doc, setDoc, getDoc,
+  collection, getDocs, addDoc,
+  query, orderBy, limit,
+} from "firebase/firestore";
 
-function App() {
-  return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
-  );
+
+// Inicializa Firebase solo una vez (compatible con hot reload)
+const _fbApp = getApps().length ? getApps()[0] : initializeApp(FIREBASE_CONFIG);
+const db     = getFirestore(_fbApp);
+
+// ─── Firebase helpers ────────────────────────────────────────────────────────
+const FS = {
+  ordersRef:  () => doc(db, "mrpapachos", "orders"),
+  menuRef:    () => doc(db, "mrpapachos", "customMenu"),
+  historyCol: () => collection(db, "mrpapachos_historial"),
+
+  async getOrders() {
+    try { const s = await getDoc(FS.ordersRef()); return s.exists() ? (s.data().list ?? []) : []; }
+    catch { return []; }
+  },
+  async saveOrders(list) {
+    try { await setDoc(FS.ordersRef(), { list, ts: new Date().toISOString() }); } catch (e) { console.error(e); }
+  },
+  async getMenu() {
+    try { const s = await getDoc(FS.menuRef()); return s.exists() ? (s.data().list ?? []) : []; }
+    catch { return []; }
+  },
+  async saveMenu(list) {
+    try { await setDoc(FS.menuRef(), { list, ts: new Date().toISOString() }); } catch (e) { console.error(e); }
+  },
+  async getHistory() {
+    try {
+      const q = query(FS.historyCol(), orderBy("createdAt", "desc"), limit(1000));
+      const s = await getDocs(q);
+      return s.docs.map(d => ({ _fid: d.id, ...d.data() }));
+    } catch { return []; }
+  },
+  async addHistory(order) {
+    try { await addDoc(FS.historyCol(), order); } catch (e) { console.error(e); }
+  },
+};
+
+// ─── Menú base ───────────────────────────────────────────────────────────────
+const MENU_BASE = [
+  { id:"H01",  cat:"Hamburguesas",     icon:"🍔", name:"La Silvestre",              price:7    },
+  { id:"H02",  cat:"Hamburguesas",     icon:"🍔", name:"La Piolin",                 price:8    },
+  { id:"H03",  cat:"Hamburguesas",     icon:"🍔", name:"La Speedy Gonzales",        price:10   },
+  { id:"H04",  cat:"Hamburguesas",     icon:"🍔", name:"La Cajacha",                price:12   },
+  { id:"H05",  cat:"Hamburguesas",     icon:"🍔", name:"La Coyote",                 price:12   },
+  { id:"H06",  cat:"Hamburguesas",     icon:"🍔", name:"La Super Cajacha",          price:14   },
+  { id:"H07",  cat:"Hamburguesas",     icon:"🍔", name:"La Bugs Bunny",             price:14   },
+  { id:"H08",  cat:"Hamburguesas",     icon:"🍔", name:"La Cajamarquesa",           price:14   },
+  { id:"H09",  cat:"Hamburguesas",     icon:"🍔", name:"La Porky",                  price:15   },
+  { id:"H10",  cat:"Hamburguesas",     icon:"🍔", name:"La Tazmania",               price:14   },
+  { id:"H11",  cat:"Hamburguesas",     icon:"🍔", name:"La Papachos",               price:20   },
+  { id:"S01",  cat:"Salchipapas",      icon:"🍟", name:"Clásica",                   price:8    },
+  { id:"S02",  cat:"Salchipapas",      icon:"🍟", name:"Sencilla",                  price:10   },
+  { id:"S03",  cat:"Salchipapas",      icon:"🍟", name:"Cajacha",                   price:12   },
+  { id:"S04",  cat:"Salchipapas",      icon:"🍟", name:"Hawaiana",                  price:12   },
+  { id:"S05",  cat:"Salchipapas",      icon:"🍟", name:"Salchipobre",               price:13   },
+  { id:"S06",  cat:"Salchipapas",      icon:"🍟", name:"La Piernona",               price:15   },
+  { id:"S07",  cat:"Salchipapas",      icon:"🍟", name:"Super Cajacha",             price:16   },
+  { id:"S08",  cat:"Salchipapas",      icon:"🍟", name:"Salchibroster",             price:16   },
+  { id:"S09",  cat:"Salchipapas",      icon:"🍟", name:"La Champi Quesera",         price:18   },
+  { id:"S10",  cat:"Salchipapas",      icon:"🍟", name:"Salchi Nuggets",            price:20   },
+  { id:"S11",  cat:"Salchipapas",      icon:"🍟", name:"Salchi Porky",              price:20   },
+  { id:"S12",  cat:"Salchipapas",      icon:"🍟", name:"La Papacha",                price:22   },
+  { id:"S13",  cat:"Salchipapas",      icon:"🍟", name:"Salchi Lomo",               price:25   },
+  { id:"A01",  cat:"Alitas",           icon:"🍗", name:"Alitas 4 pzas",             price:14   },
+  { id:"A02",  cat:"Alitas",           icon:"🍗", name:"Alitas 6 pzas",             price:20   },
+  { id:"A03",  cat:"Alitas",           icon:"🍗", name:"Alitas 8 pzas",             price:26   },
+  { id:"A04",  cat:"Alitas",           icon:"🍗", name:"Alitas 10 pzas",            price:30   },
+  { id:"A05",  cat:"Alitas",           icon:"🍗", name:"Alitas 12 pzas",            price:36   },
+  { id:"AC01", cat:"Alichaufa",        icon:"🍗", name:"Alichaufa 4 pzas",          price:18   },
+  { id:"AC02", cat:"Alichaufa",        icon:"🍗", name:"Alichaufa 6 pzas",          price:24   },
+  { id:"AC03", cat:"Alichaufa",        icon:"🍗", name:"Alichaufa 8 pzas",          price:30   },
+  { id:"AC04", cat:"Alichaufa",        icon:"🍗", name:"Alichaufa 10 pzas",         price:36   },
+  { id:"PB01", cat:"Pollo Broaster",   icon:"🍖", name:"Pollo 1/8 Clásico",         price:12   },
+  { id:"PB02", cat:"Pollo Broaster",   icon:"🍖", name:"Pollo 1/4 Clásico",         price:18   },
+  { id:"PB03", cat:"Pollo Broaster",   icon:"🍖", name:"Pollo 1/8 A lo Pobre",      price:16   },
+  { id:"PB04", cat:"Pollo Broaster",   icon:"🍖", name:"Pollo 1/4 A lo Pobre",      price:22   },
+  { id:"MB01", cat:"Mostrito Broaster",icon:"🍖", name:"Mostrito 1/8 Clásico",      price:14   },
+  { id:"MB02", cat:"Mostrito Broaster",icon:"🍖", name:"Mostrito 1/4 Clásico",      price:22   },
+  { id:"MB03", cat:"Mostrito Broaster",icon:"🍖", name:"Mostrito 1/8 A lo Pobre",   price:18   },
+  { id:"MB04", cat:"Mostrito Broaster",icon:"🍖", name:"Mostrito 1/4 A lo Pobre",   price:25   },
+  { id:"PE01", cat:"Platos Extras",    icon:"🍽️", name:"Caldo de Gallina",          price:14   },
+  { id:"PE02", cat:"Platos Extras",    icon:"🍽️", name:"Arroz Chaufa",              price:14   },
+  { id:"PE03", cat:"Platos Extras",    icon:"🍽️", name:"Arroz Chaufa a lo Pobre",   price:18   },
+  { id:"PE04", cat:"Platos Extras",    icon:"🍽️", name:"Saltado de Pollo",          price:20   },
+  { id:"PE05", cat:"Platos Extras",    icon:"🍽️", name:"Tallarín Saltado Carne",    price:22   },
+  { id:"PE06", cat:"Platos Extras",    icon:"🍽️", name:"Tallarín Saltado Pollo",    price:18   },
+  { id:"PE07", cat:"Platos Extras",    icon:"🍽️", name:"Mollejita a la Plancha",    price:18   },
+  { id:"PE08", cat:"Platos Extras",    icon:"🍽️", name:"Saltado de Molleja",        price:18   },
+  { id:"PE09", cat:"Platos Extras",    icon:"🍽️", name:"Pollo a la Plancha 1/4",    price:20   },
+  { id:"PE10", cat:"Platos Extras",    icon:"🍽️", name:"Lomo Montado",              price:25   },
+  { id:"PE11", cat:"Platos Extras",    icon:"🍽️", name:"Chuleta",                   price:22   },
+  { id:"PE12", cat:"Platos Extras",    icon:"🍽️", name:"Lomo a lo Pobre",           price:25   },
+  { id:"PE13", cat:"Platos Extras",    icon:"🍽️", name:"Lomo Saltado",              price:22   },
+  { id:"MK01", cat:"Menú Kids",        icon:"🧒", name:"Bolipollos 6pz",            price:18   },
+  { id:"MK02", cat:"Menú Kids",        icon:"🧒", name:"Boliquesos 6pz",            price:25   },
+  { id:"MK03", cat:"Menú Kids",        icon:"🧒", name:"Nuggets 6pz",               price:18   },
+  { id:"MK04", cat:"Menú Kids",        icon:"🧒", name:"Chicharrón de Pollo",       price:18   },
+  { id:"C01",  cat:"Combos",           icon:"🎁", name:"Combo Personal",            price:9.90 },
+  { id:"C02",  cat:"Combos",           icon:"🎁", name:"Combo Cajacho",             price:44.90},
+  { id:"C03",  cat:"Combos",           icon:"🎁", name:"Combo Familiar",            price:80.90},
+  { id:"C04",  cat:"Combos",           icon:"🎁", name:"Combo Papachos",            price:110.90},
+  { id:"R01",  cat:"Rondas",           icon:"🔄", name:"Rondas de Sabores 20pz",    price:68   },
+  { id:"R02",  cat:"Rondas",           icon:"🔄", name:"Ronda de Sabores XL 30pz",  price:99   },
+  { id:"B01",  cat:"Bebidas",          icon:"🥤", name:"Chicha Morada Normal 1L",   price:10   },
+  { id:"B02",  cat:"Bebidas",          icon:"🥤", name:"Chicha Morada Normal 1/2L", price:5    },
+  { id:"B03",  cat:"Bebidas",          icon:"🥤", name:"Chicha Morada Normal Vaso", price:2.50 },
+  { id:"B04",  cat:"Bebidas",          icon:"🧊", name:"Chicha Morada Frozen 1L",   price:18   },
+  { id:"B05",  cat:"Bebidas",          icon:"🧊", name:"Chicha Morada Frozen 1/2L", price:9    },
+  { id:"B06",  cat:"Bebidas",          icon:"🥤", name:"Limonada Normal 1L",        price:10   },
+  { id:"B07",  cat:"Bebidas",          icon:"🥤", name:"Limonada Normal 1/2L",      price:5    },
+  { id:"B08",  cat:"Bebidas",          icon:"🥤", name:"Limonada Normal Vaso",      price:2.50 },
+  { id:"B09",  cat:"Bebidas",          icon:"🧊", name:"Limonada Frozen 1L",        price:18   },
+  { id:"B10",  cat:"Bebidas",          icon:"🧊", name:"Limonada Frozen 1/2L",      price:9    },
+  { id:"B11",  cat:"Bebidas",          icon:"🥤", name:"Maracuyá Normal 1L",        price:10   },
+  { id:"B12",  cat:"Bebidas",          icon:"🥤", name:"Maracuyá Normal 1/2L",      price:5    },
+  { id:"B13",  cat:"Bebidas",          icon:"🥤", name:"Maracuyá Normal Vaso",      price:2.50 },
+  { id:"B14",  cat:"Bebidas",          icon:"🧊", name:"Maracuyá Frozen 1L",        price:18   },
+  { id:"B15",  cat:"Bebidas",          icon:"🧊", name:"Maracuyá Frozen 1/2L",      price:9    },
+  { id:"CV01", cat:"Cervezas",         icon:"🍺", name:"Cristal",                   price:10   },
+  { id:"CV02", cat:"Cervezas",         icon:"🍺", name:"Pilsen",                    price:10   },
+  { id:"CV03", cat:"Cervezas",         icon:"🍺", name:"Heineken",                  price:10   },
+  { id:"CV04", cat:"Cervezas",         icon:"🍺", name:"Cusqueña",                  price:12   },
+  { id:"CV05", cat:"Cervezas",         icon:"🍺", name:"Corona",                    price:10   },
+  { id:"G01",  cat:"Gaseosas",         icon:"🥤", name:"Inka Cola 2L",              price:15   },
+  { id:"G02",  cat:"Gaseosas",         icon:"🥤", name:"Coca Cola 2L",              price:15   },
+  { id:"G03",  cat:"Gaseosas",         icon:"🥤", name:"Inca Kola 1L",              price:8    },
+  { id:"G04",  cat:"Gaseosas",         icon:"🥤", name:"Coca Cola 1L",              price:8    },
+  { id:"G05",  cat:"Gaseosas",         icon:"🥤", name:"Gordita",                   price:5    },
+  { id:"G06",  cat:"Gaseosas",         icon:"🥤", name:"Coca Cola Personal",        price:2.50 },
+  { id:"G07",  cat:"Gaseosas",         icon:"🥤", name:"Inka Cola Personal",        price:2.50 },
+  { id:"G08",  cat:"Gaseosas",         icon:"🥤", name:"Agua Mineral",              price:3    },
+  { id:"G09",  cat:"Gaseosas",         icon:"🥤", name:"Inca Kola 600ml",           price:4    },
+  { id:"G10",  cat:"Gaseosas",         icon:"🥤", name:"Coca Cola 600ml",           price:4    },
+  { id:"O01",  cat:"Otros",            icon:"☕", name:"Café Pasado",               price:4    },
+  { id:"O02",  cat:"Otros",            icon:"🍵", name:"Infusiones",                price:3    },
+];
+
+const ALL_CATS   = [...new Set(MENU_BASE.map(i => i.cat))];
+const fmt        = (n) => `S/.${Number(n).toFixed(2)}`;
+const newDraft   = () => ({ table:"", items:[], payment:"efectivo", notes:"" });
+
+// ─── Hook responsivo ─────────────────────────────────────────────────────────
+function useWindowWidth() {
+  const [w, setW] = useState(typeof window !== "undefined" ? window.innerWidth : 1024);
+  useEffect(() => {
+    const h = () => setW(window.innerWidth);
+    window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
+  }, []);
+  return w;
 }
 
-export default App;
+// ═════════════════════════════════════════════════════════════════════════════
+//  APP PRINCIPAL
+// ═════════════════════════════════════════════════════════════════════════════
+export default function App() {
+  const width      = useWindowWidth();
+  const isMobile   = width < 480;
+  const isTablet   = width >= 480 && width < 768;
+  const isDesktop  = width >= 768;
+  const isWide     = width >= 1024;
+
+  const [tab, setTab]           = useState("dashboard");
+  const [orders, setOrders]     = useState([]);
+  const [history, setHistory]   = useState([]);
+  const [menu, setMenu]         = useState(MENU_BASE);
+  const [draft, setDraft]       = useState(newDraft());
+  const [catFilter, setCatFilter] = useState("Todos");
+  const [search, setSearch]     = useState("");
+  const [showAdd, setShowAdd]   = useState(false);
+  const [newItem, setNewItem]   = useState({ name:"", cat:"Hamburguesas", price:"" });
+  const [loaded, setLoaded]     = useState(false);
+  const [toast, setToast]       = useState(null);
+  // Edit / delete state
+  const [editingOrder, setEditingOrder] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null); // order id to delete
+
+  // ── Carga inicial ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    (async () => {
+      const [o, h, m] = await Promise.all([FS.getOrders(), FS.getHistory(), FS.getMenu()]);
+      if (o?.length) setOrders(o);
+      if (h?.length) setHistory(h);
+      if (m?.length) setMenu([...MENU_BASE, ...m]);
+      setLoaded(true);
+    })();
+  }, []);
+
+  const showToast = (msg, color = "#27ae60") => {
+    setToast({ msg, color });
+    setTimeout(() => setToast(null), 2800);
+  };
+
+  // ── Persistencia ──────────────────────────────────────────────────────────
+  const saveOrders  = async (v) => { setOrders(v);  await FS.saveOrders(v); };
+  const saveMenu    = async (v) => { setMenu(v);    await FS.saveMenu(v.filter(i => i.id.startsWith("CUSTOM_"))); };
+
+  // ── Draft helpers ──────────────────────────────────────────────────────────
+  const addItem = (item) => setDraft(d => {
+    const ex = d.items.find(i => i.id === item.id);
+    return ex
+      ? { ...d, items: d.items.map(i => i.id === item.id ? { ...i, qty: i.qty + 1 } : i) }
+      : { ...d, items: [...d.items, { ...item, qty: 1 }] };
+  });
+
+  const changeQty = (id, delta) => setDraft(d => ({
+    ...d,
+    items: d.items.map(i => i.id === id ? { ...i, qty: i.qty + delta } : i).filter(i => i.qty > 0),
+  }));
+
+  const draftTotal = draft.items.reduce((s, i) => s + i.price * i.qty, 0);
+
+  // ── Acciones de pedido ────────────────────────────────────────────────────
+  const submitOrder = async () => {
+    if (!draft.table.trim() || !draft.items.length) return;
+    const order = { id: Date.now().toString(), ...draft, total: draftTotal, status:"pendiente", createdAt: new Date().toISOString() };
+    await saveOrders([...orders, order]);
+    setDraft(newDraft());
+    showToast(`✅ Pedido Mesa ${order.table} creado`);
+    setTab("pedidos");
+  };
+
+  const markPaid = async (id) => {
+    const o = orders.find(x => x.id === id);
+    if (!o) return;
+    const finished = { ...o, status:"pagado", paidAt: new Date().toISOString() };
+    await FS.addHistory(finished);
+    setHistory(h => [finished, ...h]);
+    await saveOrders(orders.filter(x => x.id !== id));
+    showToast(`💰 Mesa ${o.table} pagada — ${fmt(o.total)}`);
+  };
+
+  const cancelOrder = async (id) => {
+    const o = orders.find(x => x.id === id);
+    if (!o) return;
+    const finished = { ...o, status:"cancelado", cancelledAt: new Date().toISOString() };
+    await FS.addHistory(finished);
+    setHistory(h => [finished, ...h]);
+    await saveOrders(orders.filter(x => x.id !== id));
+    showToast("❌ Pedido cancelado", "#e74c3c");
+  };
+
+  const deleteOrderPermanent = async (id) => {
+    await saveOrders(orders.filter(x => x.id !== id));
+    setConfirmDelete(null);
+    showToast("🗑️ Pedido eliminado", "#888");
+  };
+
+  const saveEditedOrder = async (updated) => {
+    const newOrders = orders.map(o => o.id === updated.id ? updated : o);
+    await saveOrders(newOrders);
+    setEditingOrder(null);
+    showToast(`✏️ Pedido Mesa ${updated.table} actualizado`, "#f39c12");
+  };
+
+  // ── Carta ─────────────────────────────────────────────────────────────────
+  const addMenuItem = async () => {
+    if (!newItem.name.trim() || !newItem.price) return;
+    const item = { id:"CUSTOM_" + Date.now(), cat: newItem.cat, icon:"⭐", name: newItem.name, price: parseFloat(newItem.price) };
+    const next = [...menu, item];
+    await saveMenu(next);
+    setNewItem({ name:"", cat:"Hamburguesas", price:"" });
+    setShowAdd(false);
+    showToast(`⭐ "${item.name}" agregado`);
+  };
+
+  const deleteMenuItem = async (id) => {
+    await saveMenu(menu.filter(i => i.id !== id));
+    showToast("🗑️ Platillo eliminado", "#e74c3c");
+  };
+
+  // ── Stats ─────────────────────────────────────────────────────────────────
+  const today     = new Date().toDateString();
+  const paidToday = history.filter(o => o.status === "pagado" && new Date(o.paidAt).toDateString() === today);
+  const todayRev  = paidToday.reduce((s, o) => s + o.total, 0);
+  const totalRev  = history.filter(o => o.status === "pagado").reduce((s, o) => s + o.total, 0);
+  const cashRev   = paidToday.filter(o => o.payment === "efectivo").reduce((s, o) => s + o.total, 0);
+  const transRev  = paidToday.filter(o => o.payment === "transferencia").reduce((s, o) => s + o.total, 0);
+
+  const filteredMenu = menu.filter(i =>
+    (catFilter === "Todos" || i.cat === catFilter) &&
+    i.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const timeStr    = (iso) => { if (!iso) return ""; const d = new Date(iso); return d.toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"}) + " · " + d.toLocaleDateString("es-PE"); };
+  const minutesAgo = (iso) => { const m = Math.floor((Date.now()-new Date(iso))/60000); if(m<1)return"ahora"; if(m<60)return`hace ${m}m`; return`hace ${Math.floor(m/60)}h ${m%60}m`; };
+
+  // ── Loading ───────────────────────────────────────────────────────────────
+  if (!loaded) return (
+    <div style={{ background:"#111", color:"#FFD700", height:"100vh", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", fontFamily:"sans-serif", gap:16 }}>
+      <div style={{ fontSize:52 }}>🍔</div>
+      <div style={{ fontSize:18, fontWeight:700, letterSpacing:2 }}>Cargando MR. PAPACHOS...</div>
+    </div>
+  );
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  ESTILOS RESPONSIVOS
+  // ═════════════════════════════════════════════════════════════════════════
+  const Y = "#FFD700";
+
+  const s = {
+    app:   { fontFamily:"'Nunito',sans-serif", background:"#0f0f0f", color:"#eee", minHeight:"100vh", display:"flex", flexDirection:"column" },
+    header:{ background:`linear-gradient(135deg,${Y} 0%,#e6b800 100%)`, color:"#111", padding: isMobile ? "8px 12px" : "10px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", boxShadow:"0 2px 12px rgba(255,215,0,.3)" },
+    logo:  { fontFamily:"'Bebas Neue',cursive", fontSize: isMobile ? 17 : isTablet ? 22 : 28, letterSpacing: isMobile ? 1 : 3, margin:0, lineHeight:1.1 },
+    nav:   { display:"flex", background:"#1a1a1a", borderBottom:`2px solid ${Y}33`, overflowX:"auto", scrollbarWidth:"none" },
+    navBtn:(a) => ({ padding: isMobile ? "9px 7px" : "10px 14px", background:a?Y:"transparent", color:a?"#111":"#999", border:"none", cursor:"pointer", fontFamily:"'Nunito',sans-serif", fontWeight:700, fontSize: isMobile ? 9 : 12, whiteSpace:"nowrap", transition:"all .2s", borderBottom:a?`3px solid #e6b800`:"3px solid transparent", minWidth: isMobile ? 0 : "auto" }),
+    content:{ flex:1, padding: isMobile ? "10px 8px" : isTablet ? 14 : 20, maxWidth: isWide ? 1200 : "100%", margin:"0 auto", width:"100%", boxSizing:"border-box" },
+    card:  { background:"#1c1c1c", borderRadius: isMobile ? 10 : 12, padding: isMobile ? 10 : 14, marginBottom:10, border:"1px solid #2a2a2a" },
+    cardHL:{ background:"#1c1c1c", borderRadius: isMobile ? 10 : 12, padding: isMobile ? 10 : 14, marginBottom:10, border:`1px solid ${Y}44` },
+    statCard:{ background:"#1c1c1c", borderRadius: isMobile ? 10 : 12, padding: isMobile ? "12px 8px" : "16px 12px", border:"1px solid #2a2a2a", textAlign:"center" },
+    statNum: { fontSize: isMobile ? 22 : 28, fontWeight:900, color:Y, lineHeight:1 },
+    statLbl: { fontSize: isMobile ? 9 : 11, color:"#777", marginTop:5, textTransform:"uppercase", letterSpacing:1 },
+    btn:   (v="primary") => ({ padding: isMobile ? "7px 10px" : "8px 14px", background:v==="primary"?Y:v==="danger"?"#c0392b":v==="success"?"#27ae60":v==="blue"?"#2980b9":v==="warn"?"#d35400":"#2a2a2a", color:v==="primary"?"#111":"#fff", border:"none", borderRadius:8, cursor:"pointer", fontWeight:800, fontSize: isMobile ? 11 : 12, fontFamily:"'Nunito',sans-serif", transition:"opacity .15s", whiteSpace:"nowrap" }),
+    input: { background:"#222", border:"1px solid #383838", borderRadius:8, padding: isMobile ? "8px 10px" : "9px 12px", color:"#eee", fontFamily:"'Nunito',sans-serif", fontSize: isMobile ? 13 : 13, outline:"none", width:"100%", boxSizing:"border-box" },
+    tag:   (c) => ({ display:"inline-block", padding:"2px 8px", borderRadius:10, fontSize:11, fontWeight:700, background:c, color:c===Y?"#111":"#eee" }),
+    grid:  (cols) => ({ display:"grid", gridTemplateColumns:`repeat(auto-fit, minmax(${cols}px,1fr))`, gap: isMobile ? 8 : 10 }),
+    row:   { display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 },
+    title: { color:Y, fontFamily:"'Bebas Neue',cursive", fontSize: isMobile ? 18 : 22, marginBottom: isMobile ? 10 : 14, letterSpacing:1 },
+    // Modal
+    overlay:{ position:"fixed", inset:0, background:"rgba(0,0,0,.85)", zIndex:200, display:"flex", alignItems: isMobile ? "flex-end" : "center", justifyContent:"center", padding: isMobile ? 0 : 16 },
+    modal:  { background:"#1a1a1a", border:`1px solid ${Y}44`, borderRadius: isMobile ? "16px 16px 0 0" : 14, padding: isMobile ? "16px 12px" : 20, width:"100%", maxWidth: isMobile ? "100%" : 600, maxHeight: isMobile ? "92vh" : "88vh", overflowY:"auto" },
+  };
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  MODAL DE EDICIÓN DE PEDIDO
+  // ═════════════════════════════════════════════════════════════════════════
+  const EditOrderModal = ({ order, onSave, onClose }) => {
+    const [eTable,   setETable]   = useState(order.table);
+    const [eItems,   setEItems]   = useState(order.items.map(i => ({ ...i })));
+    const [ePay,     setEPay]     = useState(order.payment);
+    const [eNotes,   setENotes]   = useState(order.notes || "");
+    const [eCat,     setECat]     = useState("Todos");
+    const [eSearch,  setESearch]  = useState("");
+    const eTotal = eItems.reduce((s, i) => s + i.price * i.qty, 0);
+
+    const eAddItem = (item) => setEItems(prev => {
+      const ex = prev.find(i => i.id === item.id);
+      return ex ? prev.map(i => i.id === item.id ? { ...i, qty: i.qty + 1 } : i)
+                : [...prev, { ...item, qty: 1 }];
+    });
+    const eChangeQty = (id, d) => setEItems(prev =>
+      prev.map(i => i.id === id ? { ...i, qty: i.qty + d } : i).filter(i => i.qty > 0)
+    );
+
+    const filtE = menu.filter(i =>
+      (eCat === "Todos" || i.cat === eCat) &&
+      i.name.toLowerCase().includes(eSearch.toLowerCase())
+    );
+
+    const handleSave = () => {
+      if (!eTable.trim() || !eItems.length) return;
+      onSave({ ...order, table: eTable, items: eItems, payment: ePay, notes: eNotes, total: eTotal });
+    };
+
+    return (
+      <div style={s.modal} onClick={e => e.stopPropagation()}>
+        <div style={{ ...s.row, marginBottom:14 }}>
+          <div style={{ color:Y, fontFamily:"'Bebas Neue',cursive", fontSize:20, letterSpacing:1 }}>✏️ EDITAR PEDIDO</div>
+          <button style={{ ...s.btn("secondary"), padding:"4px 10px" }} onClick={onClose}>✕</button>
+        </div>
+
+        {/* Mesa */}
+        <div style={{ marginBottom:10 }}>
+          <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Mesa / Delivery</label>
+          <input style={{ ...s.input, marginTop:4 }} value={eTable} onChange={e => setETable(e.target.value)} placeholder="Ej: Mesa 5, Delivery..." />
+        </div>
+
+        {/* Pago */}
+        <div style={{ marginBottom:10 }}>
+          <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Forma de pago</label>
+          <div style={{ display:"flex", gap:6, marginTop:4 }}>
+            {["efectivo","transferencia"].map(p => (
+              <button key={p} style={{ ...s.btn(ePay===p?"primary":"secondary"), flex:1 }} onClick={() => setEPay(p)}>
+                {p==="efectivo"?"💵":"📲"} {p}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Notas */}
+        <div style={{ marginBottom:10 }}>
+          <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas</label>
+          <input style={{ ...s.input, marginTop:4 }} value={eNotes} onChange={e => setENotes(e.target.value)} placeholder="Sin cebolla, extra salsa..." />
+        </div>
+
+        {/* Items actuales */}
+        <div style={{ marginBottom:12 }}>
+          <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Productos del pedido</label>
+          {eItems.length === 0
+            ? <div style={{ textAlign:"center", color:"#444", padding:"12px 0", fontSize:12 }}>Agrega productos desde abajo</div>
+            : eItems.map(item => (
+              <div key={item.id} style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 0", borderBottom:"1px solid #252525" }}>
+                <div style={{ flex:1, fontSize:13, fontWeight:700 }}>{item.name}</div>
+                <button style={{ ...s.btn("danger"), padding:"2px 7px", fontSize:13 }} onClick={() => eChangeQty(item.id,-1)}>−</button>
+                <span style={{ fontWeight:900, minWidth:18, textAlign:"center" }}>{item.qty}</span>
+                <button style={{ ...s.btn(), padding:"2px 7px", fontSize:13 }} onClick={() => eChangeQty(item.id,1)}>+</button>
+                <span style={{ color:Y, fontWeight:900, fontSize:13, minWidth:52, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
+              </div>
+            ))
+          }
+          {eItems.length > 0 && (
+            <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0 2px", borderTop:`2px solid ${Y}44` }}>
+              <span style={{ fontWeight:900 }}>TOTAL</span>
+              <span style={{ fontWeight:900, color:Y }}>{fmt(eTotal)}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Agregar más productos */}
+        <div style={{ marginBottom:12 }}>
+          <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Agregar más productos</label>
+          <input style={{ ...s.input, marginTop:4, marginBottom:6 }} placeholder="Buscar..." value={eSearch} onChange={e => setESearch(e.target.value)} />
+          <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:6 }}>
+            {["Todos",...ALL_CATS].map(c => (
+              <button key={c} style={{ ...s.btn(eCat===c?"primary":"secondary"), fontSize:9, padding:"3px 7px" }} onClick={() => setECat(c)}>{c}</button>
+            ))}
+          </div>
+          <div style={{ maxHeight:160, overflowY:"auto" }}>
+            {filtE.map(item => {
+              const inE = eItems.find(i => i.id === item.id);
+              return (
+                <div key={item.id} onClick={() => eAddItem(item)} style={{ ...s.card, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4, padding:"7px 10px", border: inE ? `1px solid ${Y}55` : "1px solid #2a2a2a" }}>
+                  <span style={{ fontSize:13 }}>{item.icon} {item.name}</span>
+                  <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                    <span style={{ color:Y, fontWeight:900, fontSize:12 }}>{fmt(item.price)}</span>
+                    {inE
+                      ? <span style={{ background:Y, color:"#111", borderRadius:10, padding:"1px 7px", fontSize:11, fontWeight:900 }}>×{inE.qty}</span>
+                      : <span style={{ background:"#2a2a2a", borderRadius:"50%", width:20, height:20, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, color:"#aaa", fontSize:14 }}>+</span>
+                    }
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <button style={{ ...s.btn("warn"), width:"100%", padding:12, fontSize:14, opacity:(!eTable||!eItems.length)?0.4:1 }}
+          onClick={handleSave} disabled={!eTable||!eItems.length}>
+          💾 Guardar Cambios
+        </button>
+      </div>
+    );
+  };
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  DASHBOARD
+  // ═════════════════════════════════════════════════════════════════════════
+  const Dashboard = () => (
+    <div>
+      <div style={s.title}>📊 RESUMEN DEL DÍA</div>
+      <div style={s.grid(isMobile ? 130 : 140)}>
+        <div style={s.statCard}><div style={s.statNum}>{orders.length}</div><div style={s.statLbl}>Activos</div></div>
+        <div style={s.statCard}><div style={s.statNum}>{paidToday.length}</div><div style={s.statLbl}>Pagados hoy</div></div>
+        <div style={{ ...s.statCard, border:`1px solid ${Y}55` }}><div style={{ ...s.statNum, fontSize: isMobile?16:20 }}>{fmt(todayRev)}</div><div style={s.statLbl}>Recaudado hoy</div></div>
+        <div style={s.statCard}><div style={{ ...s.statNum, fontSize: isMobile?16:20 }}>{fmt(totalRev)}</div><div style={s.statLbl}>Total histórico</div></div>
+      </div>
+
+      {paidToday.length > 0 && (
+        <div style={{ ...s.card, marginTop:4 }}>
+          <div style={{ fontWeight:800, marginBottom:8, color:"#aaa", fontSize:11, textTransform:"uppercase", letterSpacing:1 }}>Desglose hoy</div>
+          <div style={s.row}>
+            <div style={{ textAlign:"center" }}>
+              <div style={{ color:"#27ae60", fontWeight:900, fontSize: isMobile?15:18 }}>💵 {fmt(cashRev)}</div>
+              <div style={{ fontSize:11, color:"#666" }}>Efectivo</div>
+            </div>
+            <div style={{ width:1, background:"#333", height:36 }} />
+            <div style={{ textAlign:"center" }}>
+              <div style={{ color:"#3498db", fontWeight:900, fontSize: isMobile?15:18 }}>📲 {fmt(transRev)}</div>
+              <div style={{ fontSize:11, color:"#666" }}>Transferencia</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {orders.length > 0 && (
+        <>
+          <div style={{ ...s.title, fontSize: isMobile?14:16, marginTop:14 }}>🔥 PEDIDOS ACTIVOS</div>
+          {orders.slice(0,4).map(o => (
+            <div key={o.id} style={s.card}>
+              <div style={s.row}>
+                <div>
+                  <span style={{ fontWeight:900, fontSize: isMobile?15:17 }}>Mesa {o.table}</span>
+                  <span style={{ ...s.tag("#252525"), marginLeft:8, fontSize:10 }}>{minutesAgo(o.createdAt)}</span>
+                </div>
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <span style={{ color:Y, fontWeight:900, fontSize: isMobile?13:15 }}>{fmt(o.total)}</span>
+                  <button style={{ ...s.btn("success"), padding: isMobile?"6px 9px":"8px 12px" }} onClick={() => markPaid(o.id)}>✅ Cobrar</button>
+                </div>
+              </div>
+            </div>
+          ))}
+          {orders.length > 4 && (
+            <button style={{ ...s.btn("secondary"), marginTop:4 }} onClick={() => setTab("pedidos")}>
+              Ver todos ({orders.length}) →
+            </button>
+          )}
+        </>
+      )}
+
+      {orders.length === 0 && (
+        <div style={{ textAlign:"center", padding: isMobile?36:50, color:"#444" }}>
+          <div style={{ fontSize:52 }}>🍔</div>
+          <div style={{ marginTop:8, color:"#666" }}>Sin pedidos activos</div>
+          <button style={{ ...s.btn(), marginTop:14, padding:"10px 24px" }} onClick={() => setTab("nuevo")}>+ Crear Pedido</button>
+        </div>
+      )}
+    </div>
+  );
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  NUEVO PEDIDO
+  // ═════════════════════════════════════════════════════════════════════════
+  const NuevoPedido = () => (
+    <div style={{ display:"grid", gridTemplateColumns: isDesktop ? "1fr 300px" : "1fr", gap: isMobile ? 12 : 14 }}>
+      {/* Carta */}
+      <div>
+        <div style={s.title}>🍔 CARTA</div>
+        <input style={{ ...s.input, marginBottom:8 }} placeholder="Buscar platillo..." value={search} onChange={e => setSearch(e.target.value)} />
+        <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:10 }}>
+          {["Todos",...ALL_CATS].map(c => (
+            <button key={c} style={{ ...s.btn(catFilter===c?"primary":"secondary"), fontSize: isMobile?9:10, padding: isMobile?"3px 6px":"4px 10px" }} onClick={() => setCatFilter(c)}>{c}</button>
+          ))}
+        </div>
+        <div>
+          {filteredMenu.length === 0 && <div style={{ color:"#555", textAlign:"center", padding:20 }}>Sin resultados</div>}
+          {filteredMenu.map(item => {
+            const inDraft = draft.items.find(i => i.id === item.id);
+            return (
+              <div key={item.id} onClick={() => addItem(item)}
+                style={{ ...s.card, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center", border: inDraft ? `1px solid ${Y}66` : "1px solid #2a2a2a", marginBottom:5, padding: isMobile?"8px 10px":"10px 12px" }}>
+                <div style={{ flex:1 }}>
+                  <span style={{ marginRight:6 }}>{item.icon}</span>
+                  <span style={{ fontWeight:700, fontSize: isMobile?13:14 }}>{item.name}</span>
+                  {!isMobile && <span style={{ ...s.tag("#252525"), marginLeft:8, fontSize:10 }}>{item.cat}</span>}
+                </div>
+                <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                  <span style={{ color:Y, fontWeight:900, fontSize: isMobile?13:14 }}>{fmt(item.price)}</span>
+                  {inDraft
+                    ? <span style={{ background:Y, color:"#111", borderRadius:12, padding:"1px 8px", fontSize:12, fontWeight:900 }}>×{inDraft.qty}</span>
+                    : <span style={{ background:"#2a2a2a", borderRadius:"50%", width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:16, color:"#aaa" }}>+</span>
+                  }
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Resumen pedido */}
+      <div>
+        <div style={{ ...s.cardHL, position: isDesktop ? "sticky" : "static", top:8 }}>
+          <div style={{ ...s.title, fontSize:18, marginBottom:12 }}>📋 PEDIDO</div>
+
+          <div style={{ marginBottom:10 }}>
+            <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Mesa / Delivery</label>
+            <input style={{ ...s.input, marginTop:4 }} placeholder="Ej: Mesa 5, Delivery..." value={draft.table} onChange={e => setDraft(d => ({...d,table:e.target.value}))} />
+          </div>
+
+          <div style={{ marginBottom:10 }}>
+            <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Forma de pago</label>
+            <div style={{ display:"flex", gap:6, marginTop:4 }}>
+              {["efectivo","transferencia"].map(p => (
+                <button key={p} style={{ ...s.btn(draft.payment===p?"primary":"secondary"), flex:1 }} onClick={() => setDraft(d => ({...d,payment:p}))}>
+                  {p==="efectivo"?"💵":"📲"} {p}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginBottom:12 }}>
+            <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas</label>
+            <input style={{ ...s.input, marginTop:4 }} placeholder="Sin cebolla, extra salsa..." value={draft.notes} onChange={e => setDraft(d => ({...d,notes:e.target.value}))} />
+          </div>
+
+          {draft.items.length === 0
+            ? <div style={{ textAlign:"center", color:"#444", padding:"20px 0", fontSize:13 }}>Toca un platillo para agregarlo →</div>
+            : <div style={{ maxHeight: isDesktop ? 240 : 180, overflowY:"auto", marginBottom:8 }}>
+                {draft.items.map(item => (
+                  <div key={item.id} style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6, padding:"6px 0", borderBottom:"1px solid #252525" }}>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontWeight:700, fontSize:13 }}>{item.name}</div>
+                      <div style={{ fontSize:11, color:"#666" }}>{fmt(item.price)} c/u</div>
+                    </div>
+                    <button style={{ ...s.btn("danger"), padding:"2px 7px" }} onClick={() => changeQty(item.id,-1)}>−</button>
+                    <span style={{ fontWeight:900, minWidth:18, textAlign:"center" }}>{item.qty}</span>
+                    <button style={{ ...s.btn(), padding:"2px 7px" }} onClick={() => changeQty(item.id,1)}>+</button>
+                    <span style={{ color:Y, fontWeight:900, fontSize:13, minWidth:50, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
+                  </div>
+                ))}
+              </div>
+          }
+
+          <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderTop:`2px solid ${Y}55`, marginBottom:12 }}>
+            <span style={{ fontWeight:900, fontSize:17 }}>TOTAL</span>
+            <span style={{ fontWeight:900, fontSize:17, color:Y }}>{fmt(draftTotal)}</span>
+          </div>
+
+          <button style={{ ...s.btn(), width:"100%", padding:12, fontSize:15, opacity:(!draft.table||!draft.items.length)?0.4:1 }}
+            onClick={submitOrder} disabled={!draft.table||!draft.items.length}>
+            ✅ Confirmar Pedido
+          </button>
+          <button style={{ ...s.btn("secondary"), width:"100%", padding:8, marginTop:6, fontSize:12 }} onClick={() => setDraft(newDraft())}>
+            🗑️ Limpiar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  PEDIDOS ACTIVOS (con Editar y Eliminar)
+  // ═════════════════════════════════════════════════════════════════════════
+  const Pedidos = () => (
+    <div>
+      <div style={{ ...s.row, marginBottom:14 }}>
+        <div style={s.title}>🍽️ PEDIDOS ACTIVOS ({orders.length})</div>
+        <button style={s.btn()} onClick={() => setTab("nuevo")}>+ Nuevo</button>
+      </div>
+
+      {orders.length === 0
+        ? <div style={{ textAlign:"center", padding:60, color:"#444" }}>
+            <div style={{ fontSize:48 }}>🕐</div>
+            <div>Sin pedidos activos</div>
+          </div>
+        : orders.map(o => (
+            <div key={o.id} style={{ ...s.card, borderLeft:`4px solid ${Y}` }}>
+              <div style={{ ...s.row, marginBottom:8 }}>
+                <div>
+                  <span style={{ fontFamily:"'Bebas Neue',cursive", fontSize: isMobile?18:22 }}>Mesa {o.table}</span>
+                  <span style={{ ...s.tag(o.payment==="efectivo"?"#27ae60":"#2980b9"), marginLeft:8 }}>
+                    {o.payment==="efectivo"?"💵":"📲"} {!isMobile && o.payment}
+                  </span>
+                </div>
+                <span style={{ color:Y, fontWeight:900, fontSize: isMobile?16:19 }}>{fmt(o.total)}</span>
+              </div>
+
+              <div style={{ color:"#666", fontSize:11, marginBottom:8 }}>🕐 {timeStr(o.createdAt)} · {minutesAgo(o.createdAt)}</div>
+
+              <div style={{ marginBottom:8 }}>
+                {o.items.map((item,i) => (
+                  <div key={i} style={{ display:"flex", justifyContent:"space-between", fontSize: isMobile?12:13, padding:"3px 0", borderBottom:"1px solid #222" }}>
+                    <span>{item.qty}x {item.name}</span>
+                    <span style={{ color:"#888" }}>{fmt(item.price*item.qty)}</span>
+                  </div>
+                ))}
+              </div>
+
+              {o.notes && <div style={{ fontSize:11, color:"#888", fontStyle:"italic", marginBottom:8 }}>📝 {o.notes}</div>}
+
+              {/* Botones de acción */}
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                <button style={{ ...s.btn("success"), flex:1, minWidth: isMobile?0:90 }} onClick={() => markPaid(o.id)}>✅ Cobrar</button>
+                <button style={{ ...s.btn("warn"), flex:1, minWidth: isMobile?0:80 }} onClick={() => setEditingOrder(o)}>✏️ Editar</button>
+                <button style={{ ...s.btn("danger"), padding: isMobile?"7px 10px":"8px 12px" }} onClick={() => cancelOrder(o.id)}>❌</button>
+                <button style={{ ...s.btn("secondary"), padding: isMobile?"7px 10px":"8px 12px" }} onClick={() => setConfirmDelete(o.id)} title="Eliminar permanentemente">🗑️</button>
+              </div>
+            </div>
+          ))
+      }
+    </div>
+  );
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  HISTORIAL
+  // ═════════════════════════════════════════════════════════════════════════
+  const Historial = () => {
+    const [filterDate, setFilterDate] = useState("");
+    const [filterPay,  setFilterPay]  = useState("todos");
+    const filtered = history.filter(o => {
+      const dateMatch = !filterDate || new Date(o.paidAt||o.cancelledAt||o.createdAt).toLocaleDateString("es-PE") === new Date(filterDate).toLocaleDateString("es-PE");
+      const payMatch  = filterPay==="todos" || o.payment===filterPay;
+      return dateMatch && payMatch;
+    });
+    const filteredRev = filtered.filter(o=>o.status==="pagado").reduce((s,o)=>s+o.total,0);
+    return (
+      <div>
+        <div style={s.title}>📋 HISTORIAL</div>
+        <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
+          <input type="date" style={{ ...s.input, width: isMobile ? "100%" : 160 }} value={filterDate} onChange={e=>setFilterDate(e.target.value)} />
+          {["todos","efectivo","transferencia"].map(p => (
+            <button key={p} style={{ ...s.btn(filterPay===p?"primary":"secondary"), fontSize:11 }} onClick={()=>setFilterPay(p)}>{p}</button>
+          ))}
+          {(filterDate||filterPay!=="todos") && <button style={{ ...s.btn("danger"), fontSize:11 }} onClick={()=>{setFilterDate("");setFilterPay("todos")}}>✕</button>}
+        </div>
+        {filtered.length > 0 && (
+          <div style={{ ...s.card, marginBottom:12, display:"flex", gap:16 }}>
+            <div><span style={{ color:Y, fontWeight:900, fontSize:16 }}>{filtered.filter(o=>o.status==="pagado").length}</span><span style={{ color:"#666", fontSize:11, marginLeft:4 }}>pagados</span></div>
+            <div><span style={{ color:Y, fontWeight:900, fontSize:16 }}>{fmt(filteredRev)}</span><span style={{ color:"#666", fontSize:11, marginLeft:4 }}>recaudado</span></div>
+          </div>
+        )}
+        {filtered.length === 0
+          ? <div style={{ textAlign:"center", padding:60, color:"#444" }}><div style={{ fontSize:48 }}>📋</div><div>Sin registros</div></div>
+          : filtered.map((o,idx) => (
+              <div key={o._fid||o.id||idx} style={{ ...s.card, opacity:o.status==="cancelado"?0.5:1, borderLeft:`4px solid ${o.status==="pagado"?"#27ae60":"#c0392b"}` }}>
+                <div style={{ ...s.row, marginBottom:4 }}>
+                  <div>
+                    <span style={{ fontWeight:900 }}>Mesa {o.table}</span>
+                    <span style={{ ...s.tag(o.status==="pagado"?"#1e5c2e":"#5c1e1e"), marginLeft:8 }}>{o.status==="pagado"?"✅ Pagado":"❌ Cancelado"}</span>
+                    <span style={{ ...s.tag(o.payment==="efectivo"?"#1a3a2a":"#1a2a3a"), marginLeft:6 }}>{o.payment==="efectivo"?"💵":"📲"} {!isMobile && o.payment}</span>
+                  </div>
+                  <span style={{ color:Y, fontWeight:900 }}>{fmt(o.total)}</span>
+                </div>
+                <div style={{ color:"#555", fontSize:11, marginBottom:6 }}>
+                  {o.status==="pagado" ? `💰 ${timeStr(o.paidAt)}` : `🚫 ${timeStr(o.cancelledAt)}`}
+                </div>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+                  {o.items.map((item,i) => (
+                    <span key={i} style={{ ...s.tag("#252525"), fontSize:11 }}>{item.qty}x {item.name}</span>
+                  ))}
+                </div>
+              </div>
+            ))
+        }
+      </div>
+    );
+  };
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  CARTA (gestión de menú)
+  // ═════════════════════════════════════════════════════════════════════════
+  const Carta = () => (
+    <div>
+      <div style={{ ...s.row, marginBottom:14 }}>
+        <div style={s.title}>🍔 CARTA ({menu.length})</div>
+        <button style={s.btn()} onClick={() => setShowAdd(!showAdd)}>{showAdd?"✕ Cancelar":"+ Agregar"}</button>
+      </div>
+
+      {showAdd && (
+        <div style={{ ...s.cardHL, marginBottom:14 }}>
+          <div style={{ fontWeight:800, color:Y, marginBottom:10 }}>Nuevo platillo</div>
+          <div style={{ display:"grid", gridTemplateColumns: isMobile?"1fr":"2fr 1fr 1fr", gap:8, marginBottom:10 }}>
+            <input style={s.input} placeholder="Nombre del platillo" value={newItem.name} onChange={e=>setNewItem(f=>({...f,name:e.target.value}))} />
+            <select style={s.input} value={newItem.cat} onChange={e=>setNewItem(f=>({...f,cat:e.target.value}))}>
+              {ALL_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <input style={s.input} type="number" placeholder="Precio S/." value={newItem.price} onChange={e=>setNewItem(f=>({...f,price:e.target.value}))} />
+          </div>
+          <button style={s.btn()} onClick={addMenuItem}>Guardar Platillo</button>
+        </div>
+      )}
+
+      <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:10 }}>
+        {["Todos",...ALL_CATS].map(c => (
+          <button key={c} style={{ ...s.btn(catFilter===c?"primary":"secondary"), fontSize: isMobile?9:10, padding: isMobile?"3px 6px":"4px 9px" }} onClick={()=>setCatFilter(c)}>{c}</button>
+        ))}
+      </div>
+
+      {menu.filter(i => catFilter==="Todos"||i.cat===catFilter).map(item => (
+        <div key={item.id} style={{ ...s.card, display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5, padding: isMobile?"8px 10px":"9px 12px" }}>
+          <div>
+            <span style={{ marginRight:6 }}>{item.icon}</span>
+            <span style={{ fontWeight:700, fontSize: isMobile?13:14 }}>{item.name}</span>
+            {!isMobile && <span style={{ ...s.tag("#252525"), marginLeft:8, fontSize:10 }}>{item.cat}</span>}
+          </div>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <span style={{ color:Y, fontWeight:900 }}>{fmt(item.price)}</span>
+            {item.id.startsWith("CUSTOM_") && (
+              <button style={{ ...s.btn("danger"), padding:"2px 7px", fontSize:11 }} onClick={()=>deleteMenuItem(item.id)}>✕</button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  // ─── Tabs ─────────────────────────────────────────────────────────────────
+  const tabs = [
+    { id:"dashboard", label: isMobile ? "📊" : "📊 Inicio" },
+    { id:"nuevo",     label: isMobile ? "➕" : "➕ Nuevo" },
+    { id:"pedidos",   label: isMobile ? `🍽️${orders.length>0?` ${orders.length}`:""}` : `🍽️ Pedidos${orders.length>0?` (${orders.length})`:""}` },
+    { id:"historial", label: isMobile ? "📋" : "📋 Historial" },
+    { id:"carta",     label: isMobile ? "🍔" : "🍔 Carta" },
+  ];
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  RENDER
+  // ═════════════════════════════════════════════════════════════════════════
+  return (
+    <>
+      <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito:wght@400;700;900&display=swap" rel="stylesheet" />
+      <div style={s.app}>
+
+        {/* Header */}
+        <header style={s.header}>
+          <div>
+            <h1 style={s.logo}>🍔 MR. PAPACHOS · CAJAMARCA</h1>
+            {!isMobile && <div style={{ fontSize:11, color:"#555", fontWeight:700 }}>Sistema de Pedidos</div>}
+          </div>
+          {!isMobile && <div style={{ fontSize:11, color:"#333", fontWeight:700, textAlign:"right" }}>
+            <div>{new Date().toLocaleDateString("es-PE",{weekday:"long",day:"numeric",month:"long"})}</div>
+          </div>}
+        </header>
+
+        {/* Nav */}
+        <nav style={s.nav}>
+          {tabs.map(t => (
+            <button key={t.id} style={{ ...s.navBtn(tab===t.id), flex: isMobile ? 1 : "none" }} onClick={() => setTab(t.id)}>{t.label}</button>
+          ))}
+        </nav>
+
+        {/* Toast */}
+        {toast && (
+          <div style={{ position:"fixed", bottom: isMobile?70:20, left:"50%", transform:"translateX(-50%)", background:toast.color, color:"#fff", padding:"10px 20px", borderRadius:12, fontWeight:800, zIndex:999, fontSize:14, boxShadow:"0 4px 20px rgba(0,0,0,.5)", whiteSpace:"nowrap" }}>
+            {toast.msg}
+          </div>
+        )}
+
+        {/* Modal de edición */}
+        {editingOrder && (
+          <div style={s.overlay} onClick={() => setEditingOrder(null)}>
+            <EditOrderModal order={editingOrder} onSave={saveEditedOrder} onClose={() => setEditingOrder(null)} />
+          </div>
+        )}
+
+        {/* Modal de confirmación eliminación */}
+        {confirmDelete && (
+          <div style={s.overlay} onClick={() => setConfirmDelete(null)}>
+            <div style={{ ...s.modal, maxWidth:340, textAlign:"center" }} onClick={e => e.stopPropagation()}>
+              <div style={{ fontSize:42, marginBottom:12 }}>🗑️</div>
+              <div style={{ fontWeight:900, fontSize:17, marginBottom:8, color:"#eee" }}>¿Eliminar pedido?</div>
+              <div style={{ color:"#888", fontSize:13, marginBottom:20 }}>Esta acción no se puede deshacer y no dejará registro en el historial.</div>
+              <div style={{ display:"flex", gap:10 }}>
+                <button style={{ ...s.btn("secondary"), flex:1 }} onClick={() => setConfirmDelete(null)}>Cancelar</button>
+                <button style={{ ...s.btn("danger"), flex:1 }} onClick={() => deleteOrderPermanent(confirmDelete)}>🗑️ Eliminar</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Contenido */}
+        <div style={s.content}>
+          {tab==="dashboard" && <Dashboard />}
+          {tab==="nuevo"     && <NuevoPedido />}
+          {tab==="pedidos"   && <Pedidos />}
+          {tab==="historial" && <Historial />}
+          {tab==="carta"     && <Carta />}
+        </div>
+      </div>
+    </>
+  );
+}
