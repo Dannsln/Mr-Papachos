@@ -7,14 +7,24 @@ import {
   query, orderBy, limit,
 } from "firebase/firestore";
 
-
+/* ════════════════════════════════════════════════════════════════════
+   🔥  FIREBASE — CONFIGURACIÓN
+   ════════════════════════════════════════════════════════════════════
+   PASOS PARA CONFIGURAR:
+   1. Ve a https://console.firebase.google.com
+   2. Crea un proyecto → clic en "Agregar app" → ícono Web (</>)
+   3. Registra la app → copia el objeto "firebaseConfig"
+   4. Pega los valores aquí abajo
+   5. En la consola: Firestore Database → Crear base de datos
+      → Comenzar en "modo de prueba" → listo ✅
+   ════════════════════════════════════════════════════════════════════ */
 const FIREBASE_CONFIG = {
-  apiKey:            process.env.REACT_APP_FIREBASE_API_KEY,
-  authDomain:        process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
-  projectId:         process.env.REACT_APP_FIREBASE_PROJECT_ID,
-  storageBucket:     process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
-  appId:             process.env.REACT_APP_FIREBASE_APP_ID,
+  apiKey:            "AIzaSyA0EId0QaEgk363fTQAtjMeFHo2ME73mkc",
+  authDomain:        "mr-papachos.firebaseapp.com",
+  projectId:         "mr-papachos",
+  storageBucket:     "mr-papachos.firebasestorage.app",
+  messagingSenderId: "1010366048108",
+  appId:             "1:1010366048108:web:0761fe7bb96d94f32bb549",
 };
 
 // Inicializa Firebase solo una vez (compatible con hot reload)
@@ -155,7 +165,7 @@ const MENU_BASE = [
 
 const ALL_CATS   = [...new Set(MENU_BASE.map(i => i.cat))];
 const fmt        = (n) => `S/.${Number(n).toFixed(2)}`;
-const newDraft   = () => ({ table:"", items:[], payment:"efectivo", notes:"" });
+const newDraft   = () => ({ table:"", items:[], payment:"efectivo", notes:"", orderType:"mesa", taperCost:0 });
 
 // ─── Hook responsivo ─────────────────────────────────────────────────────────
 function useWindowWidth() {
@@ -228,20 +238,21 @@ export default function App() {
 
   const draftTotal = draft.items.reduce((s, i) => s + i.price * i.qty, 0);
 
- // ── Acciones de pedido ────────────────────────────────────────────────────
+  // ── Acciones de pedido ────────────────────────────────────────────────────
   const submitOrder = async () => {
     if (!draft.table.trim() || !draft.items.length) return;
-    const order = { id: Date.now().toString(), ...draft, total: draftTotal, status:"pendiente", createdAt: new Date().toISOString() };
+    const total = draftTotal + (draft.orderType === "llevar" ? Number(draft.taperCost) || 0 : 0);
+    const order = { id: Date.now().toString(), ...draft, total, status:"pendiente", createdAt: new Date().toISOString() };
     await saveOrders([...orders, order]);
     setDraft(newDraft());
-    showToast(`✅ Pedido Mesa ${order.table} creado`);
+    showToast(`✅ Pedido ${draft.orderType === "llevar" ? `Para llevar - ${draft.table}` : `Mesa ${draft.table}`} creado`);
     setTab("pedidos");
   };
 
   const markPaid = async (id) => {
     const o = orders.find(x => x.id === id);
     if (!o) return;
-    const finished = { ...o, status:"pagado", paidAt: new Date().toISOString(), createdAt: new Date().toISOString() };
+    const finished = { ...o, status:"pagado", paidAt: new Date().toISOString() };
     await FS.addHistory(finished);
     setHistory(h => [finished, ...h]);
     await saveOrders(orders.filter(x => x.id !== id));
@@ -251,7 +262,7 @@ export default function App() {
   const cancelOrder = async (id) => {
     const o = orders.find(x => x.id === id);
     if (!o) return;
-    const finished = { ...o, status:"cancelado", cancelledAt: new Date().toISOString(), createdAt: new Date().toISOString() };
+    const finished = { ...o, status:"cancelado", cancelledAt: new Date().toISOString() };
     await FS.addHistory(finished);
     setHistory(h => [finished, ...h]);
     await saveOrders(orders.filter(x => x.id !== id));
@@ -347,9 +358,11 @@ export default function App() {
     const [eItems,   setEItems]   = useState(order.items.map(i => ({ ...i })));
     const [ePay,     setEPay]     = useState(order.payment);
     const [eNotes,   setENotes]   = useState(order.notes || "");
+    const [eOrderType, setEOrderType] = useState(order.orderType || "mesa");
+    const [eTaperCost, setETaperCost] = useState(order.taperCost || 0);
     const [eCat,     setECat]     = useState("Todos");
     const [eSearch,  setESearch]  = useState("");
-    const eTotal = eItems.reduce((s, i) => s + i.price * i.qty, 0);
+    const eTotal = eItems.reduce((s, i) => s + i.price * i.qty, 0) + (eOrderType === "llevar" ? Number(eTaperCost) || 0 : 0);
 
     const eAddItem = (item) => setEItems(prev => {
       const ex = prev.find(i => i.id === item.id);
@@ -367,7 +380,7 @@ export default function App() {
 
     const handleSave = () => {
       if (!eTable.trim() || !eItems.length) return;
-      onSave({ ...order, table: eTable, items: eItems, payment: ePay, notes: eNotes, total: eTotal });
+      onSave({ ...order, table: eTable, items: eItems, payment: ePay, notes: eNotes, total: eTotal, orderType: eOrderType, taperCost: eTaperCost });
     };
 
     return (
@@ -377,11 +390,28 @@ export default function App() {
           <button style={{ ...s.btn("secondary"), padding:"4px 10px" }} onClick={onClose}>✕</button>
         </div>
 
-        {/* Mesa */}
+        {/* Tipo de pedido */}
         <div style={{ marginBottom:10 }}>
-          <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Mesa / Delivery</label>
-          <input style={{ ...s.input, marginTop:4 }} value={eTable} onChange={e => setETable(e.target.value)} placeholder="Ej: Mesa 5, Delivery..." />
+          <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Tipo de pedido</label>
+          <div style={{ display:"flex", gap:6, marginTop:4 }}>
+            {["mesa","llevar"].map(t => (
+              <button key={t} style={{ ...s.btn(eOrderType===t?"primary":"secondary"), flex:1 }}
+                onClick={() => { setEOrderType(t); setETaperCost(0); }}>
+                {t==="mesa"?"🪑 Mesa":"🥡 Para llevar"}
+              </button>
+            ))}
+          </div>
+          <input style={{ ...s.input, marginTop:6 }} value={eTable} onChange={e => setETable(e.target.value)}
+            placeholder={eOrderType==="mesa"?"Ej: Mesa 5":"Nombre del cliente"} />
         </div>
+
+        {eOrderType === "llevar" && (
+          <div style={{ marginBottom:10 }}>
+            <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Costo taper/bolsa (S/.)</label>
+            <input style={{ ...s.input, marginTop:4 }} type="number" min="0" step="0.50" placeholder="Ej: 1.00"
+              value={eTaperCost || ""} onChange={e => setETaperCost(e.target.value)} />
+          </div>
+        )}
 
         {/* Pago */}
         <div style={{ marginBottom:10 }}>
@@ -570,9 +600,28 @@ export default function App() {
           <div style={{ ...s.title, fontSize:18, marginBottom:12 }}>📋 PEDIDO</div>
 
           <div style={{ marginBottom:10 }}>
-            <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Mesa / Delivery</label>
-            <input style={{ ...s.input, marginTop:4 }} placeholder="Ej: Mesa 5, Delivery..." value={draft.table} onChange={e => setDraft(d => ({...d,table:e.target.value}))} />
+            <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Tipo de pedido</label>
+            <div style={{ display:"flex", gap:6, marginTop:4 }}>
+              {["mesa","llevar"].map(t => (
+                <button key={t} style={{ ...s.btn(draft.orderType===t?"primary":"secondary"), flex:1 }}
+                  onClick={() => setDraft(d => ({...d, orderType:t, taperCost:0}))}>
+                  {t==="mesa"?"🪑 Mesa":"🥡 Para llevar"}
+                </button>
+              ))}
+            </div>
+            {draft.orderType === "mesa"
+              ? <input style={{ ...s.input, marginTop:6 }} placeholder="Ej: Mesa 5" value={draft.table} onChange={e => setDraft(d => ({...d,table:e.target.value}))} />
+              : <input style={{ ...s.input, marginTop:6 }} placeholder="Nombre del cliente" value={draft.table} onChange={e => setDraft(d => ({...d,table:e.target.value}))} />
+            }
           </div>
+
+          {draft.orderType === "llevar" && (
+            <div style={{ marginBottom:10 }}>
+              <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Costo taper/bolsa (S/.)</label>
+              <input style={{ ...s.input, marginTop:4 }} type="number" min="0" step="0.50" placeholder="Ej: 1.00"
+                value={draft.taperCost || ""} onChange={e => setDraft(d => ({...d, taperCost: e.target.value}))} />
+            </div>
+          )}
 
           <div style={{ marginBottom:10 }}>
             <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Forma de pago</label>
