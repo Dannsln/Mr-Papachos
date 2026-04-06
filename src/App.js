@@ -399,7 +399,11 @@ export default function App() {
   const [editingOrder,  setEditingOrder]  = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [mesaModal,     setMesaModal]     = useState(null);
-  const [kitchenChecks, setKitchenChecks] = useState({}); // { orderId: { itemId: true } }
+  const [kitchenChecks, setKitchenChecks] = useState({});
+  const [invCat,        setInvCat]        = useState("Todos");
+  const [invSearch,     setInvSearch]     = useState("");
+  const [invPeriod,     setInvPeriod]     = useState("hoy");
+  const [invSortBy,     setInvSortBy]     = useState("cantidad"); // { orderId: { itemId: true } }
   const draftNotesRef = useRef(null);
 
   useEffect(() => {
@@ -956,10 +960,6 @@ export default function App() {
 
   // ── Inventario ────────────────────────────────────────────────
   const Inventario = () => {
-    const [invCat,    setInvCat]    = useState("Todos");
-    const [invSearch, setInvSearch] = useState("");
-    const [invPeriod, setInvPeriod] = useState("hoy"); // hoy | semana | total
-    const [sortBy,    setSortBy]    = useState("cantidad"); // cantidad | nombre
 
     // Calcular conteos desde historial + pedidos activos según período
     const now      = new Date();
@@ -1007,8 +1007,8 @@ export default function App() {
         item.name.toLowerCase().includes(invSearch.toLowerCase())
       );
 
-    if (sortBy === "cantidad") items = items.sort((a, b) => b.qty - a.qty);
-    else                       items = items.sort((a, b) => a.name.localeCompare(b.name));
+    if (invSortBy === "cantidad") items = items.sort((a, b) => b.qty - a.qty);
+    else                          items = items.sort((a, b) => a.name.localeCompare(b.name));
 
     const totalQty = items.reduce((s, i) => s + i.qty, 0);
     const totalRev = items.reduce((s, i) => s + i.revenue, 0);
@@ -1027,7 +1027,7 @@ export default function App() {
           ))}
           <div style={{ width:1, background:"#333" }} />
           {[["cantidad","# Cantidad"],["nombre","A-Z Nombre"]].map(([v,l]) => (
-            <button key={v} style={{ ...s.btn(sortBy===v?"primary":"secondary"), fontSize:11 }} onClick={() => setSortBy(v)}>{l}</button>
+            <button key={v} style={{ ...s.btn(invSortBy===v?"primary":"secondary"), fontSize:11 }} onClick={() => setInvSortBy(v)}>{l}</button>
           ))}
         </div>
 
