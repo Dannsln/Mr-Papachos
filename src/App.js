@@ -399,6 +399,7 @@ export default function App() {
   const [editingOrder,  setEditingOrder]  = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [mesaModal,     setMesaModal]     = useState(null);
+  const [kitchenChecks, setKitchenChecks] = useState({}); // { orderId: { itemId: true } }
   const draftNotesRef = useRef(null);
 
   useEffect(() => {
@@ -953,11 +954,137 @@ export default function App() {
     </div>
   );
 
+  // ── Cocina ────────────────────────────────────────────────────
+  const Cocina = () => {
+    const sorted = [...orders].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+    const toggleCheck = (orderId, itemIdx) => {
+      setKitchenChecks(prev => {
+        const orderChecks = prev[orderId] || {};
+        const updated = { ...orderChecks, [itemIdx]: !orderChecks[itemIdx] };
+        return { ...prev, [orderId]: updated };
+      });
+    };
+
+    const allDone = (order) => {
+      const checks = kitchenChecks[order.id] || {};
+      return order.items.every((_, i) => checks[i]);
+    };
+
+    const resetOrder = (orderId) => {
+      setKitchenChecks(prev => ({ ...prev, [orderId]: {} }));
+    };
+
+    if (sorted.length === 0) return (
+      <div style={{ textAlign:"center", padding:60, color:"#444" }}>
+        <div style={{ fontSize:56 }}>👨‍🍳</div>
+        <div style={{ marginTop:12, fontSize:16 }}>Sin pedidos en cocina</div>
+      </div>
+    );
+
+    return (
+      <div>
+        <div style={{ ...s.row, marginBottom:14 }}>
+          <div style={s.title}>👨‍🍳 COCINA — {sorted.length} pedido{sorted.length!==1?"s":""}</div>
+          <div style={{ fontSize:11, color:"#666" }}>Más antiguo = mayor prioridad</div>
+        </div>
+
+        <div style={{ display:"grid", gridTemplateColumns: isDesktop ? "1fr 1fr" : "1fr", gap:12 }}>
+          {sorted.map((order, priority) => {
+            const checks   = kitchenChecks[order.id] || {};
+            const done     = allDone(order);
+            const checkedN = order.items.filter((_, i) => checks[i]).length;
+            const mins     = Math.floor((Date.now() - new Date(order.createdAt)) / 60000);
+            const urgent   = mins >= 15 && !done;
+            const warn     = mins >= 8 && mins < 15 && !done;
+
+            return (
+              <div key={order.id} style={{
+                background: done ? "#0d1f0d" : urgent ? "#1f0d0d" : warn ? "#1f180d" : "#1c1c1c",
+                borderRadius:14,
+                border: `2px solid ${done ? "#27ae60" : urgent ? "#e74c3c" : warn ? "#e67e22" : "#FFD700"}`,
+                padding:14,
+                position:"relative",
+                transition:"all .3s"
+              }}>
+                {/* Priority badge */}
+                <div style={{ position:"absolute", top:-10, left:14, background: done?"#27ae60": urgent?"#e74c3c": warn?"#e67e22":"#FFD700", color: done||urgent||warn?"#fff":"#111", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:900 }}>
+                  {done ? "✅ LISTO" : `#${priority + 1} · ${mins < 1 ? "ahora" : `${mins}m`}`}
+                </div>
+
+                <div style={{ ...s.row, marginBottom:10, marginTop:6 }}>
+                  <div>
+                    <span style={{ fontFamily:"'Bebas Neue',cursive", fontSize:22, color: done?"#27ae60": urgent?"#e74c3c": warn?"#e67e22":"#FFD700" }}>
+                      {order.orderType === "llevar" ? `🥡 ${order.table}` : `Mesa ${order.table}`}
+                    </span>
+                  </div>
+                  <div style={{ fontSize:12, color:"#666" }}>
+                    {new Date(order.createdAt).toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})}
+                  </div>
+                </div>
+
+                {/* Progress bar */}
+                <div style={{ background:"#2a2a2a", borderRadius:4, height:5, marginBottom:12, overflow:"hidden" }}>
+                  <div style={{ background: done?"#27ae60":"#FFD700", height:"100%", width:`${(checkedN/order.items.length)*100}%`, transition:"width .3s" }} />
+                </div>
+
+                {/* Items */}
+                <div>
+                  {order.items.map((item, i) => (
+                    <div key={i} onClick={() => toggleCheck(order.id, i)} style={{
+                      display:"flex", alignItems:"center", gap:10,
+                      padding:"9px 10px", marginBottom:5, borderRadius:8,
+                      background: checks[i] ? "#0a2a0a" : "#252525",
+                      border: `1px solid ${checks[i] ? "#27ae6055" : "#333"}`,
+                      cursor:"pointer", transition:"all .2s",
+                      opacity: checks[i] ? 0.6 : 1
+                    }}>
+                      <div style={{
+                        width:22, height:22, borderRadius:6,
+                        border: `2px solid ${checks[i] ? "#27ae60" : "#555"}`,
+                        background: checks[i] ? "#27ae60" : "transparent",
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        flexShrink:0, fontSize:13, transition:"all .2s"
+                      }}>
+                        {checks[i] && "✓"}
+                      </div>
+                      <div style={{ flex:1 }}>
+                        <span style={{ fontWeight:800, fontSize: isMobile?13:15, textDecoration: checks[i]?"line-through":"none", color: checks[i]?"#555":"#eee" }}>
+                          {item.qty > 1 && <span style={{ color:"#FFD700", marginRight:4 }}>{item.qty}×</span>}
+                          {item.name}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Notas */}
+                {order.notes && (
+                  <div style={{ marginTop:8, padding:"8px 10px", background:"#1a1500", borderRadius:8, border:"1px solid #3a3000", fontSize:12, color:"#e6c200" }}>
+                    📝 {order.notes}
+                  </div>
+                )}
+
+                {/* Reset */}
+                {checkedN > 0 && (
+                  <button onClick={() => resetOrder(order.id)} style={{ ...s.btn("secondary"), width:"100%", marginTop:10, fontSize:11, padding:"6px" }}>
+                    ↺ Reiniciar checks
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   const tabs = [
     { id:"dashboard", label: isMobile ? "📊" : "📊 Inicio" },
     { id:"mesas",     label: isMobile ? "🪑" : "🪑 Mesas" },
     { id:"nuevo",     label: isMobile ? "➕" : "➕ Nuevo" },
     { id:"pedidos",   label: isMobile ? `🍽️${orders.length>0?` ${orders.length}`:""}` : `🍽️ Pedidos${orders.length>0?` (${orders.length})`:""}` },
+    { id:"cocina",    label: isMobile ? `👨‍🍳${orders.length>0?` ${orders.length}`:""}` : `👨‍🍳 Cocina${orders.length>0?` (${orders.length})`:""}` },
     { id:"historial", label: isMobile ? "📋" : "📋 Historial" },
     { id:"carta",     label: isMobile ? "🍔" : "🍔 Carta" },
   ];
@@ -1019,6 +1146,7 @@ export default function App() {
           {tab==="mesas"     && <Mesas />}
           {tab==="nuevo"     && <NuevoPedido />}
           {tab==="pedidos"   && <Pedidos />}
+          {tab==="cocina"    && <Cocina />}
           {tab==="historial" && <Historial />}
           {tab==="carta"     && <Carta />}
         </div>
