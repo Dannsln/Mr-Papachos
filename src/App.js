@@ -355,22 +355,131 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
 
 // ── Impresión para cocina ─────────────────────────────────────────
 function printOrder(order) {
-  const win = window.open("", "_blank", "width=320,height=500");
-  const items = order.items.map(i => `<tr><td style="padding:4px 0;border-bottom:1px dashed #ccc">${i.qty}x ${i.name}</td></tr>`).join("");
-  const notes = order.notes ? `<tr><td style="color:#555;font-style:italic;padding-top:10px">📝 ${order.notes}</td></tr>` : "";
-  const tipo  = order.orderType === "llevar" ? `🥡 PARA LLEVAR — ${order.table}` : `🪑 MESA ${order.table}`;
-  win.document.write(`
-    <html><head><title>Pedido</title>
-    <style>body{font-family:monospace;font-size:15px;padding:14px} h2{text-align:center;margin-bottom:4px} p{text-align:center;color:#555;margin:2px 0 10px} table{width:100%;border-collapse:collapse} .footer{text-align:center;margin-top:18px;font-size:12px;color:#999;border-top:1px dashed #ccc;padding-top:10px}</style>
-    </head><body>
-    <h2>🍔 MR. PAPACHOS</h2>
-    <p><strong>${tipo}</strong></p>
-    <p>${new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})}</p>
-    <table>${items}${notes}</table>
-    <div class="footer">— Cocina —</div>
-    <script>window.onload=()=>{ window.print(); window.close(); }<\/script>
-    </body></html>
-  `);
+  const win = window.open("", "_blank", "width=220,height=600");
+  const items = order.items.map(i =>
+    `<tr>
+      <td class="qty">${i.qty}x</td>
+      <td class="item">${i.name}</td>
+      <td class="price">S/.${(i.price * i.qty).toFixed(2)}</td>
+    </tr>`
+  ).join("");
+  const notes = order.notes
+    ? `<div class="notes">📝 ${order.notes}</div>`
+    : "";
+  const tipo  = order.orderType === "llevar"
+    ? `🥡 LLEVAR — ${order.table}`
+    : `MESA ${order.table}`;
+  const hora  = new Date().toLocaleTimeString("es-PE", { hour:"2-digit", minute:"2-digit" });
+  const fecha = new Date().toLocaleDateString("es-PE", { day:"2-digit", month:"2-digit", year:"2-digit" });
+
+  win.document.write(`<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<title>Pedido</title>
+<style>
+  @page {
+    size: 50mm auto;
+    margin: 0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    width: 50mm;
+    padding-top: 10mm;
+    padding-left: 2mm;
+    padding-right: 2mm;
+    padding-bottom: 4mm;
+    background: #fff;
+    color: #000;
+  }
+  .logo {
+    text-align: center;
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    margin-bottom: 1mm;
+  }
+  .sub {
+    text-align: center;
+    font-size: 9px;
+    margin-bottom: 2mm;
+    color: #333;
+  }
+  .divider {
+    border-top: 1px dashed #000;
+    margin: 2mm 0;
+  }
+  .mesa {
+    text-align: center;
+    font-size: 16px;
+    font-weight: bold;
+    margin: 2mm 0;
+    letter-spacing: 1px;
+  }
+  .hora {
+    text-align: center;
+    font-size: 9px;
+    color: #444;
+    margin-bottom: 2mm;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  td { padding: 1mm 0; vertical-align: top; }
+  .qty  { width: 7mm; font-weight: bold; }
+  .item { width: auto; }
+  .price {
+    width: 16mm;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .total-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    font-weight: bold;
+    margin-top: 2mm;
+    padding-top: 1mm;
+    border-top: 1px solid #000;
+  }
+  .notes {
+    font-size: 10px;
+    font-style: italic;
+    margin-top: 2mm;
+    padding: 1mm;
+    border: 1px dashed #999;
+  }
+  .footer {
+    text-align: center;
+    font-size: 9px;
+    margin-top: 3mm;
+    color: #555;
+  }
+</style>
+</head>
+<body>
+  <div class="logo">MR. PAPACHOS</div>
+  <div class="sub">¡Sabe a Cajacho!</div>
+  <div class="divider"></div>
+  <div class="mesa">${tipo}</div>
+  <div class="hora">${fecha} — ${hora}</div>
+  <div class="divider"></div>
+  <table>${items}</table>
+  ${notes}
+  <div class="divider"></div>
+  <div class="total-row">
+    <span>TOTAL</span>
+    <span>S/.${order.total.toFixed(2)}</span>
+  </div>
+  <div class="footer">— Cocina —</div>
+  <script>
+    window.onload = function() {
+      window.print();
+      setTimeout(function(){ window.close(); }, 500);
+    };
+  <\/script>
+</body></html>`);
   win.document.close();
 }
 
