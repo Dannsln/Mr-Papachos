@@ -401,9 +401,9 @@ export default function App() {
   const [mesaModal,     setMesaModal]     = useState(null);
   const [kitchenChecks, setKitchenChecks] = useState({});
   const [invCat,        setInvCat]        = useState("Todos");
-  const [invSearch,     setInvSearch]     = useState("");
   const [invPeriod,     setInvPeriod]     = useState("hoy");
-  const [invSortBy,     setInvSortBy]     = useState("cantidad"); // { orderId: { itemId: true } }
+  const [invSortBy,     setInvSortBy]     = useState("cantidad");
+  const invSearchRef = useRef(null);
   const draftNotesRef = useRef(null);
 
   useEffect(() => {
@@ -960,6 +960,7 @@ export default function App() {
 
   // ── Inventario ────────────────────────────────────────────────
   const Inventario = () => {
+    const [, forceUpdate] = useState(0);
 
     // Calcular conteos desde historial + pedidos activos según período
     const now      = new Date();
@@ -1004,7 +1005,7 @@ export default function App() {
       }))
       .filter(item =>
         (invCat === "Todos" || item.cat === invCat) &&
-        item.name.toLowerCase().includes(invSearch.toLowerCase())
+        item.name.toLowerCase().includes((invSearchRef.current?.value || "").toLowerCase())
       );
 
     if (invSortBy === "cantidad") items = items.sort((a, b) => b.qty - a.qty);
@@ -1048,7 +1049,7 @@ export default function App() {
         </div>
 
         {/* Filtros */}
-        <input style={{ ...s.input, marginBottom:8 }} placeholder="Buscar platillo..." value={invSearch} onChange={e => setInvSearch(e.target.value)} />
+        <input ref={invSearchRef} style={{ ...s.input, marginBottom:8 }} placeholder="Buscar platillo..." defaultValue="" onChange={() => forceUpdate(n => n + 1)} />
         <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:12 }}>
           {["Todos", ...ALL_CATS].map(c => (
             <button key={c} style={{ ...s.btn(invCat===c?"primary":"secondary"), fontSize:isMobile?9:10, padding:isMobile?"3px 6px":"4px 9px" }} onClick={() => setInvCat(c)}>{c}</button>
