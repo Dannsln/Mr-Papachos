@@ -144,6 +144,22 @@ const MENU_BASE = [
   { id:"G10",  cat:"Gaseosas",         icon:"🥤", name:"Coca Cola 600ml",           price:4    },
   { id:"O01",  cat:"Otros",            icon:"☕", name:"Café Pasado",               price:4    },
   { id:"O02",  cat:"Otros",            icon:"🍵", name:"Infusiones",                price:3    },
+  // BEBIDAS extra sabores
+  { id:"B16",  cat:"Bebidas",          icon:"🥤", name:"Piña Normal 1L",            price:10   },
+  { id:"B17",  cat:"Bebidas",          icon:"🥤", name:"Piña Normal 1/2L",          price:5    },
+  { id:"B18",  cat:"Bebidas",          icon:"🥤", name:"Piña Normal Vaso",          price:2.50 },
+  { id:"B19",  cat:"Bebidas",          icon:"🧊", name:"Piña Frozen 1L",            price:18   },
+  { id:"B20",  cat:"Bebidas",          icon:"🧊", name:"Piña Frozen 1/2L",          price:9    },
+  { id:"B21",  cat:"Bebidas",          icon:"🥤", name:"Cebada Normal 1L",          price:10   },
+  { id:"B22",  cat:"Bebidas",          icon:"🥤", name:"Cebada Normal 1/2L",        price:5    },
+  { id:"B23",  cat:"Bebidas",          icon:"🥤", name:"Cebada Normal Vaso",        price:2.50 },
+  { id:"B24",  cat:"Bebidas",          icon:"🧊", name:"Cebada Frozen 1L",          price:18   },
+  { id:"B25",  cat:"Bebidas",          icon:"🧊", name:"Cebada Frozen 1/2L",        price:9    },
+  { id:"B26",  cat:"Bebidas",          icon:"🥤", name:"Fresa Normal 1L",           price:10   },
+  { id:"B27",  cat:"Bebidas",          icon:"🥤", name:"Fresa Normal 1/2L",         price:5    },
+  { id:"B28",  cat:"Bebidas",          icon:"🥤", name:"Fresa Normal Vaso",         price:2.50 },
+  { id:"B29",  cat:"Bebidas",          icon:"🧊", name:"Fresa Frozen 1L",           price:18   },
+  { id:"B30",  cat:"Bebidas",          icon:"🧊", name:"Fresa Frozen 1/2L",         price:9    },
   // CHILCANOS
   { id:"CH01", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Limón Vaso",       price:15   },
   { id:"CH02", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Limón Jarra",      price:30   },
@@ -239,9 +255,9 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
       <div style={{ marginBottom:10 }}>
         <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Forma de pago</label>
         <div style={{ display:"flex", gap:6, marginTop:4 }}>
-          {["efectivo","transferencia"].map(p => (
+          {[["efectivo","💵"],["yape","💜"],["tarjeta","💳"]].map(([p,ic]) => (
             <button key={p} style={{ ...s.btn(ePay===p?"primary":"secondary"), flex:1 }} onClick={() => setEPay(p)}>
-              {p==="efectivo"?"💵":"📲"} {p}
+              {ic} {p}
             </button>
           ))}
         </div>
@@ -455,7 +471,8 @@ export default function App() {
   const todayRev  = paidToday.reduce((s, o) => s + o.total, 0);
   const totalRev  = history.filter(o => o.status === "pagado").reduce((s, o) => s + o.total, 0);
   const cashRev   = paidToday.filter(o => o.payment === "efectivo").reduce((s, o) => s + o.total, 0);
-  const transRev  = paidToday.filter(o => o.payment === "transferencia").reduce((s, o) => s + o.total, 0);
+  const yapeRev   = paidToday.filter(o => o.payment === "yape").reduce((s, o) => s + o.total, 0);
+  const cardRev   = paidToday.filter(o => o.payment === "tarjeta").reduce((s, o) => s + o.total, 0);
   const filteredMenu = menu.filter(i => (catFilter === "Todos" || i.cat === catFilter) && i.name.toLowerCase().includes(search.toLowerCase()));
   const timeStr    = (iso) => { if (!iso) return ""; const d = new Date(iso); return d.toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"}) + " · " + d.toLocaleDateString("es-PE"); };
   const minutesAgo = (iso) => { const m = Math.floor((Date.now()-new Date(iso))/60000); if(m<1)return"ahora"; if(m<60)return`hace ${m}m`; return`hace ${Math.floor(m/60)}h ${m%60}m`; };
@@ -517,13 +534,18 @@ export default function App() {
           <div style={{ fontWeight:800, marginBottom:8, color:"#aaa", fontSize:11, textTransform:"uppercase", letterSpacing:1 }}>Desglose hoy</div>
           <div style={s.row}>
             <div style={{ textAlign:"center" }}>
-              <div style={{ color:"#27ae60", fontWeight:900, fontSize: isMobile?15:18 }}>💵 {fmt(cashRev)}</div>
-              <div style={{ fontSize:11, color:"#666" }}>Efectivo</div>
+              <div style={{ color:"#27ae60", fontWeight:900, fontSize: isMobile?13:16 }}>💵 {fmt(cashRev)}</div>
+              <div style={{ fontSize:10, color:"#666" }}>Efectivo</div>
             </div>
             <div style={{ width:1, background:"#333", height:36 }} />
             <div style={{ textAlign:"center" }}>
-              <div style={{ color:"#3498db", fontWeight:900, fontSize: isMobile?15:18 }}>📲 {fmt(transRev)}</div>
-              <div style={{ fontSize:11, color:"#666" }}>Transferencia</div>
+              <div style={{ color:"#8e44ad", fontWeight:900, fontSize: isMobile?13:16 }}>💜 {fmt(yapeRev)}</div>
+              <div style={{ fontSize:10, color:"#666" }}>Yape</div>
+            </div>
+            <div style={{ width:1, background:"#333", height:36 }} />
+            <div style={{ textAlign:"center" }}>
+              <div style={{ color:"#2980b9", fontWeight:900, fontSize: isMobile?13:16 }}>💳 {fmt(cardRev)}</div>
+              <div style={{ fontSize:10, color:"#666" }}>Tarjeta</div>
             </div>
           </div>
         </div>
@@ -718,9 +740,9 @@ export default function App() {
           <div style={{ marginBottom:10 }}>
             <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Forma de pago</label>
             <div style={{ display:"flex", gap:6, marginTop:4 }}>
-              {["efectivo","transferencia"].map(p => (
+              {[["efectivo","💵"],["yape","💜"],["tarjeta","💳"]].map(([p,ic]) => (
                 <button key={p} style={{ ...s.btn(draft.payment===p?"primary":"secondary"), flex:1 }} onClick={() => setDraft(d => ({...d,payment:p}))}>
-                  {p==="efectivo"?"💵":"📲"} {p}
+                  {ic} {p}
                 </button>
               ))}
             </div>
@@ -781,7 +803,7 @@ export default function App() {
               <div style={{ ...s.row, marginBottom:8 }}>
                 <div>
                   <span style={{ fontFamily:"'Bebas Neue',cursive", fontSize: isMobile?18:22 }}>{o.orderType==="llevar"?`🥡 ${o.table}`:`Mesa ${o.table}`}</span>
-                  <span style={{ ...s.tag(o.payment==="efectivo"?"#27ae60":"#2980b9"), marginLeft:8 }}>{o.payment==="efectivo"?"💵":"📲"} {!isMobile && o.payment}</span>
+                  <span style={{ ...s.tag(o.payment==="efectivo"?"#1a3a2a":o.payment==="yape"?"#3a1a5c":"#1a2a3a"), marginLeft:8 }}>{o.payment==="efectivo"?"💵":o.payment==="yape"?"💜":"💳"} {!isMobile && o.payment}</span>
                 </div>
                 <span style={{ color:Y, fontWeight:900, fontSize: isMobile?16:19 }}>{fmt(o.total)}</span>
               </div>
@@ -823,7 +845,7 @@ export default function App() {
         <div style={s.title}>📋 HISTORIAL</div>
         <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
           <input type="date" style={{ ...s.input, width: isMobile?"100%":160 }} value={filterDate} onChange={e=>setFilterDate(e.target.value)} />
-          {["todos","efectivo","transferencia"].map(p => (
+          {["todos","efectivo","yape","tarjeta"].map(p => (
             <button key={p} style={{ ...s.btn(filterPay===p?"primary":"secondary"), fontSize:11 }} onClick={()=>setFilterPay(p)}>{p}</button>
           ))}
           {(filterDate||filterPay!=="todos") && <button style={{ ...s.btn("danger"), fontSize:11 }} onClick={()=>{setFilterDate("");setFilterPay("todos")}}>✕</button>}
@@ -842,7 +864,7 @@ export default function App() {
                   <div>
                     <span style={{ fontWeight:900 }}>{o.orderType==="llevar"?`🥡 ${o.table}`:`Mesa ${o.table}`}</span>
                     <span style={{ ...s.tag(o.status==="pagado"?"#1e5c2e":"#5c1e1e"), marginLeft:8 }}>{o.status==="pagado"?"✅ Pagado":"❌ Cancelado"}</span>
-                    <span style={{ ...s.tag(o.payment==="efectivo"?"#1a3a2a":"#1a2a3a"), marginLeft:6 }}>{o.payment==="efectivo"?"💵":"📲"} {!isMobile && o.payment}</span>
+                    <span style={{ ...s.tag(o.payment==="efectivo"?"#1a3a2a":o.payment==="yape"?"#3a1a5c":"#1a2a3a"), marginLeft:6 }}>{o.payment==="efectivo"?"💵":o.payment==="yape"?"💜":"💳"} {!isMobile && o.payment}</span>
                   </div>
                   <span style={{ color:Y, fontWeight:900 }}>{fmt(o.total)}</span>
                 </div>
