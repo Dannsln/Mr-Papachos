@@ -144,6 +144,19 @@ const MENU_BASE = [
   { id:"G10",  cat:"Gaseosas",         icon:"🥤", name:"Coca Cola 600ml",           price:4    },
   { id:"O01",  cat:"Otros",            icon:"☕", name:"Café Pasado",               price:4    },
   { id:"O02",  cat:"Otros",            icon:"🍵", name:"Infusiones",                price:3    },
+  // CHILCANOS
+  { id:"CH01", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Limón Vaso",       price:15   },
+  { id:"CH02", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Limón Jarra",      price:30   },
+  { id:"CH03", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Maracuyá Vaso",    price:15   },
+  { id:"CH04", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Maracuyá Jarra",   price:30   },
+  { id:"CH05", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Fresa Vaso",       price:15   },
+  { id:"CH06", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Fresa Jarra",      price:30   },
+  { id:"CH07", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Aguaimanto Vaso",  price:15   },
+  { id:"CH08", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Aguaimanto Jarra", price:30   },
+  { id:"CH09", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Tuna Vaso",        price:15   },
+  { id:"CH10", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Tuna Jarra",       price:30   },
+  { id:"CH11", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Mango Vaso",       price:15   },
+  { id:"CH12", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Mango Jarra",      price:30   },
 ];
 
 const ALL_CATS = [...new Set(MENU_BASE.map(i => i.cat))];
@@ -343,6 +356,7 @@ export default function App() {
   const [editingOrder,  setEditingOrder]  = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [mesaModal,     setMesaModal]     = useState(null);
+  const [draftNotes,    setDraftNotes]    = useState("");
 
   useEffect(() => {
     const t = setTimeout(() => setSplash(false), 2200);
@@ -381,9 +395,10 @@ export default function App() {
   const submitOrder = async () => {
     if (!draft.table.trim() || !draft.items.length) return;
     const total = draftTotal + (draft.orderType === "llevar" ? Number(draft.taperCost) || 0 : 0);
-    const order = { id: Date.now().toString(), ...draft, total, status:"pendiente", createdAt: new Date().toISOString() };
+    const order = { id: Date.now().toString(), ...draft, notes: draftNotes, total, status:"pendiente", createdAt: new Date().toISOString() };
     await saveOrders([...orders, order]);
     setDraft(newDraft());
+    setDraftNotes("");
     showToast(`✅ Pedido ${draft.orderType==="llevar"?`Para llevar - ${draft.table}`:`Mesa ${draft.table}`} creado`);
     setTab("pedidos");
   };
@@ -714,7 +729,7 @@ export default function App() {
           <div style={{ marginBottom:12 }}>
             <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas</label>
             <input style={{ ...s.input, marginTop:4 }} placeholder="Sin cebolla, extra salsa..."
-              value={draft.notes} onChange={e => setDraft(d => ({...d,notes:e.target.value}))} />
+              value={draftNotes} onChange={e => setDraftNotes(e.target.value)} />
           </div>
 
           {draft.items.length === 0
@@ -744,7 +759,7 @@ export default function App() {
             onClick={submitOrder} disabled={!draft.table||!draft.items.length}>
             ✅ Confirmar Pedido
           </button>
-          <button style={{ ...s.btn("secondary"), width:"100%", padding:8, marginTop:6, fontSize:12 }} onClick={() => setDraft(newDraft())}>
+          <button style={{ ...s.btn("secondary"), width:"100%", padding:8, marginTop:6, fontSize:12 }} onClick={() => { setDraft(newDraft()); setDraftNotes(""); }}>
             🗑️ Limpiar
           </button>
         </div>
