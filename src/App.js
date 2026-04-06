@@ -377,6 +377,124 @@ function printOrder(order) {
 // ═══════════════════════════════════════════════════════════════════
 //  APP PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+//  INVENTARIO — componente independiente para evitar re-renders de App
+// ═══════════════════════════════════════════════════════════════════
+function Inventario({ menu, orders, history, isMobile, s, Y, ALL_CATS, fmt }) {
+  const [invCat,    setInvCat]    = useState("Todos");
+  const [invPeriod, setInvPeriod] = useState("hoy");
+  const [invSortBy, setInvSortBy] = useState("cantidad");
+  const [search,    setSearch]    = useState("");
+
+  const now      = new Date();
+  const todayStr = now.toDateString();
+  const weekAgo  = new Date(now - 7 * 24 * 60 * 60 * 1000);
+
+  const inPeriod = (iso) => {
+    if (!iso) return false;
+    const d = new Date(iso);
+    if (invPeriod === "hoy")    return d.toDateString() === todayStr;
+    if (invPeriod === "semana") return d >= weekAgo;
+    return true;
+  };
+
+  const counts = {};
+  const revenue = {};
+
+  history.filter(o => o.status === "pagado" && inPeriod(o.paidAt)).forEach(order => {
+    order.items?.forEach(item => {
+      counts[item.id]  = (counts[item.id]  || 0) + item.qty;
+      revenue[item.id] = (revenue[item.id] || 0) + item.price * item.qty;
+    });
+  });
+
+  if (invPeriod === "hoy" || invPeriod === "semana") {
+    orders.filter(o => inPeriod(o.createdAt)).forEach(order => {
+      order.items?.forEach(item => {
+        counts[item.id]  = (counts[item.id]  || 0) + item.qty;
+        revenue[item.id] = (revenue[item.id] || 0) + item.price * item.qty;
+      });
+    });
+  }
+
+  let items = menu
+    .map(item => ({ ...item, qty: counts[item.id] || 0, revenue: revenue[item.id] || 0 }))
+    .filter(item =>
+      (invCat === "Todos" || item.cat === invCat) &&
+      item.name.toLowerCase().includes(search.toLowerCase())
+    );
+
+  if (invSortBy === "cantidad") items = items.sort((a, b) => b.qty - a.qty);
+  else                          items = items.sort((a, b) => a.name.localeCompare(b.name));
+
+  const totalQty    = items.reduce((s, i) => s + i.qty, 0);
+  const totalRev    = items.reduce((s, i) => s + i.revenue, 0);
+  const maxQty      = Math.max(...items.map(i => i.qty), 1);
+  const periodLabel = invPeriod === "hoy" ? "hoy" : invPeriod === "semana" ? "esta semana" : "histórico";
+
+  return (
+    <div>
+      <div style={s.title}>📦 INVENTARIO DE VENTAS</div>
+
+      <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:10 }}>
+        {[["hoy","📅 Hoy"],["semana","📆 Semana"],["total","🗂️ Total"]].map(([v,l]) => (
+          <button key={v} style={{ ...s.btn(invPeriod===v?"primary":"secondary"), fontSize:11 }} onClick={() => setInvPeriod(v)}>{l}</button>
+        ))}
+        <div style={{ width:1, background:"#333" }} />
+        {[["cantidad","# Cantidad"],["nombre","A-Z Nombre"]].map(([v,l]) => (
+          <button key={v} style={{ ...s.btn(invSortBy===v?"primary":"secondary"), fontSize:11 }} onClick={() => setInvSortBy(v)}>{l}</button>
+        ))}
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:12 }}>
+        <div style={s.statCard}><div style={{ ...s.statNum, fontSize:isMobile?18:24 }}>{totalQty}</div><div style={s.statLbl}>Items {periodLabel}</div></div>
+        <div style={{ ...s.statCard, border:`1px solid ${Y}55` }}><div style={{ ...s.statNum, fontSize:isMobile?14:18 }}>{fmt(totalRev)}</div><div style={s.statLbl}>Ingresos {periodLabel}</div></div>
+        <div style={s.statCard}><div style={{ ...s.statNum, fontSize:isMobile?18:24 }}>{items.filter(i=>i.qty>0).length}</div><div style={s.statLbl}>Platos distintos</div></div>
+      </div>
+
+      <input
+        style={{ ...s.input, marginBottom:8 }}
+        placeholder="Buscar platillo..."
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+      />
+      <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:12 }}>
+        {["Todos", ...ALL_CATS].map(c => (
+          <button key={c} style={{ ...s.btn(invCat===c?"primary":"secondary"), fontSize:isMobile?9:10, padding:isMobile?"3px 6px":"4px 9px" }} onClick={() => setInvCat(c)}>{c}</button>
+        ))}
+      </div>
+
+      {items.length === 0
+        ? <div style={{ textAlign:"center", padding:40, color:"#444" }}>Sin resultados</div>
+        : items.map(item => (
+          <div key={item.id} style={{ ...s.card, marginBottom:6, padding:"10px 12px", opacity: item.qty === 0 ? 0.4 : 1 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: item.qty > 0 ? 6 : 0 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, flex:1, minWidth:0 }}>
+                <span style={{ fontSize:18 }}>{item.icon}</span>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontWeight:800, fontSize:isMobile?12:14, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{item.name}</div>
+                  <div style={{ fontSize:10, color:"#555" }}>{item.cat} · {fmt(item.price)}</div>
+                </div>
+              </div>
+              <div style={{ textAlign:"right", flexShrink:0, marginLeft:8 }}>
+                <div style={{ fontWeight:900, fontSize:isMobile?16:20, color: item.qty > 0 ? Y : "#444" }}>
+                  {item.qty > 0 ? `×${item.qty}` : "—"}
+                </div>
+                {item.qty > 0 && <div style={{ fontSize:10, color:"#27ae60" }}>{fmt(item.revenue)}</div>}
+              </div>
+            </div>
+            {item.qty > 0 && (
+              <div style={{ background:"#222", borderRadius:4, height:5, overflow:"hidden" }}>
+                <div style={{ background:`linear-gradient(90deg,${Y},#e6b800)`, height:"100%", width:`${(item.qty/maxQty)*100}%`, borderRadius:4, transition:"width .3s" }} />
+              </div>
+            )}
+          </div>
+        ))
+      }
+    </div>
+  );
+}
+
 export default function App() {
   const width     = useWindowWidth();
   const isMobile  = width < 480;
@@ -400,10 +518,6 @@ export default function App() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [mesaModal,     setMesaModal]     = useState(null);
   const [kitchenChecks, setKitchenChecks] = useState({});
-  const [invCat,        setInvCat]        = useState("Todos");
-  const [invPeriod,     setInvPeriod]     = useState("hoy");
-  const [invSortBy,     setInvSortBy]     = useState("cantidad");
-  const invSearchRef = useRef(null);
   const draftNotesRef = useRef(null);
 
   useEffect(() => {
@@ -958,135 +1072,6 @@ export default function App() {
     </div>
   );
 
-  // ── Inventario ────────────────────────────────────────────────
-  const Inventario = () => {
-    const [, forceUpdate] = useState(0);
-
-    // Calcular conteos desde historial + pedidos activos según período
-    const now      = new Date();
-    const todayStr = now.toDateString();
-    const weekAgo  = new Date(now - 7 * 24 * 60 * 60 * 1000);
-
-    const inPeriod = (iso) => {
-      if (!iso) return false;
-      const d = new Date(iso);
-      if (invPeriod === "hoy")    return d.toDateString() === todayStr;
-      if (invPeriod === "semana") return d >= weekAgo;
-      return true; // total
-    };
-
-    // Contar de historial pagado
-    const counts = {};
-    const revenue = {};
-
-    history.filter(o => o.status === "pagado" && inPeriod(o.paidAt)).forEach(order => {
-      order.items?.forEach(item => {
-        counts[item.id]  = (counts[item.id]  || 0) + item.qty;
-        revenue[item.id] = (revenue[item.id] || 0) + item.price * item.qty;
-      });
-    });
-
-    // También contar pedidos activos (en curso)
-    if (invPeriod === "hoy" || invPeriod === "semana") {
-      orders.filter(o => inPeriod(o.createdAt)).forEach(order => {
-        order.items?.forEach(item => {
-          counts[item.id]  = (counts[item.id]  || 0) + item.qty;
-          revenue[item.id] = (revenue[item.id] || 0) + item.price * item.qty;
-        });
-      });
-    }
-
-    // Armar lista con datos del menú
-    let items = menu
-      .map(item => ({
-        ...item,
-        qty:     counts[item.id]  || 0,
-        revenue: revenue[item.id] || 0,
-      }))
-      .filter(item =>
-        (invCat === "Todos" || item.cat === invCat) &&
-        item.name.toLowerCase().includes((invSearchRef.current?.value || "").toLowerCase())
-      );
-
-    if (invSortBy === "cantidad") items = items.sort((a, b) => b.qty - a.qty);
-    else                          items = items.sort((a, b) => a.name.localeCompare(b.name));
-
-    const totalQty = items.reduce((s, i) => s + i.qty, 0);
-    const totalRev = items.reduce((s, i) => s + i.revenue, 0);
-    const maxQty   = Math.max(...items.map(i => i.qty), 1);
-
-    const periodLabel = invPeriod === "hoy" ? "hoy" : invPeriod === "semana" ? "esta semana" : "histórico";
-
-    return (
-      <div>
-        <div style={s.title}>📦 INVENTARIO DE VENTAS</div>
-
-        {/* Controles */}
-        <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:10 }}>
-          {[["hoy","📅 Hoy"],["semana","📆 Semana"],["total","🗂️ Total"]].map(([v,l]) => (
-            <button key={v} style={{ ...s.btn(invPeriod===v?"primary":"secondary"), fontSize:11 }} onClick={() => setInvPeriod(v)}>{l}</button>
-          ))}
-          <div style={{ width:1, background:"#333" }} />
-          {[["cantidad","# Cantidad"],["nombre","A-Z Nombre"]].map(([v,l]) => (
-            <button key={v} style={{ ...s.btn(invSortBy===v?"primary":"secondary"), fontSize:11 }} onClick={() => setInvSortBy(v)}>{l}</button>
-          ))}
-        </div>
-
-        {/* Resumen */}
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:12 }}>
-          <div style={s.statCard}>
-            <div style={{ ...s.statNum, fontSize:isMobile?18:24 }}>{totalQty}</div>
-            <div style={s.statLbl}>Items vendidos {periodLabel}</div>
-          </div>
-          <div style={{ ...s.statCard, border:`1px solid #FFD70055` }}>
-            <div style={{ ...s.statNum, fontSize:isMobile?14:18 }}>{fmt(totalRev)}</div>
-            <div style={s.statLbl}>Ingresos {periodLabel}</div>
-          </div>
-          <div style={s.statCard}>
-            <div style={{ ...s.statNum, fontSize:isMobile?18:24 }}>{items.filter(i=>i.qty>0).length}</div>
-            <div style={s.statLbl}>Platos distintos</div>
-          </div>
-        </div>
-
-        {/* Filtros */}
-        <input ref={invSearchRef} style={{ ...s.input, marginBottom:8 }} placeholder="Buscar platillo..." defaultValue="" onChange={() => forceUpdate(n => n + 1)} />
-        <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:12 }}>
-          {["Todos", ...ALL_CATS].map(c => (
-            <button key={c} style={{ ...s.btn(invCat===c?"primary":"secondary"), fontSize:isMobile?9:10, padding:isMobile?"3px 6px":"4px 9px" }} onClick={() => setInvCat(c)}>{c}</button>
-          ))}
-        </div>
-
-        {/* Lista */}
-        {items.length === 0
-          ? <div style={{ textAlign:"center", padding:40, color:"#444" }}>Sin resultados</div>
-          : items.map(item => (
-            <div key={item.id} style={{ ...s.card, marginBottom:6, padding:"10px 12px", opacity: item.qty === 0 ? 0.4 : 1 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: item.qty > 0 ? 6 : 0 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:8, flex:1, minWidth:0 }}>
-                  <span style={{ fontSize:18 }}>{item.icon}</span>
-                  <div style={{ minWidth:0 }}>
-                    <div style={{ fontWeight:800, fontSize:isMobile?12:14, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{item.name}</div>
-                    <div style={{ fontSize:10, color:"#555" }}>{item.cat} · {fmt(item.price)}</div>
-                  </div>
-                </div>
-                <div style={{ textAlign:"right", flexShrink:0, marginLeft:8 }}>
-                  <div style={{ fontWeight:900, fontSize:isMobile?16:20, color: item.qty > 0 ? "#FFD700" : "#444" }}>
-                    {item.qty > 0 ? `×${item.qty}` : "—"}
-                  </div>
-                  {item.qty > 0 && <div style={{ fontSize:10, color:"#27ae60" }}>{fmt(item.revenue)}</div>}
-                </div>
-              </div>
-              {item.qty > 0 && (
-                <div style={{ background:"#222", borderRadius:4, height:5, overflow:"hidden" }}>
-                  <div style={{ background:`linear-gradient(90deg,#FFD700,#e6b800)`, height:"100%", width:`${(item.qty/maxQty)*100}%`, borderRadius:4, transition:"width .3s" }} />
-                </div>
-              )}
-            </div>
-          ))
-        }
-      </div>
-    );
-  };
 
   // ── Cocina ────────────────────────────────────────────────────
   const Cocina = () => {
@@ -1283,7 +1268,7 @@ export default function App() {
           {tab==="pedidos"   && <Pedidos />}
           {tab==="cocina"      && <Cocina />}
           {tab==="historial"   && <Historial />}
-          {tab==="inventario"  && <Inventario />}
+          {tab==="inventario"  && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} ALL_CATS={ALL_CATS} fmt={fmt} />}
           {tab==="carta"       && <Carta />}
         </div>
       </div>
