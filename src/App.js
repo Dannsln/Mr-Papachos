@@ -144,6 +144,33 @@ const MENU_BASE = [
   { id:"G10",  cat:"Gaseosas",         icon:"🥤", name:"Coca Cola 600ml",           price:4    },
   { id:"O01",  cat:"Otros",            icon:"☕", name:"Café Pasado",               price:4    },
   { id:"O02",  cat:"Otros",            icon:"🍵", name:"Infusiones",                price:3    },
+  { id:"B16",  cat:"Bebidas",          icon:"🥤", name:"Piña Normal 1L",            price:10   },
+  { id:"B17",  cat:"Bebidas",          icon:"🥤", name:"Piña Normal 1/2L",          price:5    },
+  { id:"B18",  cat:"Bebidas",          icon:"🥤", name:"Piña Normal Vaso",          price:2.50 },
+  { id:"B19",  cat:"Bebidas",          icon:"🧊", name:"Piña Frozen 1L",            price:18   },
+  { id:"B20",  cat:"Bebidas",          icon:"🧊", name:"Piña Frozen 1/2L",          price:9    },
+  { id:"B21",  cat:"Bebidas",          icon:"🥤", name:"Cebada Normal 1L",          price:10   },
+  { id:"B22",  cat:"Bebidas",          icon:"🥤", name:"Cebada Normal 1/2L",        price:5    },
+  { id:"B23",  cat:"Bebidas",          icon:"🥤", name:"Cebada Normal Vaso",        price:2.50 },
+  { id:"B24",  cat:"Bebidas",          icon:"🧊", name:"Cebada Frozen 1L",          price:18   },
+  { id:"B25",  cat:"Bebidas",          icon:"🧊", name:"Cebada Frozen 1/2L",        price:9    },
+  { id:"B26",  cat:"Bebidas",          icon:"🥤", name:"Fresa Normal 1L",           price:10   },
+  { id:"B27",  cat:"Bebidas",          icon:"🥤", name:"Fresa Normal 1/2L",         price:5    },
+  { id:"B28",  cat:"Bebidas",          icon:"🥤", name:"Fresa Normal Vaso",         price:2.50 },
+  { id:"B29",  cat:"Bebidas",          icon:"🧊", name:"Fresa Frozen 1L",           price:18   },
+  { id:"B30",  cat:"Bebidas",          icon:"🧊", name:"Fresa Frozen 1/2L",         price:9    },
+  { id:"CH01", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Limón Vaso",       price:15   },
+  { id:"CH02", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Limón Jarra",      price:30   },
+  { id:"CH03", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Maracuyá Vaso",    price:15   },
+  { id:"CH04", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Maracuyá Jarra",   price:30   },
+  { id:"CH05", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Fresa Vaso",       price:15   },
+  { id:"CH06", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Fresa Jarra",      price:30   },
+  { id:"CH07", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Aguaimanto Vaso",  price:15   },
+  { id:"CH08", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Aguaimanto Jarra", price:30   },
+  { id:"CH09", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Tuna Vaso",        price:15   },
+  { id:"CH10", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Tuna Jarra",       price:30   },
+  { id:"CH11", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Mango Vaso",       price:15   },
+  { id:"CH12", cat:"Chilcanos",        icon:"🍹", name:"Chilcano Mango Jarra",      price:30   },
   // BEBIDAS extra sabores
   { id:"B16",  cat:"Bebidas",          icon:"🥤", name:"Piña Normal 1L",            price:10   },
   { id:"B17",  cat:"Bebidas",          icon:"🥤", name:"Piña Normal 1/2L",          price:5    },
@@ -372,7 +399,7 @@ export default function App() {
   const [editingOrder,  setEditingOrder]  = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [mesaModal,     setMesaModal]     = useState(null);
-  const [draftNotes,    setDraftNotes]    = useState("");
+  const draftNotesRef = useRef(null);
 
   useEffect(() => {
     const t = setTimeout(() => setSplash(false), 2200);
@@ -411,10 +438,11 @@ export default function App() {
   const submitOrder = async () => {
     if (!draft.table.trim() || !draft.items.length) return;
     const total = draftTotal + (draft.orderType === "llevar" ? Number(draft.taperCost) || 0 : 0);
-    const order = { id: Date.now().toString(), ...draft, notes: draftNotes, total, status:"pendiente", createdAt: new Date().toISOString() };
+    const notes = draftNotesRef.current ? draftNotesRef.current.value : "";
+    const order = { id: Date.now().toString(), ...draft, notes, total, status:"pendiente", createdAt: new Date().toISOString() };
     await saveOrders([...orders, order]);
     setDraft(newDraft());
-    setDraftNotes("");
+    if (draftNotesRef.current) draftNotesRef.current.value = "";
     showToast(`✅ Pedido ${draft.orderType==="llevar"?`Para llevar - ${draft.table}`:`Mesa ${draft.table}`} creado`);
     setTab("pedidos");
   };
@@ -750,8 +778,7 @@ export default function App() {
 
           <div style={{ marginBottom:12 }}>
             <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas</label>
-            <input style={{ ...s.input, marginTop:4 }} placeholder="Sin cebolla, extra salsa..."
-              value={draftNotes} onChange={e => setDraftNotes(e.target.value)} />
+            <input ref={draftNotesRef} style={{ ...s.input, marginTop:4 }} placeholder="Sin cebolla, extra salsa..." defaultValue="" />
           </div>
 
           {draft.items.length === 0
@@ -781,7 +808,7 @@ export default function App() {
             onClick={submitOrder} disabled={!draft.table||!draft.items.length}>
             ✅ Confirmar Pedido
           </button>
-          <button style={{ ...s.btn("secondary"), width:"100%", padding:8, marginTop:6, fontSize:12 }} onClick={() => { setDraft(newDraft()); setDraftNotes(""); }}>
+          <button style={{ ...s.btn("secondary"), width:"100%", padding:8, marginTop:6, fontSize:12 }} onClick={() => { setDraft(newDraft()); if (draftNotesRef.current) draftNotesRef.current.value = ""; }}>
             🗑️ Limpiar
           </button>
         </div>
