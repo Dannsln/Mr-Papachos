@@ -362,7 +362,7 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
 }
 
 // ── Componente NuevoPedido extraído para evitar re-renders ───────
-function NuevoPedidoComponent({ draft, setDraft, filteredMenu, addItem, changeQty, draftTotal, fmt, search, setSearch, catFilter, setCatFilter, ALL_CATS, s, Y, isDesktop, isMobile, submitOrder, newDraft }) {
+function NuevoPedidoComponent({ draft, setDraft, filteredMenu, addItem, changeQty, updateItemNotes, draftTotal, fmt, search, setSearch, catFilter, setCatFilter, ALL_CATS, s, Y, isDesktop, isMobile, submitOrder, newDraft }) {
   return (
     <div style={{ display:"grid", gridTemplateColumns: isDesktop ? "1fr 300px" : "1fr", gap: isMobile ? 12 : 14 }}>
       <div>
@@ -451,17 +451,25 @@ function NuevoPedidoComponent({ draft, setDraft, filteredMenu, addItem, changeQt
 
           {draft.items.length === 0
             ? <div style={{ textAlign:"center", color:"#444", padding:"20px 0", fontSize:13 }}>Toca un platillo para agregarlo →</div>
-            : <div style={{ maxHeight: isDesktop ? 240 : 180, overflowY:"auto", marginBottom:8 }}>
+            : <div style={{ maxHeight: isDesktop ? 280 : 200, overflowY:"auto", marginBottom:8 }}>
                 {draft.items.map(item => (
-                  <div key={item.id} style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6, padding:"6px 0", borderBottom:"1px solid #252525" }}>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontWeight:700, fontSize:13 }}>{item.name}</div>
-                      <div style={{ fontSize:11, color:"#666" }}>{fmt(item.price)} c/u</div>
+                  <div key={item.id} style={{ marginBottom:10, padding:"8px", background:"#0a0a0a", borderRadius:6, border:"1px solid #222" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6, paddingBottom:6, borderBottom:"1px solid #252525" }}>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontWeight:700, fontSize:13 }}>{item.name}</div>
+                        <div style={{ fontSize:11, color:"#666" }}>{fmt(item.price)} c/u</div>
+                      </div>
+                      <button style={{ ...s.btn("danger"), padding:"2px 7px", fontSize:11 }} onClick={() => changeQty(item.id,-1)}>−</button>
+                      <span style={{ fontWeight:900, minWidth:14, textAlign:"center", fontSize:12 }}>{item.qty}</span>
+                      <button style={{ ...s.btn(), padding:"2px 7px", fontSize:11 }} onClick={() => changeQty(item.id,1)}>+</button>
+                      <span style={{ color:Y, fontWeight:900, fontSize:12, minWidth:45, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
                     </div>
-                    <button style={{ ...s.btn("danger"), padding:"2px 7px" }} onClick={() => changeQty(item.id,-1)}>−</button>
-                    <span style={{ fontWeight:900, minWidth:18, textAlign:"center" }}>{item.qty}</span>
-                    <button style={{ ...s.btn(), padding:"2px 7px" }} onClick={() => changeQty(item.id,1)}>+</button>
-                    <span style={{ color:Y, fontWeight:900, fontSize:13, minWidth:50, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
+                    <input 
+                      style={{ ...s.input, fontSize:11, padding:"4px 6px" }} 
+                      placeholder="Nota para este item"
+                      value={item.itemNotes || ""}
+                      onChange={e => updateItemNotes(item.id, e.target.value)}
+                    />
                   </div>
                 ))}
               </div>
@@ -488,18 +496,20 @@ function NuevoPedidoComponent({ draft, setDraft, filteredMenu, addItem, changeQt
 // ── Impresión para cocina ─────────────────────────────────────────
 function printOrder(order) {
   const win = window.open("", "_blank", "width=220,height=600");
-  const items = order.items.map(i =>
-    `<tr>
+  const items = order.items.map(i => {
+    const itemNote = i.itemNotes ? `<tr><td colspan="3" style="font-size:9px; color:#666; padding-top:0; padding-bottom:2mm; font-style:italic;">📝 ${i.itemNotes}</td></tr>` : "";
+    return `<tr>
       <td class="qty">${i.qty}x</td>
       <td class="item">${i.name}</td>
       <td class="price">S/.${(i.price * i.qty).toFixed(2)}</td>
-    </tr>`
-  ).join("");
+    </tr>
+    ${itemNote}`;
+  }).join("");
   const notes = order.notes
     ? `<div class="notes">📝 ${order.notes}</div>`
     : "";
   const tipo  = order.orderType === "llevar"
-    ? `🥡 LLEVAR — ${order.table}`
+    ? `🥡 LLEVAR — ${order.table}${order.phone ? ` · ${order.phone}` : ""}`
     : `MESA ${order.table}`;
   const hora  = new Date().toLocaleTimeString("es-PE", { hour:"2-digit", minute:"2-digit" });
   const fecha = new Date().toLocaleDateString("es-PE", { day:"2-digit", month:"2-digit", year:"2-digit" });
@@ -787,10 +797,16 @@ export default function App() {
     const ex = d.items.find(i => i.id === item.id);
     return ex
       ? { ...d, items: d.items.map(i => i.id === item.id ? { ...i, qty: i.qty + 1 } : i) }
-      : { ...d, items: [...d.items, { ...item, qty: 1 }] };
+      : { ...d, items: [...d.items, { ...item, qty: 1, itemNotes: "" }] };
   });
   const changeQty = (id, delta) => setDraft(d => ({
     ...d, items: d.items.map(i => i.id === id ? { ...i, qty: i.qty + delta } : i).filter(i => i.qty > 0),
+  }));
+  const updateItemNotes = (id, itemNotes) => setDraft(d => ({
+    ...d, items: d.items.map(i => i.id === id ? { ...i, itemNotes } : i),
+  }));
+  const updateItemNotes = (id, itemNotes) => setDraft(d => ({
+    ...d, items: d.items.map(i => i.id === id ? { ...i, itemNotes } : i),
   }));
   const draftTotal = draft.items.reduce((s, i) => s + i.price * i.qty, 0);
 
@@ -1389,7 +1405,7 @@ export default function App() {
         <div style={s.content}>
           {tab==="dashboard" && <Dashboard />}
           {tab==="mesas"     && <Mesas />}
-          {tab==="nuevo"     && <NuevoPedidoComponent draft={draft} setDraft={setDraft} filteredMenu={filteredMenu} addItem={addItem} changeQty={changeQty} draftTotal={draftTotal} fmt={fmt} search={search} setSearch={setSearch} catFilter={catFilter} setCatFilter={setCatFilter} ALL_CATS={ALL_CATS} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} submitOrder={submitOrder} newDraft={newDraft} />}
+          {tab==="nuevo"     && <NuevoPedidoComponent draft={draft} setDraft={setDraft} filteredMenu={filteredMenu} addItem={addItem} changeQty={changeQty} updateItemNotes={updateItemNotes} draftTotal={draftTotal} fmt={fmt} search={search} setSearch={setSearch} catFilter={catFilter} setCatFilter={setCatFilter} ALL_CATS={ALL_CATS} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} submitOrder={submitOrder} newDraft={newDraft} />}
           {tab==="pedidos"   && <Pedidos />}
           {tab==="cocina"      && <Cocina />}
           {tab==="historial"   && <Historial />}
