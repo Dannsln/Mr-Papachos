@@ -361,6 +361,130 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
   );
 }
 
+// ── Componente NuevoPedido extraído para evitar re-renders ───────
+function NuevoPedidoComponent({ draft, setDraft, filteredMenu, addItem, changeQty, draftTotal, fmt, search, setSearch, catFilter, setCatFilter, ALL_CATS, s, Y, isDesktop, isMobile, submitOrder, newDraft }) {
+  return (
+    <div style={{ display:"grid", gridTemplateColumns: isDesktop ? "1fr 300px" : "1fr", gap: isMobile ? 12 : 14 }}>
+      <div>
+        <div style={s.title}>🍔 CARTA</div>
+        <input style={{ ...s.input, marginBottom:8 }} placeholder="Buscar platillo..." value={search} onChange={e => setSearch(e.target.value)} />
+        <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:10 }}>
+          {["Todos",...ALL_CATS].map(c => (
+            <button key={c} style={{ ...s.btn(catFilter===c?"primary":"secondary"), fontSize: isMobile?9:10, padding: isMobile?"3px 6px":"4px 10px" }} onClick={() => setCatFilter(c)}>{c}</button>
+          ))}
+        </div>
+        <div>
+          {filteredMenu.length === 0 && <div style={{ color:"#555", textAlign:"center", padding:20 }}>Sin resultados</div>}
+          {filteredMenu.map(item => {
+            const inDraft = draft.items.find(i => i.id === item.id);
+            return (
+              <div key={item.id} onClick={() => addItem(item)}
+                style={{ ...s.card, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center", border: inDraft?`1px solid ${Y}66`:"1px solid #2a2a2a", marginBottom:5, padding: isMobile?"8px 10px":"10px 12px" }}>
+                <div style={{ flex:1 }}>
+                  <span style={{ marginRight:6 }}>{item.icon}</span>
+                  <span style={{ fontWeight:700, fontSize: isMobile?13:14 }}>{item.name}</span>
+                  {!isMobile && <span style={{ ...s.tag("#252525"), marginLeft:8, fontSize:10 }}>{item.cat}</span>}
+                </div>
+                <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                  <span style={{ color:Y, fontWeight:900, fontSize: isMobile?13:14 }}>{fmt(item.price)}</span>
+                  {inDraft
+                    ? <span style={{ background:Y, color:"#111", borderRadius:12, padding:"1px 8px", fontSize:12, fontWeight:900 }}>×{inDraft.qty}</span>
+                    : <span style={{ background:"#2a2a2a", borderRadius:"50%", width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:16, color:"#aaa" }}>+</span>
+                  }
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <div style={{ ...s.cardHL, position: isDesktop ? "sticky" : "static", top:8 }}>
+          <div style={{ ...s.title, fontSize:18, marginBottom:12 }}>📋 PEDIDO</div>
+
+          <div style={{ marginBottom:10 }}>
+            <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Tipo de pedido</label>
+            <div style={{ display:"flex", gap:6, marginTop:4 }}>
+              {["mesa","llevar"].map(t => (
+                <button key={t} style={{ ...s.btn(draft.orderType===t?"primary":"secondary"), flex:1 }}
+                  onClick={() => setDraft(d => ({...d, orderType:t, taperCost:0}))}>
+                  {t==="mesa"?"🪑 Mesa":"🥡 Para llevar"}
+                </button>
+              ))}
+            </div>
+            <input style={{ ...s.input, marginTop:6 }}
+              placeholder={draft.orderType==="mesa"?"Ej: Mesa 5":"Nombre del cliente"}
+              value={draft.table} onChange={e => setDraft(d => ({...d,table:e.target.value}))} />
+          </div>
+
+          {draft.orderType === "llevar" && (
+            <div style={{ marginBottom:10 }}>
+              <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Costo taper/bolsa (S/.)</label>
+              <input style={{ ...s.input, marginTop:4 }} type="number" min="0" step="0.50" placeholder="Ej: 1.00"
+                value={draft.taperCost || ""} onChange={e => setDraft(d => ({...d, taperCost: e.target.value}))} />
+            </div>
+          )}
+
+          {draft.orderType === "llevar" && (
+            <div style={{ marginBottom:10 }}>
+              <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Teléfono</label>
+              <input style={{ ...s.input, marginTop:4 }} value={draft.phone || ""} onChange={e => setDraft(d => ({...d, phone: e.target.value}))}
+                placeholder="Ej: 9 87654321" />
+            </div>
+          )}
+
+          <div style={{ marginBottom:10 }}>
+            <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Forma de pago</label>
+            <div style={{ display:"flex", gap:6, marginTop:4 }}>
+              {[["efectivo","💵"],["yape","💜"],["tarjeta","💳"]].map(([p,ic]) => (
+                <button key={p} style={{ ...s.btn(draft.payment===p?"primary":"secondary"), flex:1 }} onClick={() => setDraft(d => ({...d,payment:p}))}>
+                  {ic} {p}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginBottom:12 }}>
+            <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas</label>
+            <input style={{ ...s.input, marginTop:4 }} value={draft.notes} onChange={e => setDraft(d => ({...d, notes: e.target.value}))} placeholder="Sin cebolla, extra salsa..." />
+          </div>
+
+          {draft.items.length === 0
+            ? <div style={{ textAlign:"center", color:"#444", padding:"20px 0", fontSize:13 }}>Toca un platillo para agregarlo →</div>
+            : <div style={{ maxHeight: isDesktop ? 240 : 180, overflowY:"auto", marginBottom:8 }}>
+                {draft.items.map(item => (
+                  <div key={item.id} style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6, padding:"6px 0", borderBottom:"1px solid #252525" }}>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontWeight:700, fontSize:13 }}>{item.name}</div>
+                      <div style={{ fontSize:11, color:"#666" }}>{fmt(item.price)} c/u</div>
+                    </div>
+                    <button style={{ ...s.btn("danger"), padding:"2px 7px" }} onClick={() => changeQty(item.id,-1)}>−</button>
+                    <span style={{ fontWeight:900, minWidth:18, textAlign:"center" }}>{item.qty}</span>
+                    <button style={{ ...s.btn(), padding:"2px 7px" }} onClick={() => changeQty(item.id,1)}>+</button>
+                    <span style={{ color:Y, fontWeight:900, fontSize:13, minWidth:50, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
+                  </div>
+                ))}
+              </div>
+          }
+
+          <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderTop:`2px solid ${Y}55`, marginBottom:12 }}>
+            <span style={{ fontWeight:900, fontSize:17 }}>TOTAL</span>
+            <span style={{ fontWeight:900, fontSize:17, color:Y }}>{fmt(draftTotal + (draft.orderType==="llevar"?Number(draft.taperCost)||0:0))}</span>
+          </div>
+
+          <button style={{ ...s.btn(), width:"100%", padding:12, fontSize:15, opacity:(!draft.table||!draft.items.length)?0.4:1 }}
+            onClick={submitOrder} disabled={!draft.table||!draft.items.length}>
+            ✅ Confirmar Pedido
+          </button>
+          <button style={{ ...s.btn("secondary"), width:"100%", padding:8, marginTop:6, fontSize:12 }} onClick={() => { setDraft(newDraft()); }}>
+            🗑️ Limpiar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Impresión para cocina ─────────────────────────────────────────
 function printOrder(order) {
   const win = window.open("", "_blank", "width=220,height=600");
@@ -936,127 +1060,6 @@ export default function App() {
   };
 
   // ── Nuevo Pedido ──────────────────────────────────────────────
-  const NuevoPedido = () => (
-    <div style={{ display:"grid", gridTemplateColumns: isDesktop ? "1fr 300px" : "1fr", gap: isMobile ? 12 : 14 }}>
-      <div>
-        <div style={s.title}>🍔 CARTA</div>
-        <input style={{ ...s.input, marginBottom:8 }} placeholder="Buscar platillo..." value={search} onChange={e => setSearch(e.target.value)} />
-        <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:10 }}>
-          {["Todos",...ALL_CATS].map(c => (
-            <button key={c} style={{ ...s.btn(catFilter===c?"primary":"secondary"), fontSize: isMobile?9:10, padding: isMobile?"3px 6px":"4px 10px" }} onClick={() => setCatFilter(c)}>{c}</button>
-          ))}
-        </div>
-        <div>
-          {filteredMenu.length === 0 && <div style={{ color:"#555", textAlign:"center", padding:20 }}>Sin resultados</div>}
-          {filteredMenu.map(item => {
-            const inDraft = draft.items.find(i => i.id === item.id);
-            return (
-              <div key={item.id} onClick={() => addItem(item)}
-                style={{ ...s.card, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center", border: inDraft?`1px solid ${Y}66`:"1px solid #2a2a2a", marginBottom:5, padding: isMobile?"8px 10px":"10px 12px" }}>
-                <div style={{ flex:1 }}>
-                  <span style={{ marginRight:6 }}>{item.icon}</span>
-                  <span style={{ fontWeight:700, fontSize: isMobile?13:14 }}>{item.name}</span>
-                  {!isMobile && <span style={{ ...s.tag("#252525"), marginLeft:8, fontSize:10 }}>{item.cat}</span>}
-                </div>
-                <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                  <span style={{ color:Y, fontWeight:900, fontSize: isMobile?13:14 }}>{fmt(item.price)}</span>
-                  {inDraft
-                    ? <span style={{ background:Y, color:"#111", borderRadius:12, padding:"1px 8px", fontSize:12, fontWeight:900 }}>×{inDraft.qty}</span>
-                    : <span style={{ background:"#2a2a2a", borderRadius:"50%", width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:16, color:"#aaa" }}>+</span>
-                  }
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div>
-        <div style={{ ...s.cardHL, position: isDesktop ? "sticky" : "static", top:8 }}>
-          <div style={{ ...s.title, fontSize:18, marginBottom:12 }}>📋 PEDIDO</div>
-
-          <div style={{ marginBottom:10 }}>
-            <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Tipo de pedido</label>
-            <div style={{ display:"flex", gap:6, marginTop:4 }}>
-              {["mesa","llevar"].map(t => (
-                <button key={t} style={{ ...s.btn(draft.orderType===t?"primary":"secondary"), flex:1 }}
-                  onClick={() => setDraft(d => ({...d, orderType:t, taperCost:0}))}>
-                  {t==="mesa"?"🪑 Mesa":"🥡 Para llevar"}
-                </button>
-              ))}
-            </div>
-            <input style={{ ...s.input, marginTop:6 }}
-              placeholder={draft.orderType==="mesa"?"Ej: Mesa 5":"Nombre del cliente"}
-              value={draft.table} onChange={e => setDraft(d => ({...d,table:e.target.value}))} />
-          </div>
-
-          {draft.orderType === "llevar" && (
-            <div style={{ marginBottom:10 }}>
-              <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Costo taper/bolsa (S/.)</label>
-              <input style={{ ...s.input, marginTop:4 }} type="number" min="0" step="0.50" placeholder="Ej: 1.00"
-                value={draft.taperCost || ""} onChange={e => setDraft(d => ({...d, taperCost: e.target.value}))} />
-            </div>
-          )}
-
-        {draft.orderType === "llevar" && (
-          <div style={{ marginBottom:10 }}>
-            <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Teléfono</label>
-            <input style={{ ...s.input, marginTop:4 }} value={draft.phone || ""} onChange={e => setDraft(d => ({...d, phone: e.target.value}))}
-              placeholder="Ej: 9 87654321" />
-          </div>
-        )}
-
-          <div style={{ marginBottom:10 }}>
-            <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Forma de pago</label>
-            <div style={{ display:"flex", gap:6, marginTop:4 }}>
-              {[["efectivo","💵"],["yape","💜"],["tarjeta","💳"]].map(([p,ic]) => (
-                <button key={p} style={{ ...s.btn(draft.payment===p?"primary":"secondary"), flex:1 }} onClick={() => setDraft(d => ({...d,payment:p}))}>
-                  {ic} {p}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ marginBottom:12 }}>
-            <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas</label>
-            <input style={{ ...s.input, marginTop:4 }} value={draft.notes} onChange={e => setDraft(d => ({...d, notes: e.target.value}))} placeholder="Sin cebolla, extra salsa..." />
-          </div>
-
-          {draft.items.length === 0
-            ? <div style={{ textAlign:"center", color:"#444", padding:"20px 0", fontSize:13 }}>Toca un platillo para agregarlo →</div>
-            : <div style={{ maxHeight: isDesktop ? 240 : 180, overflowY:"auto", marginBottom:8 }}>
-                {draft.items.map(item => (
-                  <div key={item.id} style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6, padding:"6px 0", borderBottom:"1px solid #252525" }}>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontWeight:700, fontSize:13 }}>{item.name}</div>
-                      <div style={{ fontSize:11, color:"#666" }}>{fmt(item.price)} c/u</div>
-                    </div>
-                    <button style={{ ...s.btn("danger"), padding:"2px 7px" }} onClick={() => changeQty(item.id,-1)}>−</button>
-                    <span style={{ fontWeight:900, minWidth:18, textAlign:"center" }}>{item.qty}</span>
-                    <button style={{ ...s.btn(), padding:"2px 7px" }} onClick={() => changeQty(item.id,1)}>+</button>
-                    <span style={{ color:Y, fontWeight:900, fontSize:13, minWidth:50, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
-                  </div>
-                ))}
-              </div>
-          }
-
-          <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderTop:`2px solid ${Y}55`, marginBottom:12 }}>
-            <span style={{ fontWeight:900, fontSize:17 }}>TOTAL</span>
-            <span style={{ fontWeight:900, fontSize:17, color:Y }}>{fmt(draftTotal + (draft.orderType==="llevar"?Number(draft.taperCost)||0:0))}</span>
-          </div>
-
-          <button style={{ ...s.btn(), width:"100%", padding:12, fontSize:15, opacity:(!draft.table||!draft.items.length)?0.4:1 }}
-            onClick={submitOrder} disabled={!draft.table||!draft.items.length}>
-            ✅ Confirmar Pedido
-          </button>
-          <button style={{ ...s.btn("secondary"), width:"100%", padding:8, marginTop:6, fontSize:12 }} onClick={() => { setDraft(newDraft()); }}>
-            🗑️ Limpiar
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
   // ── Pedidos ───────────────────────────────────────────────────
   const Pedidos = () => (
     <div>
@@ -1386,7 +1389,7 @@ export default function App() {
         <div style={s.content}>
           {tab==="dashboard" && <Dashboard />}
           {tab==="mesas"     && <Mesas />}
-          {tab==="nuevo"     && <NuevoPedido />}
+          {tab==="nuevo"     && <NuevoPedidoComponent draft={draft} setDraft={setDraft} filteredMenu={filteredMenu} addItem={addItem} changeQty={changeQty} draftTotal={draftTotal} fmt={fmt} search={search} setSearch={setSearch} catFilter={catFilter} setCatFilter={setCatFilter} ALL_CATS={ALL_CATS} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} submitOrder={submitOrder} newDraft={newDraft} />}
           {tab==="pedidos"   && <Pedidos />}
           {tab==="cocina"      && <Cocina />}
           {tab==="historial"   && <Historial />}
