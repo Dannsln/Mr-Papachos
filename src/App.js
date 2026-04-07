@@ -5,6 +5,7 @@ import {
   doc, setDoc, getDoc,
   collection, getDocs, addDoc,
   query, orderBy, limit,
+  onSnapshot
 } from "firebase/firestore";
 
 const FIREBASE_CONFIG = {
@@ -721,14 +722,47 @@ export default function App() {
 
   useEffect(() => { const t=setTimeout(()=>setSplash(false),2200); return()=>clearTimeout(t); }, []);
 
+  // Aquí se reemplazó getDocs por onSnapshot para que sea TIEMPO REAL ⏱️🔥
   useEffect(() => {
-    (async () => {
-      const [o,h,m] = await Promise.all([FS.getOrders(),FS.getHistory(),FS.getMenu()]);
-      if (o?.length) setOrders(o);
-      if (h?.length) setHistory(h);
-      if (m?.length) setMenu([...MENU_BASE,...m]);
+    let unsubOrders, unsubHistory, unsubMenu;
+
+    const setupListeners = () => {
+      // 1. Escuchar los Pedidos Activos en tiempo real
+      unsubOrders = onSnapshot(FS.ordersRef(), (docSnap) => {
+        if (docSnap.exists()) {
+          setOrders(docSnap.data().list || []);
+        } else {
+          setOrders([]);
+        }
+      });
+
+      // 2. Escuchar el Menú Personalizado en tiempo real
+      unsubMenu = onSnapshot(FS.menuRef(), (docSnap) => {
+        if (docSnap.exists()) {
+          setMenu([...MENU_BASE, ...(docSnap.data().list || [])]);
+        } else {
+          setMenu(MENU_BASE);
+        }
+      });
+
+      // 3. Escuchar el Historial en tiempo real (limitado a los últimos 1000)
+      const q = query(FS.historyCol(), orderBy("createdAt", "desc"), limit(1000));
+      unsubHistory = onSnapshot(q, (snapshot) => {
+        const hist = snapshot.docs.map(d => ({ _fid: d.id, ...d.data() }));
+        setHistory(hist);
+      });
+
       setLoaded(true);
-    })();
+    };
+
+    setupListeners();
+
+    // Limpiar los escuchadores si se cierra el componente (para que no gaste recursos)
+    return () => {
+      if (unsubOrders) unsubOrders();
+      if (unsubHistory) unsubHistory();
+      if (unsubMenu) unsubMenu();
+    };
   }, []);
 
   const showToast = (msg,color="#27ae60") => { setToast({msg,color}); setTimeout(()=>setToast(null),2800); };
@@ -1005,7 +1039,6 @@ export default function App() {
                       <span>{item.qty}x {item.name}</span>
                       <span style={{color:"#888"}}>{fmt(item.price*item.qty)}</span>
                     </div>
-                    {/* MOSTRAMOS LA NOTA TAMBIÉN EN EL MODAL DE LA MESA */}
                     {item.itemNotes&&<div style={{fontSize:11,color:"#999",fontStyle:"italic",paddingLeft:4,marginTop:2}}>└ {item.itemNotes}</div>}
                   </div>
                 ))}
@@ -1057,7 +1090,6 @@ export default function App() {
                     <span>{item.qty}x {item.name}</span>
                     <span style={{color:"#888"}}>{fmt(item.price*item.qty)}</span>
                   </div>
-                  {/* SE GARANTIZA LA NOTA POR ÍTEM EN PEDIDOS ACTIVOS */}
                   {item.itemNotes&&<div style={{fontSize:11,color:"#999",fontStyle:"italic",paddingLeft:4,marginTop:2}}>└ {item.itemNotes}</div>}
                 </div>
               ))}
@@ -1154,7 +1186,6 @@ export default function App() {
                             {o.status === "pagado" && ` · ${[pe>0&&`Efe: ${fmt(pe)}`, py>0&&`Yap: ${fmt(py)}`, pt>0&&`Tar: ${fmt(pt)}`].filter(Boolean).join(" | ")}`}
                           </div>
                         </div>
-                        {/* SE MOSTRARÁN LOS ÍTEMS EN EL HISTORIAL TAMBIÉN, CON SUS NOTAS */}
                         <div style={{marginTop:6}}>
                           {o.items.map((item,i) => (
                             <div key={i} style={{fontSize:11, color:"#ccc", paddingLeft:4, borderLeft:`2px solid ${Y}44`, marginBottom:2}}>
@@ -1258,7 +1289,6 @@ export default function App() {
                         {item.qty>1&&<span style={{color:Y,marginRight:4}}>{item.qty}×</span>}
                         {item.name}
                       </span>
-                      {/* NOTA POR ITEM PARA QUE COCINA LO VEA DIRECTAMENTE AQUÍ */}
                       {item.itemNotes&&<div style={{fontSize:11,color:Y,marginTop:3,fontStyle:"italic"}}>📝 {item.itemNotes}</div>}
                     </div>
                   </div>
