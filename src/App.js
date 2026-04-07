@@ -36,13 +36,6 @@ const FS = {
   async saveMenu(list) {
     try { await setDoc(FS.menuRef(), { list, ts: new Date().toISOString() }); } catch (e) { console.error(e); }
   },
-  async getHistory() {
-    try {
-      const q = query(FS.historyCol(), orderBy("createdAt", "desc"), limit(1000));
-      const s = await getDocs(q);
-      return s.docs.map(d => ({ _fid: d.id, ...d.data() }));
-    } catch { return []; }
-  },
   async addHistory(order) {
     try { await addDoc(FS.historyCol(), order); } catch (e) { console.error(e); }
   },
@@ -215,7 +208,6 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
   const eChangeQty = (id, d) => setEItems(prev =>
     prev.map(i => i.id === id ? { ...i, qty: i.qty + d } : i).filter(i => i.qty > 0)
   );
-  // Función para poder actualizar notas DENTRO del modo edición:
   const eUpdateItemNotes = (id, note) => setEItems(prev =>
     prev.map(i => i.id === id ? { ...i, itemNotes: note } : i)
   );
@@ -283,7 +275,6 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
                 <button style={{ ...s.btn(), padding:"2px 7px", fontSize:13 }} onClick={() => eChangeQty(item.id,1)}>+</button>
                 <span style={{ color:Y, fontWeight:900, fontSize:13, minWidth:52, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
               </div>
-              {/* Aquí se pueden editar las notas de cada item incluso al editar el pedido */}
               <input style={{ ...s.input, fontSize:11, padding:"4px 6px" }} placeholder="Nota para este item..." value={item.itemNotes || ""} onChange={e => eUpdateItemNotes(item.id, e.target.value)} />
             </div>
           ))
@@ -407,7 +398,6 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
 
   return (
     <div style={{ display:"grid", gridTemplateColumns: isDesktop ? "1fr 300px" : "1fr", gap: isMobile ? 12 : 14 }}>
-      {/* ── Carta ── */}
       <div>
         <div style={s.title}>🍔 CARTA</div>
         <input
@@ -453,7 +443,6 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
         </div>
       </div>
 
-      {/* ── Resumen pedido ── */}
       <div>
         <div style={{ ...s.cardHL, position: isDesktop ? "sticky" : "static", top:8 }}>
           <div style={{ ...s.title, fontSize:18, marginBottom:12 }}>📋 PEDIDO</div>
@@ -522,7 +511,6 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
                       <button style={{ ...s.btn(), padding:"2px 7px", fontSize:11 }} onClick={() => changeQty(item.id,1)}>+</button>
                       <span style={{ color:Y, fontWeight:900, fontSize:12, minWidth:45, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
                     </div>
-                    {/* Campo para las notas específicas por ítem */}
                     <input style={{ ...s.input, fontSize:11, padding:"4px 6px" }} placeholder="Nota para este item..." value={item.itemNotes || ""} onChange={e => updateItemNotes(item.id, e.target.value)} />
                   </div>
                 ))}
@@ -554,7 +542,6 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
 function printOrder(order) {
   const win = window.open("", "_blank", "width=220,height=600");
   const items = order.items.map(i => {
-    // Aquí también se envían las notas por plato al formato de impresión térmica
     const itemNote = i.itemNotes ? `<tr><td colspan="3" style="font-size:9px;color:#666;padding-top:0;padding-bottom:2mm;font-style:italic;">📝 ${i.itemNotes}</td></tr>` : "";
     return `<tr><td class="qty">${i.qty}x</td><td class="item">${i.name}</td><td class="price">S/.${(i.price*i.qty).toFixed(2)}</td></tr>${itemNote}`;
   }).join("");
@@ -722,30 +709,21 @@ export default function App() {
 
   useEffect(() => { const t=setTimeout(()=>setSplash(false),2200); return()=>clearTimeout(t); }, []);
 
-  // Aquí se reemplazó getDocs por onSnapshot para que sea TIEMPO REAL ⏱️🔥
+  // ¡AQUÍ ESTÁ EL CÓDIGO EN TIEMPO REAL INTEGRADO CORRECTAMENTE! 🔥
   useEffect(() => {
     let unsubOrders, unsubHistory, unsubMenu;
 
     const setupListeners = () => {
-      // 1. Escuchar los Pedidos Activos en tiempo real
       unsubOrders = onSnapshot(FS.ordersRef(), (docSnap) => {
-        if (docSnap.exists()) {
-          setOrders(docSnap.data().list || []);
-        } else {
-          setOrders([]);
-        }
+        if (docSnap.exists()) setOrders(docSnap.data().list || []);
+        else setOrders([]);
       });
 
-      // 2. Escuchar el Menú Personalizado en tiempo real
       unsubMenu = onSnapshot(FS.menuRef(), (docSnap) => {
-        if (docSnap.exists()) {
-          setMenu([...MENU_BASE, ...(docSnap.data().list || [])]);
-        } else {
-          setMenu(MENU_BASE);
-        }
+        if (docSnap.exists()) setMenu([...MENU_BASE, ...(docSnap.data().list || [])]);
+        else setMenu(MENU_BASE);
       });
 
-      // 3. Escuchar el Historial en tiempo real (limitado a los últimos 1000)
       const q = query(FS.historyCol(), orderBy("createdAt", "desc"), limit(1000));
       unsubHistory = onSnapshot(q, (snapshot) => {
         const hist = snapshot.docs.map(d => ({ _fid: d.id, ...d.data() }));
@@ -757,7 +735,6 @@ export default function App() {
 
     setupListeners();
 
-    // Limpiar los escuchadores si se cierra el componente (para que no gaste recursos)
     return () => {
       if (unsubOrders) unsubOrders();
       if (unsubHistory) unsubHistory();
@@ -766,8 +743,11 @@ export default function App() {
   }, []);
 
   const showToast = (msg,color="#27ae60") => { setToast({msg,color}); setTimeout(()=>setToast(null),2800); };
-  const saveOrders = async (v) => { setOrders(v); await FS.saveOrders(v); };
-  const saveMenu   = async (v) => { setMenu(v);   await FS.saveMenu(v.filter(i=>i.id.startsWith("CUSTOM_"))); };
+  
+  // Estas funciones ahora confían en onSnapshot para actualizar el estado final,
+  // pero hacemos un cambio "optimista" para evitar clics dobles.
+  const saveOrders = async (v) => { await FS.saveOrders(v); };
+  const saveMenu   = async (v) => { setMenu(v); await FS.saveMenu(v.filter(i=>i.id.startsWith("CUSTOM_"))); };
 
   const addItem = (item) => setDraft(d => {
     const ex = d.items.find(i=>i.id===item.id);
@@ -792,6 +772,7 @@ export default function App() {
       setCobrarTarget({ type: 'new', data: { id:Date.now().toString(), ...draft, total, createdAt:new Date().toISOString() } });
     } else {
       const order = { id:Date.now().toString(), ...draft, total, isPaid: false, status:"pendiente", createdAt:new Date().toISOString() };
+      setOrders(prev => [...prev, order]); // Cambio inmediato optimista
       await saveOrders([...orders,order]);
       setDraft(newDraft());
       showToast(`📝 Pedido enviado a cocina`);
@@ -799,48 +780,71 @@ export default function App() {
     }
   };
 
+  // 🛡️ AQUÍ ESTÁ EL BLOQUEO ANTI-DOBLE CLIC 🛡️
   const handleConfirmCobro = async (payments) => {
     if (!cobrarTarget) return;
+    const target = cobrarTarget;
+    setCobrarTarget(null); // ¡Cierra el modal de inmediato para impedir el doble clic!
 
-    if (cobrarTarget.type === 'new') {
-      const order = { ...cobrarTarget.data, isPaid: true, status: "pendiente", payments, paidAt: new Date().toISOString() };
+    if (target.type === 'new') {
+      const order = { ...target.data, isPaid: true, status: "pendiente", payments, paidAt: new Date().toISOString() };
+      setOrders(prev => [...prev, order]); // Optimista
       await saveOrders([...orders, order]);
       setDraft(newDraft());
       showToast("✅ Pedido cobrado y enviado a cocina");
       setTab("pedidos");
     } 
-    else if (cobrarTarget.type === 'existing') {
-      const o = cobrarTarget.data;
+    else if (target.type === 'existing') {
+      const o = target.data;
+      if (!orders.find(x => x.id === o.id)) return; // Freno de emergencia por si pasa un doble clic
+
+      const newOrders = orders.filter(x => x.id !== o.id);
+      setOrders(newOrders); // Lo borra de la pantalla al instante
+
       const finished = { ...o, isPaid: true, status: "pagado", payments, paidAt: new Date().toISOString() };
-      await FS.addHistory(finished); setHistory(h=>[finished,...h]);
-      await saveOrders(orders.filter(x=>x.id!==o.id));
+      await Promise.all([
+        FS.addHistory(finished),
+        saveOrders(newOrders)
+      ]);
       showToast("💰 Pedido cobrado y archivado");
     }
-    setCobrarTarget(null);
   };
 
   const finishPaidOrder = async (id) => {
     const o = orders.find(x=>x.id===id); if (!o) return;
+    const newOrders = orders.filter(x=>x.id!==id);
+    setOrders(newOrders); // Optimista al instante
+
     const finished = { ...o, status: "pagado" }; 
-    await FS.addHistory(finished); setHistory(h=>[finished,...h]);
-    await saveOrders(orders.filter(x=>x.id!==id));
+    await Promise.all([
+      FS.addHistory(finished),
+      saveOrders(newOrders)
+    ]);
     showToast("✅ Pedido entregado y archivado");
   };
 
   const cancelOrder = async (id) => {
     const o = orders.find(x=>x.id===id); if (!o) return;
+    const newOrders = orders.filter(x=>x.id!==id);
+    setOrders(newOrders); // Optimista al instante
+
     const finished = {...o,status:"cancelado",cancelledAt:new Date().toISOString(),createdAt:o.createdAt||new Date().toISOString()};
-    await FS.addHistory(finished); setHistory(h=>[finished,...h]);
-    await saveOrders(orders.filter(x=>x.id!==id));
+    await Promise.all([
+      FS.addHistory(finished),
+      saveOrders(newOrders)
+    ]);
     showToast("❌ Pedido cancelado","#e74c3c");
   };
 
   const deleteOrderPermanent = async (id) => {
-    await saveOrders(orders.filter(x=>x.id!==id));
+    const newOrders = orders.filter(x=>x.id!==id);
+    setOrders(newOrders); // Optimista
+    await saveOrders(newOrders);
     setConfirmDelete(null); showToast("🗑️ Pedido eliminado","#888");
   };
 
   const saveEditedOrder = async (updated) => {
+    setOrders(prev => prev.map(o=>o.id===updated.id?updated:o)); // Optimista
     await saveOrders(orders.map(o=>o.id===updated.id?updated:o));
     setEditingOrder(null); showToast(`✏️ Pedido actualizado`,"#f39c12");
   };
