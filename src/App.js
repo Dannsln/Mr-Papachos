@@ -204,7 +204,7 @@ const MENU_BASE = [
 
 const ALL_CATS = [...new Set(MENU_BASE.map(i => i.cat))];
 const fmt      = (n) => `S/.${Number(n).toFixed(2)}`;
-const newDraft = () => ({ table:"", items:[], payment:"efectivo", notes:"", orderType:"mesa", taperCost:0 });
+const newDraft = () => ({ table:"", items:[], payment:"efectivo", notes:"", phone:"", orderType:"mesa", taperCost:0 });
 const MESAS    = [1, 2, 3, 4, 5, 6];
 
 function useWindowWidth() {
@@ -225,11 +225,11 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
   const [eItems,     setEItems]     = useState(order.items.map(i => ({ ...i })));
   const [ePay,       setEPay]       = useState(order.payment);
   const [eNotes,     setENotes]     = useState(order.notes || "");
+  const [ePhone,     setEPhone]     = useState(order.phone || "");
   const [eOrderType, setEOrderType] = useState(order.orderType || "mesa");
   const [eTaperCost, setETaperCost] = useState(order.taperCost || 0);
   const [eCat,       setECat]       = useState("Todos");
   const [eSearch,    setESearch]    = useState("");
-  const notesRef = useRef(null);
 
   const eTotal = eItems.reduce((sum, i) => sum + i.price * i.qty, 0) + (eOrderType === "llevar" ? Number(eTaperCost) || 0 : 0);
 
@@ -247,7 +247,7 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
   );
   const handleSave = () => {
     if (!eTable.trim() || !eItems.length) return;
-    onSave({ ...order, table: eTable, items: eItems, payment: ePay, notes: eNotes, total: eTotal, orderType: eOrderType, taperCost: eTaperCost });
+    onSave({ ...order, table: eTable, items: eItems, payment: ePay, notes: eNotes, phone: ePhone, total: eTotal, orderType: eOrderType, taperCost: eTaperCost });
   };
 
   return (
@@ -273,6 +273,14 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
 
       {eOrderType === "llevar" && (
         <div style={{ marginBottom:10 }}>
+          <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Teléfono</label>
+          <input style={{ ...s.input, marginTop:4 }} value={ePhone} onChange={e => setEPhone(e.target.value)}
+            placeholder="Ej: 9 87654321" />
+        </div>
+      )}
+
+      {eOrderType === "llevar" && (
+        <div style={{ marginBottom:10 }}>
           <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Costo taper/bolsa (S/.)</label>
           <input style={{ ...s.input, marginTop:4 }} type="number" min="0" step="0.50" placeholder="Ej: 1.00"
             value={eTaperCost || ""} onChange={e => setETaperCost(e.target.value)} />
@@ -292,7 +300,7 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
 
       <div style={{ marginBottom:10 }}>
         <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas</label>
-        <input ref={notesRef} style={{ ...s.input, marginTop:4 }} value={eNotes}
+        <input style={{ ...s.input, marginTop:4 }} value={eNotes}
           onChange={e => setENotes(e.target.value)} placeholder="Sin cebolla, extra salsa..." />
       </div>
 
@@ -627,7 +635,6 @@ export default function App() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [mesaModal,     setMesaModal]     = useState(null);
   const [kitchenChecks, setKitchenChecks] = useState({});
-  const draftNotesRef = useRef(null);
 
   useEffect(() => {
     const t = setTimeout(() => setSplash(false), 2200);
@@ -666,11 +673,9 @@ export default function App() {
   const submitOrder = async () => {
     if (!draft.table.trim() || !draft.items.length) return;
     const total = draftTotal + (draft.orderType === "llevar" ? Number(draft.taperCost) || 0 : 0);
-    const notes = draftNotesRef.current ? draftNotesRef.current.value : "";
-    const order = { id: Date.now().toString(), ...draft, notes, total, status:"pendiente", createdAt: new Date().toISOString() };
+    const order = { id: Date.now().toString(), ...draft, total, status:"pendiente", createdAt: new Date().toISOString() };
     await saveOrders([...orders, order]);
-    setDraft(newDraft());
-    if (draftNotesRef.current) draftNotesRef.current.value = "";
+    setDraft(d => ({ ...newDraft(), notes: d.notes, phone: d.phone }));
     showToast(`✅ Pedido ${draft.orderType==="llevar"?`Para llevar - ${draft.table}`:`Mesa ${draft.table}`} creado`);
     setTab("pedidos");
   };
@@ -993,6 +998,14 @@ export default function App() {
             </div>
           )}
 
+        {draft.orderType === "llevar" && (
+          <div style={{ marginBottom:10 }}>
+            <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Teléfono</label>
+            <input style={{ ...s.input, marginTop:4 }} value={draft.phone || ""} onChange={e => setDraft(d => ({...d, phone: e.target.value}))}
+              placeholder="Ej: 9 87654321" />
+          </div>
+        )}
+
           <div style={{ marginBottom:10 }}>
             <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Forma de pago</label>
             <div style={{ display:"flex", gap:6, marginTop:4 }}>
@@ -1006,7 +1019,7 @@ export default function App() {
 
           <div style={{ marginBottom:12 }}>
             <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas</label>
-            <input ref={draftNotesRef} style={{ ...s.input, marginTop:4 }} placeholder="Sin cebolla, extra salsa..." defaultValue="" />
+            <input style={{ ...s.input, marginTop:4 }} value={draft.notes} onChange={e => setDraft(d => ({...d, notes: e.target.value}))} placeholder="Sin cebolla, extra salsa..." />
           </div>
 
           {draft.items.length === 0
@@ -1036,7 +1049,7 @@ export default function App() {
             onClick={submitOrder} disabled={!draft.table||!draft.items.length}>
             ✅ Confirmar Pedido
           </button>
-          <button style={{ ...s.btn("secondary"), width:"100%", padding:8, marginTop:6, fontSize:12 }} onClick={() => { setDraft(newDraft()); if (draftNotesRef.current) draftNotesRef.current.value = ""; }}>
+          <button style={{ ...s.btn("secondary"), width:"100%", padding:8, marginTop:6, fontSize:12 }} onClick={() => { setDraft(newDraft()); }}>
             🗑️ Limpiar
           </button>
         </div>
