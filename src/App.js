@@ -47,146 +47,146 @@ const FS = {
   },
 };
 
-// ─── MENÚ BASE — sin duplicados ───────────────────────────────────────────────
+// ─── MENÚ BASE — con descripciones ────────────────────────────────────────────
 const MENU_BASE = [
   // HAMBURGUESAS
-  { id:"H01",  cat:"Hamburguesas",      icon:"🍔", name:"La Silvestre",              price:7     },
-  { id:"H02",  cat:"Hamburguesas",      icon:"🍔", name:"La Piolin",                 price:8     },
-  { id:"H03",  cat:"Hamburguesas",      icon:"🍔", name:"La Speedy Gonzales",        price:10    },
-  { id:"H04",  cat:"Hamburguesas",      icon:"🍔", name:"La Cajacha",                price:12    },
-  { id:"H05",  cat:"Hamburguesas",      icon:"🍔", name:"La Coyote",                 price:12    },
-  { id:"H06",  cat:"Hamburguesas",      icon:"🍔", name:"La Super Cajacha",          price:14    },
-  { id:"H07",  cat:"Hamburguesas",      icon:"🍔", name:"La Bugs Bunny",             price:14    },
-  { id:"H08",  cat:"Hamburguesas",      icon:"🍔", name:"La Cajamarquesa",           price:14    },
-  { id:"H09",  cat:"Hamburguesas",      icon:"🍔", name:"La Porky",                  price:15    },
-  { id:"H10",  cat:"Hamburguesas",      icon:"🍔", name:"La Tazmania",               price:14    },
-  { id:"H11",  cat:"Hamburguesas",      icon:"🍔", name:"La Papachos",               price:20    },
+  { id:"H01",  cat:"Hamburguesas",      icon:"🍔", name:"La Silvestre",              price:7,    desc:"Carne, papa frita, ensalada" },
+  { id:"H02",  cat:"Hamburguesas",      icon:"🍔", name:"La Piolin",                 price:8,    desc:"Carne o pollo, huevo, papa frita, ensalada" },
+  { id:"H03",  cat:"Hamburguesas",      icon:"🍔", name:"La Speedy Gonzales",        price:10,   desc:"Carne, huevo, hot dog, papa frita, ensalada" },
+  { id:"H04",  cat:"Hamburguesas",      icon:"🍔", name:"La Cajacha",                price:12,   desc:"Carne, huevo, queso, hot dog, papa frita, ensalada" },
+  { id:"H05",  cat:"Hamburguesas",      icon:"🍔", name:"La Coyote",                 price:12,   desc:"Carne, huevo, plátano, jamón, papa frita, ensalada" },
+  { id:"H06",  cat:"Hamburguesas",      icon:"🍔", name:"La Super Cajacha",          price:14,   desc:"Carne, queso, chorizo artesanal, tocino, papa frita, ensalada" },
+  { id:"H07",  cat:"Hamburguesas",      icon:"🍔", name:"La Bugs Bunny",             price:14,   desc:"Carne, huevo, hot dog, chorizo artesanal, jamón, papa frita, ensalada" },
+  { id:"H08",  cat:"Hamburguesas",      icon:"🍔", name:"La Cajamarquesa",           price:14,   desc:"Carne, champiñones, queso, tocino, papas fritas, ensalada" },
+  { id:"H09",  cat:"Hamburguesas",      icon:"🍔", name:"La Porky",                  price:15,   desc:"Carne, huevo, hot dog, chorizo artesanal, tocino, papa frita, ensalada" },
+  { id:"H10",  cat:"Hamburguesas",      icon:"🍔", name:"La Tazmania",               price:14,   desc:"Carne, queso, piña, hot dog, jamón, papa frita, ensalada" },
+  { id:"H11",  cat:"Hamburguesas",      icon:"🍔", name:"La Papachos",               price:20,   desc:"Doble carne, huevo, doble queso, hot dog, chorizo artesanal, jamón, tocino, papa frita, ensalada" },
   // SALCHIPAPAS
-  { id:"S01",  cat:"Salchipapas",       icon:"🍟", name:"Clásica",                   price:8     },
-  { id:"S02",  cat:"Salchipapas",       icon:"🍟", name:"Sencilla",                  price:10    },
-  { id:"S03",  cat:"Salchipapas",       icon:"🍟", name:"Cajacha",                   price:12    },
-  { id:"S04",  cat:"Salchipapas",       icon:"🍟", name:"Hawaiana",                  price:12    },
-  { id:"S05",  cat:"Salchipapas",       icon:"🍟", name:"Salchipobre",               price:13    },
-  { id:"S06",  cat:"Salchipapas",       icon:"🍟", name:"La Piernona",               price:15    },
-  { id:"S07",  cat:"Salchipapas",       icon:"🍟", name:"Super Cajacha",             price:16    },
-  { id:"S08",  cat:"Salchipapas",       icon:"🍟", name:"Salchibroster",             price:16    },
-  { id:"S09",  cat:"Salchipapas",       icon:"🍟", name:"La Champi Quesera",         price:18    },
-  { id:"S10",  cat:"Salchipapas",       icon:"🍟", name:"Salchi Nuggets",            price:20    },
-  { id:"S11",  cat:"Salchipapas",       icon:"🍟", name:"Salchi Porky",              price:20    },
-  { id:"S12",  cat:"Salchipapas",       icon:"🍟", name:"La Papacha",                price:22    },
-  { id:"S13",  cat:"Salchipapas",       icon:"🍟", name:"Salchi Lomo",               price:25    },
+  { id:"S01",  cat:"Salchipapas",       icon:"🍟", name:"Clásica",                   price:8,    desc:"Papa, hot dog" },
+  { id:"S02",  cat:"Salchipapas",       icon:"🍟", name:"Sencilla",                  price:10,   desc:"Papa, hot dog, huevo" },
+  { id:"S03",  cat:"Salchipapas",       icon:"🍟", name:"Cajacha",                   price:12,   desc:"Papa, hot dog, chorizo artesanal, queso" },
+  { id:"S04",  cat:"Salchipapas",       icon:"🍟", name:"Hawaiana",                  price:12,   desc:"Papa, hot dog, jamón, piña, queso" },
+  { id:"S05",  cat:"Salchipapas",       icon:"🍟", name:"Salchipobre",               price:13,   desc:"Papa, hot dog, huevo, plátano, jamón" },
+  { id:"S06",  cat:"Salchipapas",       icon:"🍟", name:"La Piernona",               price:15,   desc:"Papa, hot dog, pierna broster" },
+  { id:"S07",  cat:"Salchipapas",       icon:"🍟", name:"Super Cajacha",             price:16,   desc:"Papa, hot dog, chorizo artesanal, doble queso, tocino" },
+  { id:"S08",  cat:"Salchipapas",       icon:"🍟", name:"Salchibroster",             price:16,   desc:"Papa, hot dog, huevo, pollo broaster" },
+  { id:"S09",  cat:"Salchipapas",       icon:"🍟", name:"La Champi Quesera",         price:18,   desc:"Papa, hot dog, chorizo artesanal, doble queso, tocino, champiñones" },
+  { id:"S10",  cat:"Salchipapas",       icon:"🍟", name:"Salchi Nuggets",            price:20,   desc:"Papa, nuggets, hot dog, chorizo artesanal, queso, ensalada" },
+  { id:"S11",  cat:"Salchipapas",       icon:"🍟", name:"Salchi Porky",              price:20,   desc:"Papa, chorizo artesanal, hot dog, trozos de chicharrón" },
+  { id:"S12",  cat:"Salchipapas",       icon:"🍟", name:"La Papacha",                price:22,   desc:"Papa, hot dog, chorizo artesanal, huevo, queso, tocino, 2 alitas y trozos de pollo broaster" },
+  { id:"S13",  cat:"Salchipapas",       icon:"🍟", name:"Salchi Lomo",               price:25,   desc:"(Pollo o carne) Papa, hot dog, chorizo artesanal, plátano, 2 alitas, ensalada" },
   // ALITAS
-  { id:"A01",  cat:"Alitas",            icon:"🍗", name:"Alitas 4 pzas",             price:14    },
-  { id:"A02",  cat:"Alitas",            icon:"🍗", name:"Alitas 6 pzas",             price:20    },
-  { id:"A03",  cat:"Alitas",            icon:"🍗", name:"Alitas 8 pzas",             price:26    },
-  { id:"A04",  cat:"Alitas",            icon:"🍗", name:"Alitas 10 pzas",            price:30    },
-  { id:"A05",  cat:"Alitas",            icon:"🍗", name:"Alitas 12 pzas",            price:36    },
+  { id:"A01",  cat:"Alitas",            icon:"🍗", name:"Alitas 4 pzas",             price:14,   desc:"4 alitas + papas fritas + ensalada" },
+  { id:"A02",  cat:"Alitas",            icon:"🍗", name:"Alitas 6 pzas",             price:20,   desc:"6 alitas + papas fritas + ensalada" },
+  { id:"A03",  cat:"Alitas",            icon:"🍗", name:"Alitas 8 pzas",             price:26,   desc:"8 alitas + papas fritas + ensalada" },
+  { id:"A04",  cat:"Alitas",            icon:"🍗", name:"Alitas 10 pzas",            price:30,   desc:"10 alitas + papas fritas + ensalada" },
+  { id:"A05",  cat:"Alitas",            icon:"🍗", name:"Alitas 12 pzas",            price:36,   desc:"12 alitas + papas fritas + ensalada" },
   // ALICHAUFA
-  { id:"AC01", cat:"Alichaufa",         icon:"🍗", name:"Alichaufa 4 pzas",          price:18    },
-  { id:"AC02", cat:"Alichaufa",         icon:"🍗", name:"Alichaufa 6 pzas",          price:24    },
-  { id:"AC03", cat:"Alichaufa",         icon:"🍗", name:"Alichaufa 8 pzas",          price:30    },
-  { id:"AC04", cat:"Alichaufa",         icon:"🍗", name:"Alichaufa 10 pzas",         price:36    },
+  { id:"AC01", cat:"Alichaufa",         icon:"🍗", name:"Alichaufa 4 pzas",          price:18,   desc:"4 alitas + papas fritas + chaufa + ensalada" },
+  { id:"AC02", cat:"Alichaufa",         icon:"🍗", name:"Alichaufa 6 pzas",          price:24,   desc:"6 alitas + papas fritas + chaufa + ensalada" },
+  { id:"AC03", cat:"Alichaufa",         icon:"🍗", name:"Alichaufa 8 pzas",          price:30,   desc:"8 alitas + papas fritas + chaufa + ensalada" },
+  { id:"AC04", cat:"Alichaufa",         icon:"🍗", name:"Alichaufa 10 pzas",         price:36,   desc:"10 alitas + papas fritas + chaufa + ensalada" },
   // POLLO BROASTER
-  { id:"PB01", cat:"Pollo Broaster",    icon:"🍖", name:"Pollo 1/8 Clásico",         price:12    },
-  { id:"PB02", cat:"Pollo Broaster",    icon:"🍖", name:"Pollo 1/4 Clásico",         price:18    },
-  { id:"PB03", cat:"Pollo Broaster",    icon:"🍖", name:"Pollo 1/8 A lo Pobre",      price:16    },
-  { id:"PB04", cat:"Pollo Broaster",    icon:"🍖", name:"Pollo 1/4 A lo Pobre",      price:22    },
+  { id:"PB01", cat:"Pollo Broaster",    icon:"🍖", name:"Pollo 1/8 Clásico",         price:12,   desc:"1/8 de pollo broaster clásico" },
+  { id:"PB02", cat:"Pollo Broaster",    icon:"🍖", name:"Pollo 1/4 Clásico",         price:18,   desc:"1/4 de pollo broaster clásico" },
+  { id:"PB03", cat:"Pollo Broaster",    icon:"🍖", name:"Pollo 1/8 A lo Pobre",      price:16,   desc:"1/8 de pollo broaster a lo pobre" },
+  { id:"PB04", cat:"Pollo Broaster",    icon:"🍖", name:"Pollo 1/4 A lo Pobre",      price:22,   desc:"1/4 de pollo broaster a lo pobre" },
   // MOSTRITO BROASTER
-  { id:"MB01", cat:"Mostrito Broaster", icon:"🍖", name:"Mostrito 1/8 Clásico",      price:14    },
-  { id:"MB02", cat:"Mostrito Broaster", icon:"🍖", name:"Mostrito 1/4 Clásico",      price:22    },
-  { id:"MB03", cat:"Mostrito Broaster", icon:"🍖", name:"Mostrito 1/8 A lo Pobre",   price:18    },
-  { id:"MB04", cat:"Mostrito Broaster", icon:"🍖", name:"Mostrito 1/4 A lo Pobre",   price:25    },
+  { id:"MB01", cat:"Mostrito Broaster", icon:"🍖", name:"Mostrito 1/8 Clásico",      price:14,   desc:"1/8 de mostrito broaster clásico" },
+  { id:"MB02", cat:"Mostrito Broaster", icon:"🍖", name:"Mostrito 1/4 Clásico",      price:22,   desc:"1/4 de mostrito broaster clásico" },
+  { id:"MB03", cat:"Mostrito Broaster", icon:"🍖", name:"Mostrito 1/8 A lo Pobre",   price:18,   desc:"1/8 de mostrito broaster a lo pobre" },
+  { id:"MB04", cat:"Mostrito Broaster", icon:"🍖", name:"Mostrito 1/4 A lo Pobre",   price:25,   desc:"1/4 de mostrito broaster a lo pobre" },
   // PLATOS EXTRAS
-  { id:"PE01", cat:"Platos Extras",     icon:"🍽️", name:"Caldo de Gallina",          price:14    },
-  { id:"PE02", cat:"Platos Extras",     icon:"🍽️", name:"Arroz Chaufa",              price:14    },
-  { id:"PE03", cat:"Platos Extras",     icon:"🍽️", name:"Arroz Chaufa a lo Pobre",   price:18    },
-  { id:"PE04", cat:"Platos Extras",     icon:"🍽️", name:"Saltado de Pollo",          price:20    },
-  { id:"PE05", cat:"Platos Extras",     icon:"🍽️", name:"Tallarín Saltado Carne",    price:22    },
-  { id:"PE06", cat:"Platos Extras",     icon:"🍽️", name:"Tallarín Saltado Pollo",    price:18    },
-  { id:"PE07", cat:"Platos Extras",     icon:"🍽️", name:"Mollejita a la Plancha",    price:18    },
-  { id:"PE08", cat:"Platos Extras",     icon:"🍽️", name:"Saltado de Molleja",        price:18    },
-  { id:"PE09", cat:"Platos Extras",     icon:"🍽️", name:"Pollo a la Plancha 1/4",    price:20    },
-  { id:"PE10", cat:"Platos Extras",     icon:"🍽️", name:"Lomo Montado",              price:25    },
-  { id:"PE11", cat:"Platos Extras",     icon:"🍽️", name:"Chuleta",                   price:22    },
-  { id:"PE12", cat:"Platos Extras",     icon:"🍽️", name:"Lomo a lo Pobre",           price:25    },
-  { id:"PE13", cat:"Platos Extras",     icon:"🍽️", name:"Lomo Saltado",              price:22    },
+  { id:"PE01", cat:"Platos Extras",     icon:"🍽️", name:"Caldo de Gallina",          price:14,   desc:"Caldo de gallina tradicional" },
+  { id:"PE02", cat:"Platos Extras",     icon:"🍽️", name:"Arroz Chaufa",              price:14,   desc:"Arroz chaufa estilo chifa" },
+  { id:"PE03", cat:"Platos Extras",     icon:"🍽️", name:"Arroz Chaufa a lo Pobre",   price:18,   desc:"Arroz chaufa con huevo, plátano y más" },
+  { id:"PE04", cat:"Platos Extras",     icon:"🍽️", name:"Saltado de Pollo",          price:20,   desc:"Saltado de pollo al wok con verduras" },
+  { id:"PE05", cat:"Platos Extras",     icon:"🍽️", name:"Tallarín Saltado Carne",    price:22,   desc:"Tallarín saltado con carne al wok" },
+  { id:"PE06", cat:"Platos Extras",     icon:"🍽️", name:"Tallarín Saltado Pollo",    price:18,   desc:"Tallarín saltado con pollo al wok" },
+  { id:"PE07", cat:"Platos Extras",     icon:"🍽️", name:"Mollejita a la Plancha",    price:18,   desc:"Mollejas de pollo a la plancha" },
+  { id:"PE08", cat:"Platos Extras",     icon:"🍽️", name:"Saltado de Molleja",        price:18,   desc:"Mollejas saltadas al wok con verduras" },
+  { id:"PE09", cat:"Platos Extras",     icon:"🍽️", name:"Pollo a la Plancha 1/4",    price:20,   desc:"1/4 de pollo a la plancha" },
+  { id:"PE10", cat:"Platos Extras",     icon:"🍽️", name:"Lomo Montado",              price:25,   desc:"Lomo fino montado con huevo y arroz" },
+  { id:"PE11", cat:"Platos Extras",     icon:"🍽️", name:"Chuleta",                   price:22,   desc:"Chuleta de cerdo a la plancha" },
+  { id:"PE12", cat:"Platos Extras",     icon:"🍽️", name:"Lomo a lo Pobre",           price:25,   desc:"Lomo fino a lo pobre con huevo y plátano" },
+  { id:"PE13", cat:"Platos Extras",     icon:"🍽️", name:"Lomo Saltado",              price:22,   desc:"Lomo saltado al wok con verduras y papas" },
   // MENÚ KIDS
-  { id:"MK01", cat:"Menú Kids",         icon:"🧒", name:"Bolipollos 6pz",            price:18    },
-  { id:"MK02", cat:"Menú Kids",         icon:"🧒", name:"Boliquesos 6pz",            price:25    },
-  { id:"MK03", cat:"Menú Kids",         icon:"🧒", name:"Nuggets 6pz",               price:18    },
-  { id:"MK04", cat:"Menú Kids",         icon:"🧒", name:"Chicharrón de Pollo",       price:18    },
+  { id:"MK01", cat:"Menú Kids",         icon:"🧒", name:"Bolipollos 6pz",            price:18,   desc:"6 piezas de bolipollos para los más pequeños" },
+  { id:"MK02", cat:"Menú Kids",         icon:"🧒", name:"Boliquesos 6pz",            price:25,   desc:"6 piezas de boliquesos para los más pequeños" },
+  { id:"MK03", cat:"Menú Kids",         icon:"🧒", name:"Nuggets 6pz",               price:18,   desc:"6 nuggets de pollo crujientes" },
+  { id:"MK04", cat:"Menú Kids",         icon:"🧒", name:"Chicharrón de Pollo",       price:18,   desc:"Chicharrón de pollo crujiente" },
   // COMBOS
-  { id:"C01",  cat:"Combos",            icon:"🎁", name:"Combo Personal",            price:9.90  },
-  { id:"C02",  cat:"Combos",            icon:"🎁", name:"Combo Cajacho",             price:44.90 },
-  { id:"C03",  cat:"Combos",            icon:"🎁", name:"Combo Familiar",            price:80.90 },
-  { id:"C04",  cat:"Combos",            icon:"🎁", name:"Combo Papachos",            price:110.90},
+  { id:"C01",  cat:"Combos",            icon:"🎁", name:"Combo Personal",            price:9.90,  desc:"Hamburguesa Piolín o Salchipapa Sencilla + Vaso de bebida" },
+  { id:"C02",  cat:"Combos",            icon:"🎁", name:"Combo Cajacho",             price:44.90, desc:"Hamburguesa Cajacha + 6pz Alitas + Papas fritas nativas + Porción de Chaufa + 1L Bebida" },
+  { id:"C03",  cat:"Combos",            icon:"🎁", name:"Combo Familiar",            price:80.90, desc:"2 Hamburguesas Speedy Gonzales + 14pz Alitas + Papas fritas nativas + Arroz Chaufa + 1.5L de bebida" },
+  { id:"C04",  cat:"Combos",            icon:"🎁", name:"Combo Papachos",            price:110.90,desc:"2 Hamburguesas La Porky + 20pz de Alitas + Papas fritas nativas + Arroz Chaufa + 2L de Bebida" },
   // RONDAS
-  { id:"R01",  cat:"Rondas",            icon:"🔄", name:"Rondas de Sabores 20pz",    price:68    },
-  { id:"R02",  cat:"Rondas",            icon:"🔄", name:"Ronda de Sabores XL 30pz",  price:99    },
+  { id:"R01",  cat:"Rondas",            icon:"🔄", name:"Rondas de Sabores 20pz",    price:68,    desc:"20 pz de alitas + papas fritas nativas + ensalada + 1L de bebida" },
+  { id:"R02",  cat:"Rondas",            icon:"🔄", name:"Ronda de Sabores XL 30pz",  price:99,    desc:"30 pz de alitas + papas fritas nativas + ensalada + 1.5L de bebida" },
   // BEBIDAS
-  { id:"B01",  cat:"Bebidas",           icon:"🥤", name:"Chicha Morada Normal 1L",   price:10    },
-  { id:"B02",  cat:"Bebidas",           icon:"🥤", name:"Chicha Morada Normal 1/2L", price:5     },
-  { id:"B03",  cat:"Bebidas",           icon:"🥤", name:"Chicha Morada Normal Vaso", price:2.50  },
-  { id:"B04",  cat:"Bebidas",           icon:"🧊", name:"Chicha Morada Frozen 1L",   price:18    },
-  { id:"B05",  cat:"Bebidas",           icon:"🧊", name:"Chicha Morada Frozen 1/2L", price:9     },
-  { id:"B06",  cat:"Bebidas",           icon:"🥤", name:"Limonada Normal 1L",        price:10    },
-  { id:"B07",  cat:"Bebidas",           icon:"🥤", name:"Limonada Normal 1/2L",      price:5     },
-  { id:"B08",  cat:"Bebidas",           icon:"🥤", name:"Limonada Normal Vaso",      price:2.50  },
-  { id:"B09",  cat:"Bebidas",           icon:"🧊", name:"Limonada Frozen 1L",        price:18    },
-  { id:"B10",  cat:"Bebidas",           icon:"🧊", name:"Limonada Frozen 1/2L",      price:9     },
-  { id:"B11",  cat:"Bebidas",           icon:"🥤", name:"Maracuyá Normal 1L",        price:10    },
-  { id:"B12",  cat:"Bebidas",           icon:"🥤", name:"Maracuyá Normal 1/2L",      price:5     },
-  { id:"B13",  cat:"Bebidas",           icon:"🥤", name:"Maracuyá Normal Vaso",      price:2.50  },
-  { id:"B14",  cat:"Bebidas",           icon:"🧊", name:"Maracuyá Frozen 1L",        price:18    },
-  { id:"B15",  cat:"Bebidas",           icon:"🧊", name:"Maracuyá Frozen 1/2L",      price:9     },
-  { id:"B16",  cat:"Bebidas",           icon:"🥤", name:"Piña Normal 1L",            price:10    },
-  { id:"B17",  cat:"Bebidas",           icon:"🥤", name:"Piña Normal 1/2L",          price:5     },
-  { id:"B18",  cat:"Bebidas",           icon:"🥤", name:"Piña Normal Vaso",          price:2.50  },
-  { id:"B19",  cat:"Bebidas",           icon:"🧊", name:"Piña Frozen 1L",            price:18    },
-  { id:"B20",  cat:"Bebidas",           icon:"🧊", name:"Piña Frozen 1/2L",          price:9     },
-  { id:"B21",  cat:"Bebidas",           icon:"🥤", name:"Cebada Normal 1L",          price:10    },
-  { id:"B22",  cat:"Bebidas",           icon:"🥤", name:"Cebada Normal 1/2L",        price:5     },
-  { id:"B23",  cat:"Bebidas",           icon:"🥤", name:"Cebada Normal Vaso",        price:2.50  },
-  { id:"B24",  cat:"Bebidas",           icon:"🧊", name:"Cebada Frozen 1L",          price:18    },
-  { id:"B25",  cat:"Bebidas",           icon:"🧊", name:"Cebada Frozen 1/2L",        price:9     },
-  { id:"B26",  cat:"Bebidas",           icon:"🥤", name:"Fresa Normal 1L",           price:10    },
-  { id:"B27",  cat:"Bebidas",           icon:"🥤", name:"Fresa Normal 1/2L",         price:5     },
-  { id:"B28",  cat:"Bebidas",           icon:"🥤", name:"Fresa Normal Vaso",         price:2.50  },
-  { id:"B29",  cat:"Bebidas",           icon:"🧊", name:"Fresa Frozen 1L",           price:18    },
-  { id:"B30",  cat:"Bebidas",           icon:"🧊", name:"Fresa Frozen 1/2L",         price:9     },
+  { id:"B01",  cat:"Bebidas",           icon:"🥤", name:"Chicha Morada Normal 1L",   price:10,   desc:"Chicha morada preparada, 1 litro" },
+  { id:"B02",  cat:"Bebidas",           icon:"🥤", name:"Chicha Morada Normal 1/2L", price:5,    desc:"Chicha morada preparada, medio litro" },
+  { id:"B03",  cat:"Bebidas",           icon:"🥤", name:"Chicha Morada Normal Vaso", price:2.50, desc:"Chicha morada preparada, vaso" },
+  { id:"B04",  cat:"Bebidas",           icon:"🧊", name:"Chicha Morada Frozen 1L",   price:18,   desc:"Chicha morada frozen, 1 litro" },
+  { id:"B05",  cat:"Bebidas",           icon:"🧊", name:"Chicha Morada Frozen 1/2L", price:9,    desc:"Chicha morada frozen, medio litro" },
+  { id:"B06",  cat:"Bebidas",           icon:"🥤", name:"Limonada Normal 1L",        price:10,   desc:"Limonada natural, 1 litro" },
+  { id:"B07",  cat:"Bebidas",           icon:"🥤", name:"Limonada Normal 1/2L",      price:5,    desc:"Limonada natural, medio litro" },
+  { id:"B08",  cat:"Bebidas",           icon:"🥤", name:"Limonada Normal Vaso",      price:2.50, desc:"Limonada natural, vaso" },
+  { id:"B09",  cat:"Bebidas",           icon:"🧊", name:"Limonada Frozen 1L",        price:18,   desc:"Limonada frozen, 1 litro" },
+  { id:"B10",  cat:"Bebidas",           icon:"🧊", name:"Limonada Frozen 1/2L",      price:9,    desc:"Limonada frozen, medio litro" },
+  { id:"B11",  cat:"Bebidas",           icon:"🥤", name:"Maracuyá Normal 1L",        price:10,   desc:"Maracuyá natural, 1 litro" },
+  { id:"B12",  cat:"Bebidas",           icon:"🥤", name:"Maracuyá Normal 1/2L",      price:5,    desc:"Maracuyá natural, medio litro" },
+  { id:"B13",  cat:"Bebidas",           icon:"🥤", name:"Maracuyá Normal Vaso",      price:2.50, desc:"Maracuyá natural, vaso" },
+  { id:"B14",  cat:"Bebidas",           icon:"🧊", name:"Maracuyá Frozen 1L",        price:18,   desc:"Maracuyá frozen, 1 litro" },
+  { id:"B15",  cat:"Bebidas",           icon:"🧊", name:"Maracuyá Frozen 1/2L",      price:9,    desc:"Maracuyá frozen, medio litro" },
+  { id:"B16",  cat:"Bebidas",           icon:"🥤", name:"Piña Normal 1L",            price:10,   desc:"Piña natural, 1 litro" },
+  { id:"B17",  cat:"Bebidas",           icon:"🥤", name:"Piña Normal 1/2L",          price:5,    desc:"Piña natural, medio litro" },
+  { id:"B18",  cat:"Bebidas",           icon:"🥤", name:"Piña Normal Vaso",          price:2.50, desc:"Piña natural, vaso" },
+  { id:"B19",  cat:"Bebidas",           icon:"🧊", name:"Piña Frozen 1L",            price:18,   desc:"Piña frozen, 1 litro" },
+  { id:"B20",  cat:"Bebidas",           icon:"🧊", name:"Piña Frozen 1/2L",          price:9,    desc:"Piña frozen, medio litro" },
+  { id:"B21",  cat:"Bebidas",           icon:"🥤", name:"Cebada Normal 1L",          price:10,   desc:"Cebada natural, 1 litro" },
+  { id:"B22",  cat:"Bebidas",           icon:"🥤", name:"Cebada Normal 1/2L",        price:5,    desc:"Cebada natural, medio litro" },
+  { id:"B23",  cat:"Bebidas",           icon:"🥤", name:"Cebada Normal Vaso",        price:2.50, desc:"Cebada natural, vaso" },
+  { id:"B24",  cat:"Bebidas",           icon:"🧊", name:"Cebada Frozen 1L",          price:18,   desc:"Cebada frozen, 1 litro" },
+  { id:"B25",  cat:"Bebidas",           icon:"🧊", name:"Cebada Frozen 1/2L",        price:9,    desc:"Cebada frozen, medio litro" },
+  { id:"B26",  cat:"Bebidas",           icon:"🥤", name:"Fresa Normal 1L",           price:10,   desc:"Fresa natural, 1 litro" },
+  { id:"B27",  cat:"Bebidas",           icon:"🥤", name:"Fresa Normal 1/2L",         price:5,    desc:"Fresa natural, medio litro" },
+  { id:"B28",  cat:"Bebidas",           icon:"🥤", name:"Fresa Normal Vaso",         price:2.50, desc:"Fresa natural, vaso" },
+  { id:"B29",  cat:"Bebidas",           icon:"🧊", name:"Fresa Frozen 1L",           price:18,   desc:"Fresa frozen, 1 litro" },
+  { id:"B30",  cat:"Bebidas",           icon:"🧊", name:"Fresa Frozen 1/2L",         price:9,    desc:"Fresa frozen, medio litro" },
   // CERVEZAS
-  { id:"CV01", cat:"Cervezas",          icon:"🍺", name:"Cristal",                   price:10    },
-  { id:"CV02", cat:"Cervezas",          icon:"🍺", name:"Pilsen",                    price:10    },
-  { id:"CV03", cat:"Cervezas",          icon:"🍺", name:"Heineken",                  price:10    },
-  { id:"CV04", cat:"Cervezas",          icon:"🍺", name:"Cusqueña",                  price:12    },
-  { id:"CV05", cat:"Cervezas",          icon:"🍺", name:"Corona",                    price:10    },
+  { id:"CV01", cat:"Cervezas",          icon:"🍺", name:"Cristal",                   price:10,   desc:"Cerveza Cristal" },
+  { id:"CV02", cat:"Cervezas",          icon:"🍺", name:"Pilsen",                    price:10,   desc:"Cerveza Pilsen Callao" },
+  { id:"CV03", cat:"Cervezas",          icon:"🍺", name:"Heineken",                  price:10,   desc:"Cerveza Heineken importada" },
+  { id:"CV04", cat:"Cervezas",          icon:"🍺", name:"Cusqueña",                  price:12,   desc:"Cerveza Cusqueña dorada" },
+  { id:"CV05", cat:"Cervezas",          icon:"🍺", name:"Corona",                    price:10,   desc:"Cerveza Corona importada" },
   // CHILCANOS
-  { id:"CH01", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Limón Vaso",       price:15    },
-  { id:"CH02", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Limón Jarra",      price:30    },
-  { id:"CH03", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Maracuyá Vaso",    price:15    },
-  { id:"CH04", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Maracuyá Jarra",   price:30    },
-  { id:"CH05", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Fresa Vaso",       price:15    },
-  { id:"CH06", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Fresa Jarra",      price:30    },
-  { id:"CH07", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Aguaimanto Vaso",  price:15    },
-  { id:"CH08", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Aguaimanto Jarra", price:30    },
-  { id:"CH09", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Tuna Vaso",        price:15    },
-  { id:"CH10", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Tuna Jarra",       price:30    },
-  { id:"CH11", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Mango Vaso",       price:15    },
-  { id:"CH12", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Mango Jarra",      price:30    },
+  { id:"CH01", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Limón Vaso",       price:15,   desc:"Chilcano de pisco con limón, vaso" },
+  { id:"CH02", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Limón Jarra",      price:30,   desc:"Chilcano de pisco con limón, jarra" },
+  { id:"CH03", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Maracuyá Vaso",    price:15,   desc:"Chilcano de pisco con maracuyá, vaso" },
+  { id:"CH04", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Maracuyá Jarra",   price:30,   desc:"Chilcano de pisco con maracuyá, jarra" },
+  { id:"CH05", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Fresa Vaso",       price:15,   desc:"Chilcano de pisco con fresa, vaso" },
+  { id:"CH06", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Fresa Jarra",      price:30,   desc:"Chilcano de pisco con fresa, jarra" },
+  { id:"CH07", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Aguaimanto Vaso",  price:15,   desc:"Chilcano de pisco con aguaimanto, vaso" },
+  { id:"CH08", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Aguaimanto Jarra", price:30,   desc:"Chilcano de pisco con aguaimanto, jarra" },
+  { id:"CH09", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Tuna Vaso",        price:15,   desc:"Chilcano de pisco con tuna, vaso" },
+  { id:"CH10", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Tuna Jarra",       price:30,   desc:"Chilcano de pisco con tuna, jarra" },
+  { id:"CH11", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Mango Vaso",       price:15,   desc:"Chilcano de pisco con mango, vaso" },
+  { id:"CH12", cat:"Chilcanos",         icon:"🍹", name:"Chilcano Mango Jarra",      price:30,   desc:"Chilcano de pisco con mango, jarra" },
   // GASEOSAS
-  { id:"G01",  cat:"Gaseosas",          icon:"🥤", name:"Inka Cola 2L",              price:15    },
-  { id:"G02",  cat:"Gaseosas",          icon:"🥤", name:"Coca Cola 2L",              price:15    },
-  { id:"G03",  cat:"Gaseosas",          icon:"🥤", name:"Inca Kola 1L",              price:8     },
-  { id:"G04",  cat:"Gaseosas",          icon:"🥤", name:"Coca Cola 1L",              price:8     },
-  { id:"G05",  cat:"Gaseosas",          icon:"🥤", name:"Gordita",                   price:5     },
-  { id:"G06",  cat:"Gaseosas",          icon:"🥤", name:"Coca Cola Personal",        price:2.50  },
-  { id:"G07",  cat:"Gaseosas",          icon:"🥤", name:"Inka Cola Personal",        price:2.50  },
-  { id:"G08",  cat:"Gaseosas",          icon:"🥤", name:"Agua Mineral",              price:3     },
-  { id:"G09",  cat:"Gaseosas",          icon:"🥤", name:"Inca Kola 600ml",           price:4     },
-  { id:"G10",  cat:"Gaseosas",          icon:"🥤", name:"Coca Cola 600ml",           price:4     },
+  { id:"G01",  cat:"Gaseosas",          icon:"🥤", name:"Inka Cola 2L",              price:15,   desc:"Inka Cola 2 litros" },
+  { id:"G02",  cat:"Gaseosas",          icon:"🥤", name:"Coca Cola 2L",              price:15,   desc:"Coca Cola 2 litros" },
+  { id:"G03",  cat:"Gaseosas",          icon:"🥤", name:"Inca Kola 1L",              price:8,    desc:"Inca Kola 1 litro" },
+  { id:"G04",  cat:"Gaseosas",          icon:"🥤", name:"Coca Cola 1L",              price:8,    desc:"Coca Cola 1 litro" },
+  { id:"G05",  cat:"Gaseosas",          icon:"🥤", name:"Gordita",                   price:5,    desc:"Gaseosa gordita" },
+  { id:"G06",  cat:"Gaseosas",          icon:"🥤", name:"Coca Cola Personal",        price:2.50, desc:"Coca Cola personal" },
+  { id:"G07",  cat:"Gaseosas",          icon:"🥤", name:"Inka Cola Personal",        price:2.50, desc:"Inka Cola personal" },
+  { id:"G08",  cat:"Gaseosas",          icon:"🥤", name:"Agua Mineral",              price:3,    desc:"Agua mineral sin gas" },
+  { id:"G09",  cat:"Gaseosas",          icon:"🥤", name:"Inca Kola 600ml",           price:4,    desc:"Inca Kola 600ml" },
+  { id:"G10",  cat:"Gaseosas",          icon:"🥤", name:"Coca Cola 600ml",           price:4,    desc:"Coca Cola 600ml" },
   // OTROS
-  { id:"O01",  cat:"Otros",             icon:"☕", name:"Café Pasado",               price:4     },
-  { id:"O02",  cat:"Otros",             icon:"🍵", name:"Infusiones",                price:3     },
+  { id:"O01",  cat:"Otros",             icon:"☕", name:"Café Pasado",               price:4,    desc:"Café pasado tradicional" },
+  { id:"O02",  cat:"Otros",             icon:"🍵", name:"Infusiones",                price:3,    desc:"Variedad de infusiones calientes" },
 ];
 
 const ALL_CATS = [...new Set(MENU_BASE.map(i => i.cat))];
@@ -205,7 +205,7 @@ function useWindowWidth() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  MODAL DE EDICIÓN — con estado local propio
+//  MODAL DE EDICIÓN
 // ═══════════════════════════════════════════════════════════════════
 function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
   const [eTable,     setETable]     = useState(order.table);
@@ -215,11 +215,10 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
   const [ePhone,     setEPhone]     = useState(order.phone || "");
   const [eOrderType, setEOrderType] = useState(order.orderType || "mesa");
   const [eTaperCost, setETaperCost] = useState(order.taperCost || 0);
-  // ── estado local para búsqueda en el modal (no comparte con nadie)
   const [eCat,    setECat]    = useState("Todos");
   const [eSearch, setESearch] = useState("");
 
-  const eTotal = eItems.reduce((sum, i) => sum + i.price * i.qty, 0) + (eOrderType === "llevar" ? Number(eTaperCost) || 0 : 0);
+  const eTotal = eItems.reduce((sum, i) => sum + i.price * i.qty, 0) + (Number(eTaperCost) || 0);
 
   const eAddItem = (item) => setEItems(prev => {
     const ex = prev.find(i => i.id === item.id);
@@ -265,13 +264,15 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
           <input style={{ ...s.input, marginTop:4 }} value={ePhone} onChange={e => setEPhone(e.target.value)} placeholder="Ej: 9 87654321" />
         </div>
       )}
-      {eOrderType === "llevar" && (
-        <div style={{ marginBottom:10 }}>
-          <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Costo taper/bolsa (S/.)</label>
-          <input style={{ ...s.input, marginTop:4 }} type="number" min="0" step="0.50" placeholder="Ej: 1.00"
-            value={eTaperCost || ""} onChange={e => setETaperCost(e.target.value)} />
-        </div>
-      )}
+
+      {/* ── Taper disponible para AMBOS tipos de pedido ── */}
+      <div style={{ marginBottom:10 }}>
+        <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>
+          🥡 Taper / Bolsa (S/.) <span style={{ color:"#555", fontWeight:400, textTransform:"none" }}>— opcional</span>
+        </label>
+        <input style={{ ...s.input, marginTop:4 }} type="number" min="0" step="0.50" placeholder="Ej: 1.00"
+          value={eTaperCost || ""} onChange={e => setETaperCost(e.target.value)} />
+      </div>
 
       <div style={{ marginBottom:10 }}>
         <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Forma de pago</label>
@@ -303,6 +304,12 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
             </div>
           ))
         }
+        {eTaperCost > 0 && (
+          <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid #252525", color:"#aaa", fontSize:12 }}>
+            <span>🥡 Taper/Bolsa</span>
+            <span>{fmt(Number(eTaperCost))}</span>
+          </div>
+        )}
         {eItems.length > 0 && (
           <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0 2px", borderTop:`2px solid ${Y}44` }}>
             <span style={{ fontWeight:900 }}>TOTAL</span>
@@ -323,15 +330,18 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
           {filtE.map(item => {
             const inE = eItems.find(i => i.id === item.id);
             return (
-              <div key={item.id} onClick={() => eAddItem(item)} style={{ ...s.card, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4, padding:"7px 10px", border: inE ? `1px solid ${Y}55` : "1px solid #2a2a2a" }}>
-                <span style={{ fontSize:13 }}>{item.icon} {item.name}</span>
-                <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                  <span style={{ color:Y, fontWeight:900, fontSize:12 }}>{fmt(item.price)}</span>
-                  {inE
-                    ? <span style={{ background:Y, color:"#111", borderRadius:10, padding:"1px 7px", fontSize:11, fontWeight:900 }}>×{inE.qty}</span>
-                    : <span style={{ background:"#2a2a2a", borderRadius:"50%", width:20, height:20, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, color:"#aaa", fontSize:14 }}>+</span>
-                  }
+              <div key={item.id} onClick={() => eAddItem(item)} style={{ ...s.card, cursor:"pointer", marginBottom:4, padding:"7px 10px", border: inE ? `1px solid ${Y}55` : "1px solid #2a2a2a" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <span style={{ fontSize:13 }}>{item.icon} {item.name}</span>
+                  <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                    <span style={{ color:Y, fontWeight:900, fontSize:12 }}>{fmt(item.price)}</span>
+                    {inE
+                      ? <span style={{ background:Y, color:"#111", borderRadius:10, padding:"1px 7px", fontSize:11, fontWeight:900 }}>×{inE.qty}</span>
+                      : <span style={{ background:"#2a2a2a", borderRadius:"50%", width:20, height:20, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, color:"#aaa", fontSize:14 }}>+</span>
+                    }
+                  </div>
                 </div>
+                {item.desc && <div style={{ fontSize:10, color:"#555", marginTop:2 }}>{item.desc}</div>}
               </div>
             );
           })}
@@ -347,10 +357,9 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  NUEVO PEDIDO — estado local propio para búsqueda y filtros
+//  NUEVO PEDIDO
 // ═══════════════════════════════════════════════════════════════════
 function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updateItemNotes, draftTotal, fmt, submitOrder, newDraft, s, Y, isDesktop, isMobile }) {
-  // ── Estado LOCAL — no afecta al resto de la app ───────────────
   const [search,    setSearch]    = useState("");
   const [catFilter, setCatFilter] = useState("Todos");
 
@@ -358,6 +367,8 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
     (catFilter === "Todos" || i.cat === catFilter) &&
     i.name.toLowerCase().includes(search.toLowerCase())
   );
+
+  const taperNum = Number(draft.taperCost) || 0;
 
   return (
     <div style={{ display:"grid", gridTemplateColumns: isDesktop ? "1fr 300px" : "1fr", gap: isMobile ? 12 : 14 }}>
@@ -385,20 +396,26 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
             const inDraft = draft.items.find(i => i.id === item.id);
             return (
               <div key={item.id} onClick={() => addItem(item)}
-                style={{ ...s.card, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center",
+                style={{ ...s.card, cursor:"pointer",
                   border: inDraft?`1px solid ${Y}66`:"1px solid #2a2a2a", marginBottom:5, padding: isMobile?"8px 10px":"10px 12px" }}>
-                <div style={{ flex:1 }}>
-                  <span style={{ marginRight:6 }}>{item.icon}</span>
-                  <span style={{ fontWeight:700, fontSize: isMobile?13:14 }}>{item.name}</span>
-                  {!isMobile && <span style={{ display:"inline-block", padding:"2px 8px", borderRadius:10, fontSize:10, fontWeight:700, background:"#252525", color:"#eee", marginLeft:8 }}>{item.cat}</span>}
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <div style={{ flex:1 }}>
+                    <span style={{ marginRight:6 }}>{item.icon}</span>
+                    <span style={{ fontWeight:700, fontSize: isMobile?13:14 }}>{item.name}</span>
+                    {!isMobile && <span style={{ display:"inline-block", padding:"2px 8px", borderRadius:10, fontSize:10, fontWeight:700, background:"#252525", color:"#eee", marginLeft:8 }}>{item.cat}</span>}
+                  </div>
+                  <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                    <span style={{ color:Y, fontWeight:900, fontSize: isMobile?13:14 }}>{fmt(item.price)}</span>
+                    {inDraft
+                      ? <span style={{ background:Y, color:"#111", borderRadius:12, padding:"1px 8px", fontSize:12, fontWeight:900 }}>×{inDraft.qty}</span>
+                      : <span style={{ background:"#2a2a2a", borderRadius:"50%", width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:16, color:"#aaa" }}>+</span>
+                    }
+                  </div>
                 </div>
-                <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                  <span style={{ color:Y, fontWeight:900, fontSize: isMobile?13:14 }}>{fmt(item.price)}</span>
-                  {inDraft
-                    ? <span style={{ background:Y, color:"#111", borderRadius:12, padding:"1px 8px", fontSize:12, fontWeight:900 }}>×{inDraft.qty}</span>
-                    : <span style={{ background:"#2a2a2a", borderRadius:"50%", width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:16, color:"#aaa" }}>+</span>
-                  }
-                </div>
+                {/* Descripción del plato */}
+                {item.desc && (
+                  <div style={{ fontSize:10, color:"#555", marginTop:3, paddingLeft:22 }}>{item.desc}</div>
+                )}
               </div>
             );
           })}
@@ -427,17 +444,19 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
 
           {draft.orderType === "llevar" && (
             <div style={{ marginBottom:10 }}>
-              <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Costo taper/bolsa (S/.)</label>
-              <input style={{ ...s.input, marginTop:4 }} type="number" min="0" step="0.50" placeholder="Ej: 1.00"
-                value={draft.taperCost || ""} onChange={e => setDraft(d => ({...d, taperCost: e.target.value}))} />
-            </div>
-          )}
-          {draft.orderType === "llevar" && (
-            <div style={{ marginBottom:10 }}>
               <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Teléfono</label>
               <input style={{ ...s.input, marginTop:4 }} value={draft.phone || ""} onChange={e => setDraft(d => ({...d, phone: e.target.value}))} placeholder="Ej: 9 87654321" />
             </div>
           )}
+
+          {/* ── Taper disponible para AMBOS tipos ── */}
+          <div style={{ marginBottom:10 }}>
+            <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>
+              🥡 Taper / Bolsa (S/.) <span style={{ color:"#555", fontWeight:400, textTransform:"none" }}>— opcional</span>
+            </label>
+            <input style={{ ...s.input, marginTop:4 }} type="number" min="0" step="0.50" placeholder="0.00 — dejar vacío si no aplica"
+              value={draft.taperCost || ""} onChange={e => setDraft(d => ({...d, taperCost: e.target.value}))} />
+          </div>
 
           <div style={{ marginBottom:10 }}>
             <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Forma de pago</label>
@@ -483,9 +502,16 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
               </div>
           }
 
+          {taperNum > 0 && (
+            <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderTop:"1px solid #2a2a2a", color:"#aaa", fontSize:12, marginBottom:4 }}>
+              <span>🥡 Taper/Bolsa</span>
+              <span>{fmt(taperNum)}</span>
+            </div>
+          )}
+
           <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderTop:`2px solid ${Y}55`, marginBottom:12 }}>
             <span style={{ fontWeight:900, fontSize:17 }}>TOTAL</span>
-            <span style={{ fontWeight:900, fontSize:17, color:Y }}>{fmt(draftTotal + (draft.orderType==="llevar"?Number(draft.taperCost)||0:0))}</span>
+            <span style={{ fontWeight:900, fontSize:17, color:Y }}>{fmt(draftTotal + taperNum)}</span>
           </div>
 
           <button style={{ ...s.btn(), width:"100%", padding:12, fontSize:15, opacity:(!draft.table||!draft.items.length)?0.4:1 }}
@@ -513,6 +539,9 @@ function printOrder(order) {
       <td class="price">S/.${(i.price*i.qty).toFixed(2)}</td>
     </tr>${itemNote}`;
   }).join("");
+  const taperRow = (order.taperCost && Number(order.taperCost) > 0)
+    ? `<tr><td class="qty">🥡</td><td class="item">Taper/Bolsa</td><td class="price">S/.${Number(order.taperCost).toFixed(2)}</td></tr>`
+    : "";
   const notes = order.notes ? `<div class="notes">📝 ${order.notes}</div>` : "";
   const tipo  = order.orderType==="llevar" ? `🥡 LLEVAR — ${order.table}${order.phone?` · ${order.phone}`:""}` : `MESA ${order.table}`;
   const hora  = new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"});
@@ -539,7 +568,7 @@ function printOrder(order) {
   <div class="mesa">${tipo}</div>
   <div class="hora">${fecha} — ${hora}</div>
   <div class="divider"></div>
-  <table>${items}</table>
+  <table>${items}${taperRow}</table>
   ${notes}
   <div class="divider"></div>
   <div class="total-row"><span>TOTAL</span><span>S/.${order.total.toFixed(2)}</span></div>
@@ -550,7 +579,7 @@ function printOrder(order) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  INVENTARIO — estado local propio
+//  INVENTARIO
 // ═══════════════════════════════════════════════════════════════════
 function Inventario({ menu, orders, history, isMobile, s, Y, fmt }) {
   const [invCat,    setInvCat]    = useState("Todos");
@@ -624,6 +653,7 @@ function Inventario({ menu, orders, history, isMobile, s, Y, fmt }) {
                 <div style={{minWidth:0}}>
                   <div style={{fontWeight:800,fontSize:isMobile?12:14,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.name}</div>
                   <div style={{fontSize:10,color:"#555"}}>{item.cat} · {fmt(item.price)}</div>
+                  {item.desc && <div style={{fontSize:10,color:"#444",marginTop:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.desc}</div>}
                 </div>
               </div>
               <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
@@ -658,7 +688,6 @@ export default function App() {
   const [history,       setHistory]       = useState([]);
   const [menu,          setMenu]          = useState(MENU_BASE);
   const [draft,         setDraft]         = useState(newDraft());
-  // catFilter y search solo los usa Carta ahora (local en NuevoPedido)
   const [cartaCatFilter,setCartaCatFilter]= useState("Todos");
   const [showAdd,       setShowAdd]       = useState(false);
   const [newItem,       setNewItem]       = useState({ name:"", cat:"Hamburguesas", price:"" });
@@ -702,7 +731,8 @@ export default function App() {
 
   const submitOrder = async () => {
     if (!draft.table.trim()||!draft.items.length) return;
-    const total = draftTotal+(draft.orderType==="llevar"?Number(draft.taperCost)||0:0);
+    const taperNum = Number(draft.taperCost) || 0;
+    const total = draftTotal + taperNum;
     const order = {id:Date.now().toString(),...draft,total,status:"pendiente",createdAt:new Date().toISOString()};
     await saveOrders([...orders,order]);
     setDraft(newDraft());
@@ -738,7 +768,7 @@ export default function App() {
 
   const addMenuItem = async () => {
     if (!newItem.name.trim()||!newItem.price) return;
-    const item = {id:"CUSTOM_"+Date.now(),cat:newItem.cat,icon:"⭐",name:newItem.name,price:parseFloat(newItem.price)};
+    const item = {id:"CUSTOM_"+Date.now(),cat:newItem.cat,icon:"⭐",name:newItem.name,price:parseFloat(newItem.price),desc:""};
     await saveMenu([...menu,item]);
     setNewItem({name:"",cat:"Hamburguesas",price:""}); setShowAdd(false);
     showToast(`⭐ "${item.name}" agregado`);
@@ -912,6 +942,12 @@ export default function App() {
                     <span style={{color:"#888"}}>{fmt(item.price*item.qty)}</span>
                   </div>
                 ))}
+                {o.taperCost > 0 && (
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"3px 0",borderBottom:"1px solid #222",color:"#aaa"}}>
+                    <span>🥡 Taper/Bolsa</span>
+                    <span>{fmt(Number(o.taperCost))}</span>
+                  </div>
+                )}
               </div>
               {o.notes&&<div style={{fontSize:11,color:"#888",fontStyle:"italic",marginBottom:8}}>📝 {o.notes}</div>}
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -960,6 +996,12 @@ export default function App() {
                   {item.itemNotes&&<div style={{fontSize:11,color:"#999",fontStyle:"italic",paddingLeft:4,marginTop:2,marginBottom:4}}>└ {item.itemNotes}</div>}
                 </div>
               ))}
+              {o.taperCost > 0 && (
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:isMobile?12:13,padding:"3px 0",borderBottom:"1px solid #222",color:"#aaa"}}>
+                  <span>🥡 Taper/Bolsa</span>
+                  <span>{fmt(Number(o.taperCost))}</span>
+                </div>
+              )}
             </div>
             {o.notes&&<div style={{fontSize:11,color:"#888",fontStyle:"italic",marginBottom:8}}>📝 {o.notes}</div>}
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -1016,6 +1058,7 @@ export default function App() {
               <div style={{color:"#555",fontSize:11,marginBottom:6}}>{o.status==="pagado"?`💰 ${timeStr(o.paidAt)}`:`🚫 ${timeStr(o.cancelledAt)}`}</div>
               <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
                 {o.items.map((item,i)=><span key={i} style={{...s.tag("#252525"),fontSize:11}}>{item.qty}x {item.name}</span>)}
+                {o.taperCost > 0 && <span style={{...s.tag("#252525"),fontSize:11}}>🥡 Taper {fmt(Number(o.taperCost))}</span>}
               </div>
             </div>
           ))
@@ -1050,18 +1093,23 @@ export default function App() {
         ))}
       </div>
       {menu.filter(i=>cartaCatFilter==="Todos"||i.cat===cartaCatFilter).map(item=>(
-        <div key={item.id} style={{...s.card,display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5,padding:isMobile?"8px 10px":"9px 12px"}}>
-          <div>
-            <span style={{marginRight:6}}>{item.icon}</span>
-            <span style={{fontWeight:700,fontSize:isMobile?13:14}}>{item.name}</span>
-            {!isMobile&&<span style={{...s.tag("#252525"),marginLeft:8,fontSize:10}}>{item.cat}</span>}
+        <div key={item.id} style={{...s.card,marginBottom:5,padding:isMobile?"8px 10px":"9px 12px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <span style={{marginRight:6}}>{item.icon}</span>
+              <span style={{fontWeight:700,fontSize:isMobile?13:14}}>{item.name}</span>
+              {!isMobile&&<span style={{...s.tag("#252525"),marginLeft:8,fontSize:10}}>{item.cat}</span>}
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{color:Y,fontWeight:900}}>{fmt(item.price)}</span>
+              {item.id.startsWith("CUSTOM_")&&(
+                <button style={{...s.btn("danger"),padding:"2px 7px",fontSize:11}} onClick={()=>deleteMenuItem(item.id)}>✕</button>
+              )}
+            </div>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <span style={{color:Y,fontWeight:900}}>{fmt(item.price)}</span>
-            {item.id.startsWith("CUSTOM_")&&(
-              <button style={{...s.btn("danger"),padding:"2px 7px",fontSize:11}} onClick={()=>deleteMenuItem(item.id)}>✕</button>
-            )}
-          </div>
+          {item.desc && (
+            <div style={{fontSize:11,color:"#555",marginTop:4,paddingLeft:22}}>{item.desc}</div>
+          )}
         </div>
       ))}
     </div>
