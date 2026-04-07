@@ -364,16 +364,18 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
 // ── Componente NuevoPedido extraído para evitar re-renders ───────
 function NuevoPedidoComponent({ draft, setDraft, filteredMenu, addItem, changeQty, updateItemNotes, draftTotal, fmt, search, setSearch, catFilter, setCatFilter, ALL_CATS, s, Y, isDesktop, isMobile, submitOrder, newDraft }) {
   return (
-    <div style={{ display:"grid", gridTemplateColumns: isDesktop ? "1fr 300px" : "1fr", gap: isMobile ? 12 : 14 }}>
-      <div>
-        <div style={s.title}>🍔 CARTA</div>
-        <input style={{ ...s.input, marginBottom:8 }} placeholder="Buscar platillo..." value={search} onChange={e => setSearch(e.target.value)} />
-        <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:10 }}>
-          {["Todos",...ALL_CATS].map(c => (
-            <button key={c} style={{ ...s.btn(catFilter===c?"primary":"secondary"), fontSize: isMobile?9:10, padding: isMobile?"3px 6px":"4px 10px" }} onClick={() => setCatFilter(c)}>{c}</button>
-          ))}
+    <div style={{ display:"grid", gridTemplateColumns: isDesktop ? "1fr 300px" : "1fr", gap: isMobile ? 12 : 14, height: isMobile ? "100vh" : "auto" }}>
+      <div style={{ display:"flex", flexDirection:"column", height: isMobile ? "100%" : "auto", maxHeight: isMobile ? "100vh" : "none" }}>
+        <div style={{ position: isMobile ? "sticky" : "relative", top: 0, zIndex: 10, background:"#111", paddingBottom:10 }}>
+          <div style={s.title}>🍔 CARTA</div>
+          <input style={{ ...s.input, marginBottom:8 }} placeholder="Buscar platillo..." value={search} onChange={e => setSearch(e.target.value)} />
+          <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:10 }}>
+            {["Todos",...ALL_CATS].map(c => (
+              <button key={c} style={{ ...s.btn(catFilter===c?"primary":"secondary"), fontSize: isMobile?9:10, padding: isMobile?"3px 6px":"4px 10px" }} onClick={() => setCatFilter(c)}>{c}</button>
+            ))}
+          </div>
         </div>
-        <div>
+        <div style={{ flex: isMobile ? 1 : "none", overflowY: isMobile ? "auto" : "visible", minHeight: isMobile ? 0 : "auto" }}>
           {filteredMenu.length === 0 && <div style={{ color:"#555", textAlign:"center", padding:20 }}>Sin resultados</div>}
           {filteredMenu.map(item => {
             const inDraft = draft.items.find(i => i.id === item.id);
@@ -1094,9 +1096,12 @@ export default function App() {
               <div style={{ color:"#666", fontSize:11, marginBottom:8 }}>🕐 {timeStr(o.createdAt)} · {minutesAgo(o.createdAt)}</div>
               <div style={{ marginBottom:8 }}>
                 {o.items.map((item,i) => (
-                  <div key={i} style={{ display:"flex", justifyContent:"space-between", fontSize: isMobile?12:13, padding:"3px 0", borderBottom:"1px solid #222" }}>
-                    <span>{item.qty}x {item.name}</span>
-                    <span style={{ color:"#888" }}>{fmt(item.price*item.qty)}</span>
+                  <div key={i}>
+                    <div style={{ display:"flex", justifyContent:"space-between", fontSize: isMobile?12:13, padding:"3px 0", borderBottom:"1px solid #222" }}>
+                      <span>{item.qty}x {item.name}</span>
+                      <span style={{ color:"#888" }}>{fmt(item.price*item.qty)}</span>
+                    </div>
+                    {item.itemNotes && <div style={{ fontSize:11, color:"#999", fontStyle:"italic", paddingLeft:4, marginTop:2, marginBottom:4 }}>└ {item.itemNotes}</div>}
                   </div>
                 ))}
               </div>
@@ -1310,6 +1315,7 @@ export default function App() {
                           {item.qty > 1 && <span style={{ color:"#FFD700", marginRight:4 }}>{item.qty}×</span>}
                           {item.name}
                         </span>
+                        {item.itemNotes && <div style={{ fontSize:11, color:"#FFD700", margintop:3, fontStyle:"italic" }}>📝 {item.itemNotes}</div>}
                       </div>
                     </div>
                   ))}
