@@ -805,9 +805,6 @@ export default function App() {
   const updateItemNotes = (id, itemNotes) => setDraft(d => ({
     ...d, items: d.items.map(i => i.id === id ? { ...i, itemNotes } : i),
   }));
-  const updateItemNotes = (id, itemNotes) => setDraft(d => ({
-    ...d, items: d.items.map(i => i.id === id ? { ...i, itemNotes } : i),
-  }));
   const draftTotal = draft.items.reduce((s, i) => s + i.price * i.qty, 0);
 
   const submitOrder = async () => {
