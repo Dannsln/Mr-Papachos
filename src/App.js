@@ -209,11 +209,16 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
   const eAddItem = (item) => setEItems(prev => {
     const ex = prev.find(i => i.id === item.id);
     return ex ? prev.map(i => i.id === item.id ? { ...i, qty: i.qty + 1 } : i)
-              : [...prev, { ...item, qty: 1 }];
+              : [...prev, { ...item, qty: 1, itemNotes: "" }];
   });
   const eChangeQty = (id, d) => setEItems(prev =>
     prev.map(i => i.id === id ? { ...i, qty: i.qty + d } : i).filter(i => i.qty > 0)
   );
+  // Función para poder actualizar notas DENTRO del modo edición:
+  const eUpdateItemNotes = (id, note) => setEItems(prev =>
+    prev.map(i => i.id === id ? { ...i, itemNotes: note } : i)
+  );
+
   const filtE = menu.filter(i =>
     (eCat === "Todos" || i.cat === eCat) &&
     i.name.toLowerCase().includes(eSearch.toLowerCase())
@@ -269,12 +274,16 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
         {eItems.length === 0
           ? <div style={{ textAlign:"center", color:"#444", padding:"12px 0", fontSize:12 }}>Agrega productos desde abajo</div>
           : eItems.map(item => (
-            <div key={item.id} style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 0", borderBottom:"1px solid #252525" }}>
-              <div style={{ flex:1, fontSize:13, fontWeight:700 }}>{item.name}</div>
-              <button style={{ ...s.btn("danger"), padding:"2px 7px", fontSize:13 }} onClick={() => eChangeQty(item.id,-1)}>−</button>
-              <span style={{ fontWeight:900, minWidth:18, textAlign:"center" }}>{item.qty}</span>
-              <button style={{ ...s.btn(), padding:"2px 7px", fontSize:13 }} onClick={() => eChangeQty(item.id,1)}>+</button>
-              <span style={{ color:Y, fontWeight:900, fontSize:13, minWidth:52, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
+            <div key={item.id} style={{ marginBottom:10, padding:"8px", background:"#0a0a0a", borderRadius:6, border:"1px solid #222" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6, paddingBottom:6, borderBottom:"1px solid #252525" }}>
+                <div style={{ flex:1, fontSize:13, fontWeight:700 }}>{item.name}</div>
+                <button style={{ ...s.btn("danger"), padding:"2px 7px", fontSize:13 }} onClick={() => eChangeQty(item.id,-1)}>−</button>
+                <span style={{ fontWeight:900, minWidth:18, textAlign:"center" }}>{item.qty}</span>
+                <button style={{ ...s.btn(), padding:"2px 7px", fontSize:13 }} onClick={() => eChangeQty(item.id,1)}>+</button>
+                <span style={{ color:Y, fontWeight:900, fontSize:13, minWidth:52, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
+              </div>
+              {/* Aquí se pueden editar las notas de cada item incluso al editar el pedido */}
+              <input style={{ ...s.input, fontSize:11, padding:"4px 6px" }} placeholder="Nota para este item..." value={item.itemNotes || ""} onChange={e => eUpdateItemNotes(item.id, e.target.value)} />
             </div>
           ))
         }
@@ -493,9 +502,9 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
           </div>
 
           <div style={{ marginBottom:12 }}>
-            <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas</label>
+            <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas Generales</label>
             <input style={{ ...s.input, marginTop:4 }} value={draft.notes}
-              onChange={e => setDraft(d => ({...d, notes: e.target.value}))} placeholder="Sin cebolla, extra salsa..." />
+              onChange={e => setDraft(d => ({...d, notes: e.target.value}))} placeholder="Sin cebolla en general..." />
           </div>
 
           {draft.items.length === 0
@@ -512,6 +521,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
                       <button style={{ ...s.btn(), padding:"2px 7px", fontSize:11 }} onClick={() => changeQty(item.id,1)}>+</button>
                       <span style={{ color:Y, fontWeight:900, fontSize:12, minWidth:45, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
                     </div>
+                    {/* Campo para las notas específicas por ítem */}
                     <input style={{ ...s.input, fontSize:11, padding:"4px 6px" }} placeholder="Nota para este item..." value={item.itemNotes || ""} onChange={e => updateItemNotes(item.id, e.target.value)} />
                   </div>
                 ))}
@@ -543,6 +553,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
 function printOrder(order) {
   const win = window.open("", "_blank", "width=220,height=600");
   const items = order.items.map(i => {
+    // Aquí también se envían las notas por plato al formato de impresión térmica
     const itemNote = i.itemNotes ? `<tr><td colspan="3" style="font-size:9px;color:#666;padding-top:0;padding-bottom:2mm;font-style:italic;">📝 ${i.itemNotes}</td></tr>` : "";
     return `<tr><td class="qty">${i.qty}x</td><td class="item">${i.name}</td><td class="price">S/.${(i.price*i.qty).toFixed(2)}</td></tr>${itemNote}`;
   }).join("");
@@ -706,7 +717,7 @@ export default function App() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [mesaModal,     setMesaModal]     = useState(null);
   const [kitchenChecks, setKitchenChecks] = useState({});
-  const [cobrarTarget,  setCobrarTarget]  = useState(null); // { type: 'new' | 'existing', data: draft | order }
+  const [cobrarTarget,  setCobrarTarget]  = useState(null);
 
   useEffect(() => { const t=setTimeout(()=>setSplash(false),2200); return()=>clearTimeout(t); }, []);
 
@@ -989,9 +1000,13 @@ export default function App() {
               </div>
               <div style={{margin:"8px 0"}}>
                 {o.items.map((item,i)=>(
-                  <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"3px 0",borderBottom:"1px solid #222"}}>
-                    <span>{item.qty}x {item.name}</span>
-                    <span style={{color:"#888"}}>{fmt(item.price*item.qty)}</span>
+                  <div key={i} style={{marginBottom:4}}>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"3px 0",borderBottom:"1px solid #222"}}>
+                      <span>{item.qty}x {item.name}</span>
+                      <span style={{color:"#888"}}>{fmt(item.price*item.qty)}</span>
+                    </div>
+                    {/* MOSTRAMOS LA NOTA TAMBIÉN EN EL MODAL DE LA MESA */}
+                    {item.itemNotes&&<div style={{fontSize:11,color:"#999",fontStyle:"italic",paddingLeft:4,marginTop:2}}>└ {item.itemNotes}</div>}
                   </div>
                 ))}
               </div>
@@ -1037,16 +1052,17 @@ export default function App() {
             <div style={{color:"#666",fontSize:11,marginBottom:8}}>🕐 {timeStr(o.createdAt)} · {minutesAgo(o.createdAt)}</div>
             <div style={{marginBottom:8}}>
               {o.items.map((item,i)=>(
-                <div key={i}>
+                <div key={i} style={{marginBottom:4}}>
                   <div style={{display:"flex",justifyContent:"space-between",fontSize:isMobile?12:13,padding:"3px 0",borderBottom:"1px solid #222"}}>
                     <span>{item.qty}x {item.name}</span>
                     <span style={{color:"#888"}}>{fmt(item.price*item.qty)}</span>
                   </div>
-                  {item.itemNotes&&<div style={{fontSize:11,color:"#999",fontStyle:"italic",paddingLeft:4,marginTop:2,marginBottom:4}}>└ {item.itemNotes}</div>}
+                  {/* SE GARANTIZA LA NOTA POR ÍTEM EN PEDIDOS ACTIVOS */}
+                  {item.itemNotes&&<div style={{fontSize:11,color:"#999",fontStyle:"italic",paddingLeft:4,marginTop:2}}>└ {item.itemNotes}</div>}
                 </div>
               ))}
             </div>
-            {o.notes&&<div style={{fontSize:11,color:"#888",fontStyle:"italic",marginBottom:8}}>📝 {o.notes}</div>}
+            {o.notes&&<div style={{fontSize:11,color:"#888",fontStyle:"italic",marginBottom:8}}>📝 Nota general: {o.notes}</div>}
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
               {o.isPaid ? (
                 <button style={{...s.btn("blue"),flex:1,minWidth:isMobile?0:90}} onClick={()=>finishPaidOrder(o.id)}>✅ Entregado</button>
@@ -1068,7 +1084,6 @@ export default function App() {
   const Historial = () => {
     const [expandedDay, setExpandedDay] = useState(new Date().toLocaleDateString("es-PE"));
 
-    // Agrupar historial por fecha
     const historyByDay = {};
     history.forEach(o => {
       const dateObj = new Date(o.paidAt || o.cancelledAt || o.createdAt);
@@ -1133,11 +1148,19 @@ export default function App() {
                           </div>
                           <span style={{color:Y,fontWeight:900, fontSize:14}}>{fmt(o.total)}</span>
                         </div>
-                        <div style={{display:"flex", justifyContent:"space-between"}}>
+                        <div style={{display:"flex", justifyContent:"space-between", marginBottom:6}}>
                           <div style={{color:"#666",fontSize:11}}>
                             {timeStr(o.paidAt || o.cancelledAt || o.createdAt)} 
                             {o.status === "pagado" && ` · ${[pe>0&&`Efe: ${fmt(pe)}`, py>0&&`Yap: ${fmt(py)}`, pt>0&&`Tar: ${fmt(pt)}`].filter(Boolean).join(" | ")}`}
                           </div>
+                        </div>
+                        {/* SE MOSTRARÁN LOS ÍTEMS EN EL HISTORIAL TAMBIÉN, CON SUS NOTAS */}
+                        <div style={{marginTop:6}}>
+                          {o.items.map((item,i) => (
+                            <div key={i} style={{fontSize:11, color:"#ccc", paddingLeft:4, borderLeft:`2px solid ${Y}44`, marginBottom:2}}>
+                              {item.qty}x {item.name} {item.itemNotes ? <span style={{color:Y, fontStyle:"italic"}}> (📝 {item.itemNotes})</span> : ""}
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )
@@ -1200,7 +1223,6 @@ export default function App() {
     const sorted=[...orders].sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt));
     const toggleCheck=(orderId,itemIdx)=>{setKitchenChecks(prev=>{const oc=prev[orderId]||{};return{...prev,[orderId]:{...oc,[itemIdx]:!oc[itemIdx]}};});};
     const allDone=(order)=>{const c=kitchenChecks[order.id]||{};return order.items.every((_,i)=>c[i]);};
-    const resetOrder=(orderId)=>{setKitchenChecks(prev=>({...prev,[orderId]:{}}));};
     
     if(sorted.length===0) return <div style={{textAlign:"center",padding:60,color:"#444"}}><div style={{fontSize:56}}>👨‍🍳</div><div style={{marginTop:12,fontSize:16}}>Sin pedidos en cocina</div></div>;
     return (
@@ -1236,11 +1258,12 @@ export default function App() {
                         {item.qty>1&&<span style={{color:Y,marginRight:4}}>{item.qty}×</span>}
                         {item.name}
                       </span>
+                      {/* NOTA POR ITEM PARA QUE COCINA LO VEA DIRECTAMENTE AQUÍ */}
                       {item.itemNotes&&<div style={{fontSize:11,color:Y,marginTop:3,fontStyle:"italic"}}>📝 {item.itemNotes}</div>}
                     </div>
                   </div>
                 ))}
-                {order.notes&&<div style={{marginTop:8,padding:"8px 10px",background:"#1a1500",borderRadius:8,border:"1px solid #3a3000",fontSize:12,color:"#e6c200"}}>📝 {order.notes}</div>}
+                {order.notes&&<div style={{marginTop:8,padding:"8px 10px",background:"#1a1500",borderRadius:8,border:"1px solid #3a3000",fontSize:12,color:"#e6c200"}}>📝 General: {order.notes}</div>}
               </div>
             );
           })}
