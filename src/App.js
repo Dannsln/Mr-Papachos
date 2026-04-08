@@ -1019,17 +1019,29 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay }) {
       <div style={{...s.row, marginBottom:14}}>
         <div style={{...s.title, marginBottom:0}}>📋 HISTORIAL POR DÍAS</div>
         <div style={{display:"flex", gap:6}}>
-          <input type="date" style={{...s.input, padding:"6px 10px", width:"auto"}} value={histDate} onChange={e => {setHistDate(e.target.value); setExpandedDay(null);}} />
-          {histDate && <button style={s.btn("secondary")} onClick={()=>setHistDate("")}>✕</button>}
+          <input 
+            type="date" 
+            style={{...s.input, padding:"6px 10px", width:"auto"}} 
+            value={histDate} 
+            onChange={e => {
+              const val = e.target.value;
+              setHistDate(val);
+              // Al elegir una fecha, buscamos su nombre formateado para expandirlo automáticamente
+              const match = Object.values(historyByDay).find(x => x.sortKey === val);
+              setExpandedDay(match ? match.date : null);
+            }} 
+          />
+          {histDate && <button style={s.btn("secondary")} onClick={()=>{setHistDate(""); setExpandedDay(null);}}>✕</button>}
         </div>
       </div>
       {daysList.length === 0
         ? <div style={{textAlign:"center", padding:60, color:"#444"}}><div style={{fontSize:48}}>📋</div><div>Sin registros</div></div>
         : daysList.map(d => {
-          const isExpanded = expandedDay === d.date || daysList.length === 1;
+          // CORRECCIÓN: Ahora solo depende de si el usuario ha tocado este día, sin forzarlo
+          const isExpanded = expandedDay === d.date; 
           return (
             <div key={d.date} style={{...s.card, marginBottom:12, padding:0, overflow:"hidden"}}>
-              <div style={{padding:"14px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", background: isExpanded ? "#222" : "transparent"}} onClick={() => setExpandedDay(isExpanded && daysList.length > 1 ? null : d.date)}>
+              <div style={{padding:"14px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", background: isExpanded ? "#222" : "transparent"}} onClick={() => setExpandedDay(isExpanded ? null : d.date)}>
                 <div>
                   <div style={{fontWeight:900, fontSize:16, color:Y}}>📅 {d.date}</div>
                   <div style={{fontSize:11, color:"#888", marginTop:4}}>
