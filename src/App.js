@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { initializeApp, getApps } from "firebase/app";
 import {
   getFirestore,
-  doc, setDoc, getDoc,
+  doc, setDoc, getDoc, deleteDoc,
   collection, getDocs, addDoc,
   query, orderBy, limit,
   onSnapshot
@@ -24,6 +24,7 @@ const FS = {
   ordersRef:  () => doc(db, "mrpapachos", "orders"),
   menuRef:    () => doc(db, "mrpapachos", "customMenu"),
   historyCol: () => collection(db, "mrpapachos_historial"),
+  gastosCol:  () => collection(db, "mrpapachos_gastos"),
   async getOrders() {
     try { const s = await getDoc(FS.ordersRef()); return s.exists() ? (s.data().list ?? []) : []; } catch { return []; }
   },
@@ -39,6 +40,12 @@ const FS = {
   async addHistory(order) {
     try { await addDoc(FS.historyCol(), order); } catch (e) { console.error(e); }
   },
+  async addGasto(gasto) {
+    try { await addDoc(FS.gastosCol(), gasto); } catch (e) { console.error(e); }
+  },
+  async deleteGasto(id) {
+    try { await deleteDoc(doc(db, "mrpapachos_gastos", id)); } catch (e) { console.error(e); }
+  }
 };
 
 // ─── MENÚ BASE — con descripciones ────────────────────────────────────────────
@@ -166,6 +173,8 @@ const MENU_BASE = [
   { id:"G10",  cat:"Gaseosas",          icon:"🥤", name:"Coca Cola 600ml",           price:4,    desc:"Coca Cola 600ml" },
   { id:"O01",  cat:"Otros",             icon:"☕", name:"Café Pasado",               price:4,    desc:"Café pasado tradicional" },
   { id:"O02",  cat:"Otros",             icon:"🍵", name:"Infusiones",                price:3,    desc:"Variedad de infusiones calientes" },
+  { id:"EX01", cat:"Extras",            icon:"🍟", name:"Porción de Papas",          price:6,    desc:"Porción extra de papas fritas" },
+  { id:"EX02", cat:"Extras",            icon:"🥗", name:"Porción de Ensalada",       price:4,    desc:"Porción extra de ensalada" },
 ];
 
 const ALL_CATS = [...new Set(MENU_BASE.map(i => i.cat))];
@@ -696,7 +705,10 @@ function Inventario({ menu, orders, history, isMobile, s, Y, fmt }) {
 //  COMPONENTES DE PESTAÑAS (Extraídos de App para evitar pérdida de foco)
 // ═══════════════════════════════════════════════════════════════════
 
-function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, setCobrarTarget, isMobile, s, Y }) {
+function DashboardComponent({ orders, history, gastos, handleAddGasto, handleDeleteGasto, fmt, setTab, finishPaidOrder, setCobrarTarget, isMobile, s, Y }) {
+  const [descGasto, setDescGasto] = useState("");
+  const [montoGasto, setMontoGasto] = useState("");
+
   const today = new Date().toDateString();
   const paidArchivedToday = history.filter(o => o.status==="pagado" && new Date(o.paidAt).toDateString()===today);
   const paidActiveToday   = orders.filter(o => o.isPaid && new Date(o.paidAt).toDateString()===today);
@@ -709,17 +721,25 @@ function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, set
   const yapeRev   = allPaidToday.reduce((sum,o) => sum + getPay(o,"yape"), 0);
   const cardRev   = allPaidToday.reduce((sum,o) => sum + getPay(o,"tarjeta"), 0);
 
+  // Gastos de Hoy y Caja Neta
+  const gastosTodayList = gastos.filter(g => new Date(g.createdAt).toDateString() === today);
+  const totalGastosToday = gastosTodayList.reduce((sum, g) => sum + (Number(g.monto) || 0), 0);
+  const cajaFinal = todayRev - totalGastosToday;
+
   return (
     <div>
-      <div style={s.title}>📊 RESUMEN DEL DÍA</div>
+      <div style={s.title}>📊 CUADRE DE CAJA</div>
       <div style={s.grid(isMobile ? 130 : 140)}>
         <div style={s.statCard}><div style={s.statNum}>{orders.length}</div><div style={s.statLbl}>Activos</div></div>
         <div style={s.statCard}><div style={s.statNum}>{allPaidToday.length}</div><div style={s.statLbl}>Pagados hoy</div></div>
-        <div style={{...s.statCard, border:`1px solid ${Y}55`}}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(todayRev)}</div><div style={s.statLbl}>Recaudado hoy</div></div>
+        <div style={{...s.statCard, border:`1px solid ${Y}55`}}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(todayRev)}</div><div style={s.statLbl}>Ingresos (Bruto)</div></div>
+        <div style={{...s.statCard, border:`1px solid #e74c3c55`}}><div style={{...s.statNum, fontSize:isMobile?16:20, color:"#e74c3c"}}>- {fmt(totalGastosToday)}</div><div style={s.statLbl}>Gastos / Insumos</div></div>
+        <div style={{...s.statCard, border:`1px solid #27ae60`, background:"#0a1f10"}}><div style={{...s.statNum, fontSize:isMobile?16:20, color:"#27ae60"}}>{fmt(cajaFinal)}</div><div style={{...s.statLbl, color:"#2ecc71", fontWeight:900}}>CAJA NETA</div></div>
         <div style={s.statCard}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(totalRev)}</div><div style={s.statLbl}>Total histórico</div></div>
       </div>
+      
       {allPaidToday.length > 0 && (
-        <div style={{...s.card, marginTop:4}}>
+        <div style={{...s.card, marginTop:8}}>
           <div style={{fontWeight:800, marginBottom:8, color:"#aaa", fontSize:11, textTransform:"uppercase", letterSpacing:1}}>Desglose de Ingresos Hoy</div>
           <div style={s.row}>
             <div style={{textAlign:"center", flex:1}}><div style={{color:"#27ae60", fontWeight:900, fontSize:isMobile?13:16}}>💵 {fmt(cashRev)}</div><div style={{fontSize:10, color:"#666"}}>Efectivo</div></div>
@@ -730,7 +750,52 @@ function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, set
           </div>
         </div>
       )}
-      {orders.length > 0 ? (
+
+      {/* SECCIÓN DE GASTOS / INSUMOS */}
+      <div style={{...s.card, marginTop:14}}>
+        <div style={{...s.title, fontSize:16, marginBottom:10}}>🛒 REGISTRAR INSUMO / GASTO</div>
+        <div style={{display:"flex", gap:8, flexWrap:"wrap"}}>
+          <input 
+            style={{...s.input, flex:2, minWidth:120}} 
+            placeholder="Nombre del insumo (Ej. Aceite, Papas...)" 
+            value={descGasto} 
+            onChange={e => setDescGasto(e.target.value)} 
+          />
+          <input 
+            style={{...s.input, flex:1, minWidth:80}} 
+            type="number" min="0" step="0.5" 
+            placeholder="S/. 0.00" 
+            value={montoGasto} 
+            onChange={e => setMontoGasto(e.target.value)} 
+          />
+          <button 
+            style={{...s.btn("danger"), flex:1, minWidth:100}} 
+            onClick={() => { handleAddGasto(descGasto, montoGasto); setDescGasto(""); setMontoGasto(""); }}
+          >
+            📥 Registrar
+          </button>
+        </div>
+
+        {gastosTodayList.length > 0 && (
+          <div style={{marginTop:14}}>
+            <div style={{fontSize:11, color:"#888", marginBottom:6, textTransform:"uppercase", letterSpacing:1}}>Gastos de Hoy</div>
+            {gastosTodayList.map(g => (
+              <div key={g._fid} style={{display:"flex", justifyContent:"space-between", alignItems:"center", background:"#111", padding:"8px 12px", borderRadius:6, marginBottom:4, border:"1px solid #222"}}>
+                <div style={{fontSize:13}}><span style={{marginRight:8}}>💸</span>{g.descripcion}</div>
+                <div style={{display:"flex", alignItems:"center", gap:10}}>
+                  <span style={{color:"#e74c3c", fontWeight:900}}>- {fmt(g.monto)}</span>
+                  <button 
+                    style={{background:"transparent", border:"none", color:"#555", cursor:"pointer", padding:"0 5px", fontSize:18, fontWeight:"bold"}} 
+                    onClick={() => handleDeleteGasto(g._fid)}
+                  >×</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {orders.length > 0 && (
         <>
           <div style={{...s.title, fontSize:isMobile?14:16, marginTop:14}}>🔥 PEDIDOS ACTIVOS</div>
           {orders.slice(0,4).map(o => (
@@ -754,12 +819,6 @@ function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, set
           ))}
           {orders.length > 4 && <button style={{...s.btn("secondary"), marginTop:4}} onClick={()=>setTab("pedidos")}>Ver todos ({orders.length}) →</button>}
         </>
-      ) : (
-        <div style={{textAlign:"center", padding:isMobile?36:50, color:"#444"}}>
-          <div style={{fontSize:52}}>🍔</div>
-          <div style={{marginTop:8, color:"#666"}}>Sin pedidos activos</div>
-          <button style={{...s.btn(), marginTop:14, padding:"10px 24px"}} onClick={()=>setTab("mesas")}>Ver Mesas</button>
-        </div>
       )}
     </div>
   );
@@ -1114,6 +1173,7 @@ export default function App() {
   const [tab,            setTab]            = useState("dashboard");
   const [orders,         setOrders]         = useState([]);
   const [history,        setHistory]        = useState([]);
+  const [gastos,         setGastos]         = useState([]); // NUEVO ESTADO PARA GASTOS
   const [menu,           setMenu]           = useState(MENU_BASE);
   const [draft,          setDraft]          = useState(newDraft());
   const [cartaCatFilter, setCartaCatFilter] = useState("Todos");
@@ -1133,7 +1193,7 @@ export default function App() {
 
   // Sincronización en tiempo real
   useEffect(() => {
-    let unsubOrders, unsubHistory, unsubMenu;
+    let unsubOrders, unsubHistory, unsubMenu, unsubGastos;
 
     const setupListeners = () => {
       unsubOrders = onSnapshot(FS.ordersRef(), (docSnap) => {
@@ -1152,6 +1212,12 @@ export default function App() {
         setHistory(hist);
       });
 
+      // LECTURA DE GASTOS EN TIEMPO REAL
+      const qGastos = query(FS.gastosCol(), orderBy("createdAt", "desc"), limit(200));
+      unsubGastos = onSnapshot(qGastos, (snapshot) => {
+        setGastos(snapshot.docs.map(d => ({ _fid: d.id, ...d.data() })));
+      });
+
       setLoaded(true);
     };
 
@@ -1161,6 +1227,7 @@ export default function App() {
       if (unsubOrders) unsubOrders();
       if (unsubHistory) unsubHistory();
       if (unsubMenu) unsubMenu();
+      if (unsubGastos) unsubGastos();
     };
   }, []);
 
@@ -1192,7 +1259,7 @@ export default function App() {
       setCobrarTarget({ type: 'new', data: { id:Date.now().toString(), ...draft, total, createdAt:new Date().toISOString() } });
     } else {
       const order = { id:Date.now().toString(), ...draft, total, isPaid: false, status:"pendiente", createdAt:new Date().toISOString() };
-      setOrders(prev => [...prev, order]); // Cambio inmediato optimista
+      setOrders(prev => [...prev, order]); 
       await saveOrders([...orders,order]);
       setDraft(newDraft());
       showToast(`📝 Pedido enviado a cocina`);
@@ -1203,7 +1270,7 @@ export default function App() {
   const handleConfirmCobro = async (payments) => {
     if (!cobrarTarget) return;
     const target = cobrarTarget;
-    setCobrarTarget(null); // ¡Cierra el modal de inmediato para impedir el doble clic!
+    setCobrarTarget(null);
 
     if (target.type === 'new') {
       const order = { ...target.data, isPaid: true, status: "pendiente", payments, paidAt: new Date().toISOString() };
@@ -1276,6 +1343,18 @@ export default function App() {
     showToast(`⭐ "${item.name}" agregado`);
   };
   const deleteMenuItem = async (id) => { await saveMenu(menu.filter(i=>i.id!==id)); showToast("🗑️ Platillo eliminado","#e74c3c"); };
+
+  // FUNCIONES DE GASTOS
+  const handleAddGasto = async (descripcion, monto) => {
+    if (!descripcion.trim() || !monto) return;
+    await FS.addGasto({ descripcion, monto: Number(monto), createdAt: new Date().toISOString() });
+    showToast("💸 Gasto registrado", "#e74c3c");
+  };
+
+  const handleDeleteGasto = async (id) => {
+    await FS.deleteGasto(id);
+    showToast("🗑️ Gasto eliminado", "#888");
+  };
 
   if (splash) return (
     <div style={{background:"#111",height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20}}>
@@ -1388,7 +1467,8 @@ export default function App() {
         )}
 
         <div style={s.content}>
-          {tab==="dashboard"  && <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} />}
+          {/* AQUÍ SE PASAN LAS NUEVAS FUNCIONES DE GASTOS AL DASHBOARD */}
+          {tab==="dashboard"  && <DashboardComponent orders={orders} history={history} gastos={gastos} handleAddGasto={handleAddGasto} handleDeleteGasto={handleDeleteGasto} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} />}
           {tab==="mesas"      && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} isMobile={isMobile} s={s} Y={Y} fmt={fmt} MESAS={MESAS} />}
           {tab==="nuevo"      && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateItemNotes={updateItemNotes} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} />}
           {tab==="pedidos"    && <PedidosComponent orders={orders} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
