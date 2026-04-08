@@ -43,7 +43,7 @@ const FS = {
 
 // ─── MENÚ BASE — con descripciones ────────────────────────────────────────────
 const MENU_BASE = [
-  { id:"H01",  cat:"Hamburguesas",      icon:"🍔", name:"La Silvestre",              price:7,    desc:"Carne, papa frita, ensalada" },
+  { id:"H01",  cat:"Hamburguesas",      icon:"🍔", name:"La Silvestre",             price:7,    desc:"Carne, papa frita, ensalada" },
   { id:"H02",  cat:"Hamburguesas",      icon:"🍔", name:"La Piolin",                 price:8,    desc:"Carne o pollo, huevo, papa frita, ensalada" },
   { id:"H03",  cat:"Hamburguesas",      icon:"🍔", name:"La Speedy Gonzales",        price:10,   desc:"Carne, huevo, hot dog, papa frita, ensalada" },
   { id:"H04",  cat:"Hamburguesas",      icon:"🍔", name:"La Cajacha",                price:12,   desc:"Carne, huevo, queso, hot dog, papa frita, ensalada" },
@@ -175,6 +175,9 @@ const MESAS    = [1, 2, 3, 4, 5, 6];
 
 const getPay = (o, type) => o.payments ? (Number(o.payments[type]) || 0) : (o.payment === type ? o.total : 0);
 
+const timeStr    = (iso) => { if(!iso)return""; const d=new Date(iso); return d.toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"}); };
+const minutesAgo = (iso) => { const m=Math.floor((Date.now()-new Date(iso))/60000); if(m<1)return"ahora"; if(m<60)return`hace ${m}m`; return`hace ${Math.floor(m/60)}h ${m%60}m`; };
+
 function useWindowWidth() {
   const [w, setW] = useState(typeof window !== "undefined" ? window.innerWidth : 1024);
   useEffect(() => {
@@ -267,15 +270,20 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
         {eItems.length === 0
           ? <div style={{ textAlign:"center", color:"#444", padding:"12px 0", fontSize:12 }}>Agrega productos desde abajo</div>
           : eItems.map(item => (
-            <div key={item.id} style={{ marginBottom:10, padding:"8px", background:"#0a0a0a", borderRadius:6, border:"1px solid #222" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6, paddingBottom:6, borderBottom:"1px solid #252525" }}>
-                <div style={{ flex:1, fontSize:13, fontWeight:700 }}>{item.name}</div>
-                <button style={{ ...s.btn("danger"), padding:"2px 7px", fontSize:13 }} onClick={() => eChangeQty(item.id,-1)}>−</button>
-                <span style={{ fontWeight:900, minWidth:18, textAlign:"center" }}>{item.qty}</span>
-                <button style={{ ...s.btn(), padding:"2px 7px", fontSize:13 }} onClick={() => eChangeQty(item.id,1)}>+</button>
-                <span style={{ color:Y, fontWeight:900, fontSize:13, minWidth:52, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
+            <div key={item.id} style={{ marginBottom:10, padding:"10px", background:"#0a0a0a", borderRadius:8, border:"1px solid #222" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8, paddingBottom:8, borderBottom:"1px solid #252525" }}>
+                <div style={{ flex:1, fontSize:14, fontWeight:700 }}>{item.name}</div>
+                <button style={{ ...s.btn("danger"), padding:"4px 10px", fontSize:14 }} onClick={() => eChangeQty(item.id,-1)}>−</button>
+                <span style={{ fontWeight:900, minWidth:20, textAlign:"center", fontSize:14 }}>{item.qty}</span>
+                <button style={{ ...s.btn(), padding:"4px 10px", fontSize:14 }} onClick={() => eChangeQty(item.id,1)}>+</button>
+                <span style={{ color:Y, fontWeight:900, fontSize:14, minWidth:55, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
               </div>
-              <input style={{ ...s.input, fontSize:11, padding:"4px 6px" }} placeholder="Nota para este item..." value={item.itemNotes || ""} onChange={e => eUpdateItemNotes(item.id, e.target.value)} />
+              <input 
+                style={{ ...s.input, fontSize:13, padding:"8px 10px", marginTop:4 }} 
+                placeholder="Escribir nota para este item..." 
+                value={item.itemNotes || ""} 
+                onChange={e => eUpdateItemNotes(item.id, e.target.value)} 
+              />
             </div>
           ))
         }
@@ -499,19 +507,24 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
 
           {draft.items.length === 0
             ? <div style={{ textAlign:"center", color:"#444", padding:"20px 0", fontSize:13 }}>Toca un platillo para agregarlo →</div>
-            : <div style={{ maxHeight: isDesktop ? 250 : 200, overflowY:"auto", marginBottom:8 }}>
+            : <div style={{ maxHeight: isDesktop ? 400 : "none", overflowY: isDesktop ? "auto" : "visible", marginBottom:8 }}>
                 {draft.items.map(item => (
-                  <div key={item.id} style={{ marginBottom:10, padding:"8px", background:"#0a0a0a", borderRadius:6, border:"1px solid #222" }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6, paddingBottom:6, borderBottom:"1px solid #252525" }}>
+                  <div key={item.id} style={{ marginBottom:10, padding:"10px", background:"#0a0a0a", borderRadius:8, border:"1px solid #222" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8, paddingBottom:8, borderBottom:"1px solid #252525" }}>
                       <div style={{ flex:1 }}>
-                        <div style={{ fontWeight:700, fontSize:13 }}>{item.name}</div>
+                        <div style={{ fontWeight:700, fontSize:14 }}>{item.name}</div>
                       </div>
-                      <button style={{ ...s.btn("danger"), padding:"2px 7px", fontSize:11 }} onClick={() => changeQty(item.id,-1)}>−</button>
-                      <span style={{ fontWeight:900, minWidth:14, textAlign:"center", fontSize:12 }}>{item.qty}</span>
-                      <button style={{ ...s.btn(), padding:"2px 7px", fontSize:11 }} onClick={() => changeQty(item.id,1)}>+</button>
-                      <span style={{ color:Y, fontWeight:900, fontSize:12, minWidth:45, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
+                      <button style={{ ...s.btn("danger"), padding:"4px 10px", fontSize:14 }} onClick={() => changeQty(item.id,-1)}>−</button>
+                      <span style={{ fontWeight:900, minWidth:20, textAlign:"center", fontSize:14 }}>{item.qty}</span>
+                      <button style={{ ...s.btn(), padding:"4px 10px", fontSize:14 }} onClick={() => changeQty(item.id,1)}>+</button>
+                      <span style={{ color:Y, fontWeight:900, fontSize:14, minWidth:55, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
                     </div>
-                    <input style={{ ...s.input, fontSize:11, padding:"4px 6px" }} placeholder="Nota para este item..." value={item.itemNotes || ""} onChange={e => updateItemNotes(item.id, e.target.value)} />
+                    <input 
+                      style={{ ...s.input, fontSize:13, padding:"8px 10px", marginTop: 4 }} 
+                      placeholder="Escribir nota para este item..." 
+                      value={item.itemNotes || ""} 
+                      onChange={e => updateItemNotes(item.id, e.target.value)} 
+                    />
                   </div>
                 ))}
               </div>
@@ -680,6 +693,415 @@ function Inventario({ menu, orders, history, isMobile, s, Y, fmt }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+//  COMPONENTES DE PESTAÑAS (Extraídos de App para evitar pérdida de foco)
+// ═══════════════════════════════════════════════════════════════════
+
+function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, setCobrarTarget, isMobile, s, Y }) {
+  const today = new Date().toDateString();
+  const paidArchivedToday = history.filter(o => o.status==="pagado" && new Date(o.paidAt).toDateString()===today);
+  const paidActiveToday   = orders.filter(o => o.isPaid && new Date(o.paidAt).toDateString()===today);
+  const allPaidToday      = [...paidArchivedToday, ...paidActiveToday];
+
+  const todayRev  = allPaidToday.reduce((sum,o) => sum + o.total, 0);
+  const totalRev  = history.filter(o => o.status==="pagado").reduce((sum,o) => sum + o.total, 0) + paidActiveToday.reduce((sum,o) => sum + o.total, 0);
+  
+  const cashRev   = allPaidToday.reduce((sum,o) => sum + getPay(o,"efectivo"), 0);
+  const yapeRev   = allPaidToday.reduce((sum,o) => sum + getPay(o,"yape"), 0);
+  const cardRev   = allPaidToday.reduce((sum,o) => sum + getPay(o,"tarjeta"), 0);
+
+  return (
+    <div>
+      <div style={s.title}>📊 RESUMEN DEL DÍA</div>
+      <div style={s.grid(isMobile ? 130 : 140)}>
+        <div style={s.statCard}><div style={s.statNum}>{orders.length}</div><div style={s.statLbl}>Activos</div></div>
+        <div style={s.statCard}><div style={s.statNum}>{allPaidToday.length}</div><div style={s.statLbl}>Pagados hoy</div></div>
+        <div style={{...s.statCard, border:`1px solid ${Y}55`}}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(todayRev)}</div><div style={s.statLbl}>Recaudado hoy</div></div>
+        <div style={s.statCard}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(totalRev)}</div><div style={s.statLbl}>Total histórico</div></div>
+      </div>
+      {allPaidToday.length > 0 && (
+        <div style={{...s.card, marginTop:4}}>
+          <div style={{fontWeight:800, marginBottom:8, color:"#aaa", fontSize:11, textTransform:"uppercase", letterSpacing:1}}>Desglose de Ingresos Hoy</div>
+          <div style={s.row}>
+            <div style={{textAlign:"center", flex:1}}><div style={{color:"#27ae60", fontWeight:900, fontSize:isMobile?13:16}}>💵 {fmt(cashRev)}</div><div style={{fontSize:10, color:"#666"}}>Efectivo</div></div>
+            <div style={{width:1, background:"#333", height:36}}/>
+            <div style={{textAlign:"center", flex:1}}><div style={{color:"#8e44ad", fontWeight:900, fontSize:isMobile?13:16}}>💜 {fmt(yapeRev)}</div><div style={{fontSize:10, color:"#666"}}>Yape</div></div>
+            <div style={{width:1, background:"#333", height:36}}/>
+            <div style={{textAlign:"center", flex:1}}><div style={{color:"#2980b9", fontWeight:900, fontSize:isMobile?13:16}}>💳 {fmt(cardRev)}</div><div style={{fontSize:10, color:"#666"}}>Tarjeta</div></div>
+          </div>
+        </div>
+      )}
+      {orders.length > 0 ? (
+        <>
+          <div style={{...s.title, fontSize:isMobile?14:16, marginTop:14}}>🔥 PEDIDOS ACTIVOS</div>
+          {orders.slice(0,4).map(o => (
+            <div key={o.id} style={s.card}>
+              <div style={s.row}>
+                <div>
+                  <span style={{fontWeight:900, fontSize:isMobile?15:17}}>{o.orderType==="llevar" ? `🥡 ${o.table}` : `Mesa ${o.table}`}</span>
+                  <span style={{...s.tag("#252525"), marginLeft:8, fontSize:10}}>{minutesAgo(o.createdAt)}</span>
+                  {o.isPaid && <span style={{...s.tag("#1e5c2e"), marginLeft:6}}>✅ Pagado</span>}
+                </div>
+                <div style={{display:"flex", alignItems:"center", gap:8}}>
+                  <span style={{color:Y, fontWeight:900}}>{fmt(o.total)}</span>
+                  {o.isPaid ? (
+                    <button style={{...s.btn("blue"), padding:isMobile?"6px 9px":"8px 12px"}} onClick={()=>finishPaidOrder(o.id)}>✅ Entregado</button>
+                  ) : (
+                    <button style={{...s.btn("success"), padding:isMobile?"6px 9px":"8px 12px"}} onClick={()=>setCobrarTarget({type:'existing', data:o})}>💰 Cobrar</button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+          {orders.length > 4 && <button style={{...s.btn("secondary"), marginTop:4}} onClick={()=>setTab("pedidos")}>Ver todos ({orders.length}) →</button>}
+        </>
+      ) : (
+        <div style={{textAlign:"center", padding:isMobile?36:50, color:"#444"}}>
+          <div style={{fontSize:52}}>🍔</div>
+          <div style={{marginTop:8, color:"#666"}}>Sin pedidos activos</div>
+          <button style={{...s.btn(), marginTop:14, padding:"10px 24px"}} onClick={()=>setTab("mesas")}>Ver Mesas</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, finishPaidOrder, setCobrarTarget, setEditingOrder, printOrder, cancelOrder, isMobile, s, Y, fmt, MESAS }) {
+  const llevarOrders = orders.filter(o => o.orderType==="llevar");
+  return (
+    <div>
+      <div style={{...s.row, marginBottom:14}}>
+        <div style={s.title}>🪑 MESAS</div>
+        <button style={s.btn()} onClick={() => { setDraft({...newDraft(), orderType:"llevar", payTiming:"ahora"}); setTab("nuevo"); }}>🥡 Para llevar</button>
+      </div>
+      <div style={{display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(3, 1fr)", gap:12, marginBottom:20}}>
+        {MESAS.map(num => {
+          const mesaOrders = orders.filter(o => o.table===String(num) && o.orderType!=="llevar");
+          const ocupada = mesaOrders.length > 0;
+          const total = mesaOrders.reduce((sum,o) => sum + o.total, 0);
+          return (
+            <div key={num} onClick={() => setMesaModal(num)} style={{background:ocupada?`${Y}15`:"#1c1c1c", border:`2px solid ${ocupada?Y:"#2a2a2a"}`, borderRadius:14, padding:16, cursor:"pointer", textAlign:"center", transition:"all .2s", position:"relative"}}>
+              {ocupada && <div style={{position:"absolute", top:8, right:8, width:10, height:10, borderRadius:"50%", background:"#27ae60"}}/>}
+              <div style={{fontSize:36, marginBottom:6}}>🪑</div>
+              <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:22, color:ocupada?Y:"#555", letterSpacing:1}}>MESA {num}</div>
+              <div style={{fontSize:11, color:ocupada?"#aaa":"#444", marginTop:4}}>{ocupada?`${mesaOrders.length} pedido${mesaOrders.length>1?"s":""} · ${fmt(total)}`:"Libre"}</div>
+            </div>
+          );
+        })}
+      </div>
+      {llevarOrders.length > 0 && (
+        <div>
+          <div style={{...s.title, fontSize:16}}>🥡 PARA LLEVAR ({llevarOrders.length})</div>
+          {llevarOrders.map(o => (
+            <div key={o.id} style={{...s.card, borderLeft:`4px solid #3498db`}}>
+              <div style={s.row}>
+                <div><span style={{fontWeight:900}}>🥡 {o.table}</span>{o.isPaid&&<span style={{...s.tag("#1e5c2e"), marginLeft:6}}>✅ Pagado</span>}</div>
+                <span style={{color:Y, fontWeight:900}}>{fmt(o.total)}</span>
+              </div>
+              <div style={{display:"flex", gap:6, marginTop:8, flexWrap:"wrap"}}>
+                {o.isPaid ? (
+                  <button style={{...s.btn("blue"), flex:1}} onClick={() => finishPaidOrder(o.id)}>✅ Entregado</button>
+                ) : (
+                  <button style={{...s.btn("success"), flex:1}} onClick={() => setCobrarTarget({type:'existing', data:o})}>💰 Cobrar</button>
+                )}
+                <button style={{...s.btn("warn"), flex:1}} onClick={() => setEditingOrder(o)}>✏️ Editar</button>
+                <button style={s.btn("secondary")} onClick={() => printOrder(o)}>🖨️</button>
+                <button style={{...s.btn("danger"), padding:"7px 10px"}} onClick={() => cancelOrder(o.id)}>❌</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MesaModalComponent({ num, orders, setDraft, newDraft, onClose, setTab, finishPaidOrder, setCobrarTarget, setEditingOrder, printOrder, isMobile, s, Y, fmt }) {
+  const mesaOrders = orders.filter(o => o.table===String(num) && o.orderType!=="llevar");
+  return (
+    <div style={s.modal} onClick={e => e.stopPropagation()}>
+      <div style={{...s.row, marginBottom:14}}>
+        <div style={{color:Y, fontFamily:"'Bebas Neue',cursive", fontSize:22}}>🪑 MESA {num}</div>
+        <button style={{...s.btn("secondary"), padding:"4px 10px"}} onClick={onClose}>✕</button>
+      </div>
+      {mesaOrders.length === 0
+        ? <div style={{textAlign:"center", padding:30, color:"#555"}}><div style={{fontSize:32}}>🟢</div><div style={{marginTop:8}}>Mesa libre</div></div>
+        : mesaOrders.map(o => (
+          <div key={o.id} style={{...s.card, borderLeft:`3px solid ${Y}`}}>
+            <div style={s.row}>
+              <div><span style={{fontSize:12, color:"#888"}}>{minutesAgo(o.createdAt)}</span>{o.isPaid&&<span style={{...s.tag("#1e5c2e"), marginLeft:6}}>✅ Pagado</span>}</div>
+              <span style={{color:Y, fontWeight:900}}>{fmt(o.total)}</span>
+            </div>
+            <div style={{margin:"8px 0"}}>
+              {o.items.map((item,i) => (
+                <div key={i} style={{marginBottom:4}}>
+                  <div style={{display:"flex", justifyContent:"space-between", fontSize:13, padding:"3px 0", borderBottom:"1px solid #222"}}>
+                    <span>{item.qty}x {item.name}</span>
+                    <span style={{color:"#888"}}>{fmt(item.price*item.qty)}</span>
+                  </div>
+                  {item.itemNotes && <div style={{fontSize:11, color:"#999", fontStyle:"italic", paddingLeft:4, marginTop:2}}>└ {item.itemNotes}</div>}
+                </div>
+              ))}
+            </div>
+            {o.notes && <div style={{fontSize:11, color:"#888", fontStyle:"italic", marginBottom:8}}>📝 {o.notes}</div>}
+            <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
+              {o.isPaid ? (
+                <button style={{...s.btn("blue"), flex:1}} onClick={() => { finishPaidOrder(o.id); onClose(); }}>✅ Finalizar</button>
+              ) : (
+                <button style={{...s.btn("success"), flex:1}} onClick={() => { setCobrarTarget({type:'existing', data:o}); onClose(); }}>💰 Cobrar</button>
+              )}
+              <button style={{...s.btn("warn"), flex:1}} onClick={() => { setEditingOrder(o); onClose(); }}>✏️ Editar</button>
+              <button style={s.btn("secondary")} onClick={() => printOrder(o)}>🖨️</button>
+            </div>
+          </div>
+        ))
+      }
+      <button style={{...s.btn(), width:"100%", padding:12, marginTop:8}}
+        onClick={() => { setDraft({...newDraft(), table:String(num), orderType:"mesa"}); onClose(); setTab("nuevo"); }}>
+        + Agregar pedido a Mesa {num}
+      </button>
+    </div>
+  );
+}
+
+function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, setEditingOrder, printOrder, cancelOrder, setConfirmDelete, isMobile, s, Y, fmt }) {
+  return (
+    <div>
+      <div style={{...s.row, marginBottom:14}}>
+        <div style={s.title}>🍽️ PEDIDOS ACTIVOS ({orders.length})</div>
+        <button style={s.btn()} onClick={() => setTab("nuevo")}>+ Nuevo</button>
+      </div>
+      {orders.length === 0
+        ? <div style={{textAlign:"center", padding:60, color:"#444"}}><div style={{fontSize:48}}>🕐</div><div>Sin pedidos activos</div></div>
+        : orders.map(o => (
+          <div key={o.id} style={{...s.card, borderLeft:`4px solid ${Y}`}}>
+            <div style={{...s.row, marginBottom:8}}>
+              <div>
+                <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:isMobile?18:22}}>{o.orderType==="llevar" ? `🥡 ${o.table}` : `Mesa ${o.table}`}</span>
+                {o.isPaid && <span style={{...s.tag("#1e5c2e"), marginLeft:8}}>✅ Pagado</span>}
+              </div>
+              <span style={{color:Y, fontWeight:900, fontSize:isMobile?16:19}}>{fmt(o.total)}</span>
+            </div>
+            <div style={{color:"#666", fontSize:11, marginBottom:8}}>🕐 {timeStr(o.createdAt)} · {minutesAgo(o.createdAt)}</div>
+            <div style={{marginBottom:8}}>
+              {o.items.map((item,i) => (
+                <div key={i} style={{marginBottom:4}}>
+                  <div style={{display:"flex", justifyContent:"space-between", fontSize:isMobile?12:13, padding:"3px 0", borderBottom:"1px solid #222"}}>
+                    <span>{item.qty}x {item.name}</span>
+                    <span style={{color:"#888"}}>{fmt(item.price*item.qty)}</span>
+                  </div>
+                  {item.itemNotes && <div style={{fontSize:11, color:"#999", fontStyle:"italic", paddingLeft:4, marginTop:2}}>└ {item.itemNotes}</div>}
+                </div>
+              ))}
+            </div>
+            {o.notes && <div style={{fontSize:11, color:"#888", fontStyle:"italic", marginBottom:8}}>📝 Nota general: {o.notes}</div>}
+            <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
+              {o.isPaid ? (
+                <button style={{...s.btn("blue"), flex:1, minWidth:isMobile?0:90}} onClick={() => finishPaidOrder(o.id)}>✅ Entregado</button>
+              ) : (
+                <button style={{...s.btn("success"), flex:1, minWidth:isMobile?0:90}} onClick={() => setCobrarTarget({type:'existing', data:o})}>💰 Cobrar</button>
+              )}
+              <button style={{...s.btn("warn"), flex:1, minWidth:isMobile?0:80}} onClick={() => setEditingOrder(o)}>✏️ Editar</button>
+              <button style={s.btn("secondary")} onClick={() => printOrder(o)}>🖨️</button>
+              <button style={{...s.btn("danger"), padding:isMobile?"7px 10px":"8px 12px"}} onClick={() => cancelOrder(o.id)}>❌</button>
+              <button style={{...s.btn("secondary"), padding:isMobile?"7px 10px":"8px 12px"}} onClick={() => setConfirmDelete(o.id)}>🗑️</button>
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  );
+}
+
+function HistorialComponent({ history, isMobile, s, Y, fmt, getPay }) {
+  const [expandedDay, setExpandedDay] = useState(new Date().toLocaleDateString("es-PE"));
+
+  const historyByDay = {};
+  history.forEach(o => {
+    const dateObj = new Date(o.paidAt || o.cancelledAt || o.createdAt);
+    const dateStr = dateObj.toLocaleDateString("es-PE");
+    const sortKey = dateObj.toISOString().split('T')[0];
+    
+    if (!historyByDay[dateStr]) {
+      historyByDay[dateStr] = { date: dateStr, sortKey, orders: [], total: 0, ef: 0, ya: 0, ta: 0, cancelados: 0 };
+    }
+    historyByDay[dateStr].orders.push(o);
+    
+    if (o.status === "pagado") {
+      historyByDay[dateStr].total += o.total;
+      historyByDay[dateStr].ef += getPay(o, "efectivo");
+      historyByDay[dateStr].ya += getPay(o, "yape");
+      historyByDay[dateStr].ta += getPay(o, "tarjeta");
+    } else if (o.status === "cancelado") {
+      historyByDay[dateStr].cancelados += 1;
+    }
+  });
+
+  const daysList = Object.values(historyByDay).sort((a,b) => b.sortKey.localeCompare(a.sortKey));
+
+  return (
+    <div>
+      <div style={s.title}>📋 HISTORIAL POR DÍAS</div>
+      {daysList.length === 0
+        ? <div style={{textAlign:"center", padding:60, color:"#444"}}><div style={{fontSize:48}}>📋</div><div>Sin registros</div></div>
+        : daysList.map(d => (
+          <div key={d.date} style={{...s.card, marginBottom:12, padding:0, overflow:"hidden"}}>
+            <div style={{padding:"14px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", background: expandedDay===d.date ? "#222" : "transparent"}} onClick={() => setExpandedDay(expandedDay===d.date ? null : d.date)}>
+              <div>
+                <div style={{fontWeight:900, fontSize:16, color:Y}}>📅 {d.date}</div>
+                <div style={{fontSize:11, color:"#888", marginTop:4}}>
+                  {d.orders.filter(x => x.status==="pagado").length} cobrados {d.cancelados > 0 && `· ${d.cancelados} anulados`}
+                </div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontWeight:900, fontSize:18, color:"#27ae60"}}>{fmt(d.total)}</div>
+                <div style={{fontSize:10, color:"#aaa", marginTop:2}}>{expandedDay===d.date ? "▲ Ocultar" : "▼ Detalles"}</div>
+              </div>
+            </div>
+
+            {expandedDay === d.date && (
+              <div style={{padding:"14px", borderTop:"1px solid #333"}}>
+                <div style={{display:"flex", gap:8, marginBottom:16, background:"#0a0a0a", padding:12, borderRadius:8, flexWrap:"wrap", border:"1px solid #222"}}>
+                  <div style={{flex:1, minWidth:70}}><span style={{color:"#888", fontSize:10, display:"block"}}>EFECTIVO</span><span style={{color:"#27ae60", fontWeight:900}}>💵 {fmt(d.ef)}</span></div>
+                  <div style={{flex:1, minWidth:70}}><span style={{color:"#888", fontSize:10, display:"block"}}>YAPE</span><span style={{color:"#8e44ad", fontWeight:900}}>💜 {fmt(d.ya)}</span></div>
+                  <div style={{flex:1, minWidth:70}}><span style={{color:"#888", fontSize:10, display:"block"}}>TARJETA</span><span style={{color:"#2980b9", fontWeight:900}}>💳 {fmt(d.ta)}</span></div>
+                </div>
+
+                {d.orders.map((o,idx) => {
+                  const pe = getPay(o, "efectivo");
+                  const py = getPay(o, "yape");
+                  const pt = getPay(o, "tarjeta");
+                  return (
+                    <div key={o._fid||o.id||idx} style={{marginBottom:10, paddingBottom:10, borderBottom:"1px solid #2a2a2a", opacity:o.status==="cancelado"?0.5:1}}>
+                      <div style={{...s.row, marginBottom:4}}>
+                        <div>
+                          <span style={{fontWeight:800, fontSize:13}}>{o.orderType==="llevar" ? `🥡 ${o.table}` : `Mesa ${o.table}`}</span>
+                          <span style={{...s.tag(o.status==="pagado" ? "#1e5c2e" : "#5c1e1e"), marginLeft:8}}>{o.status==="pagado" ? "✅ Pagado" : "❌ Anulado"}</span>
+                        </div>
+                        <span style={{color:Y, fontWeight:900, fontSize:14}}>{fmt(o.total)}</span>
+                      </div>
+                      <div style={{display:"flex", justifyContent:"space-between", marginBottom:6}}>
+                        <div style={{color:"#666", fontSize:11}}>
+                          {timeStr(o.paidAt || o.cancelledAt || o.createdAt)} 
+                          {o.status === "pagado" && ` · ${[pe>0&&`Efe: ${fmt(pe)}`, py>0&&`Yap: ${fmt(py)}`, pt>0&&`Tar: ${fmt(pt)}`].filter(Boolean).join(" | ")}`}
+                        </div>
+                      </div>
+                      <div style={{marginTop:6}}>
+                        {o.items.map((item,i) => (
+                          <div key={i} style={{fontSize:11, color:"#ccc", paddingLeft:4, borderLeft:`2px solid ${Y}44`, marginBottom:2}}>
+                            {item.qty}x {item.name} {item.itemNotes ? <span style={{color:Y, fontStyle:"italic"}}> (📝 {item.itemNotes})</span> : ""}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        ))
+      }
+    </div>
+  );
+}
+
+function CartaComponent({ menu, cartaCatFilter, setCartaCatFilter, showAdd, setShowAdd, newItem, setNewItem, addMenuItem, deleteMenuItem, isMobile, s, Y, fmt, ALL_CATS }) {
+  return (
+    <div>
+      <div style={{...s.row, marginBottom:14}}>
+        <div style={s.title}>🍔 CARTA ({menu.length})</div>
+        <button style={s.btn()} onClick={() => setShowAdd(!showAdd)}>{showAdd ? "✕ Cancelar" : "+ Agregar"}</button>
+      </div>
+      {showAdd && (
+        <div style={{...s.cardHL, marginBottom:14}}>
+          <div style={{fontWeight:800, color:Y, marginBottom:10}}>Nuevo platillo</div>
+          <div style={{display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr 1fr", gap:8, marginBottom:10}}>
+            <input style={s.input} placeholder="Nombre del platillo" value={newItem.name} onChange={e => setNewItem(f => ({...f, name:e.target.value}))}/>
+            <select style={s.input} value={newItem.cat} onChange={e => setNewItem(f => ({...f, cat:e.target.value}))}>
+              {ALL_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <input style={s.input} type="number" placeholder="Precio S/." value={newItem.price} onChange={e => setNewItem(f => ({...f, price:e.target.value}))}/>
+          </div>
+          <button style={s.btn()} onClick={addMenuItem}>Guardar Platillo</button>
+        </div>
+      )}
+      <div style={{display:"flex", gap:4, flexWrap:"wrap", marginBottom:10}}>
+        {["Todos",...ALL_CATS].map(c => (
+          <button key={c} style={{...s.btn(cartaCatFilter===c ? "primary" : "secondary"), fontSize:isMobile?9:10, padding:isMobile?"3px 6px":"4px 9px"}} onClick={() => setCartaCatFilter(c)}>{c}</button>
+        ))}
+      </div>
+      {menu.filter(i => cartaCatFilter==="Todos" || i.cat===cartaCatFilter).map(item => (
+        <div key={item.id} style={{...s.card, marginBottom:5, padding:isMobile?"8px 10px":"9px 12px"}}>
+          <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+            <div>
+              <span style={{marginRight:6}}>{item.icon}</span>
+              <span style={{fontWeight:700, fontSize:isMobile?13:14}}>{item.name}</span>
+            </div>
+            <div style={{display:"flex", alignItems:"center", gap:10}}>
+              <span style={{color:Y, fontWeight:900}}>{fmt(item.price)}</span>
+              {item.id.startsWith("CUSTOM_") && (
+                <button style={{...s.btn("danger"), padding:"2px 7px", fontSize:11}} onClick={() => deleteMenuItem(item.id)}>✕</button>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, isMobile, isDesktop, s, Y }) {
+  const sorted = [...orders].sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const toggleCheck = (orderId,itemIdx) => { setKitchenChecks(prev => { const oc=prev[orderId]||{}; return {...prev, [orderId]:{...oc, [itemIdx]:!oc[itemIdx]}}; }); };
+  const allDone = (order) => { const c=kitchenChecks[order.id]||{}; return order.items.every((_,i) => c[i]); };
+  
+  if(sorted.length === 0) return <div style={{textAlign:"center", padding:60, color:"#444"}}><div style={{fontSize:56}}>👨‍🍳</div><div style={{marginTop:12, fontSize:16}}>Sin pedidos en cocina</div></div>;
+  return (
+    <div>
+      <div style={{...s.row, marginBottom:14}}>
+        <div style={s.title}>👨‍🍳 COCINA — {sorted.length} pedido{sorted.length!==1?"s":""}</div>
+      </div>
+      <div style={{display:"grid", gridTemplateColumns:isDesktop?"1fr 1fr":"1fr", gap:12}}>
+        {sorted.map((order,priority) => {
+          const checks = kitchenChecks[order.id] || {};
+          const done = allDone(order);
+          const checkedN = order.items.filter((_,i) => checks[i]).length;
+          const mins = Math.floor((Date.now() - new Date(order.createdAt))/60000);
+          const urgent = mins >= 15 && !done;
+          const warn = mins >= 8 && mins < 15 && !done;
+          return (
+            <div key={order.id} style={{background:done?"#0d1f0d":urgent?"#1f0d0d":warn?"#1f180d":"#1c1c1c", borderRadius:14, border:`2px solid ${done?"#27ae60":urgent?"#e74c3c":warn?"#e67e22":Y}`, padding:14, position:"relative", transition:"all .3s"}}>
+              <div style={{position:"absolute", top:-10, left:14, background:done?"#27ae60":urgent?"#e74c3c":warn?"#e67e22":Y, color:done||urgent||warn?"#fff":"#111", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:900}}>
+                {done?"✅ LISTO":`#${priority+1} · ${mins<1?"ahora":`${mins}m`}`}
+              </div>
+              {order.isPaid && <div style={{position:"absolute", top:-10, right:14, background:"#2980b9", color:"#fff", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:900}}>✅ PAGADO</div>}
+              <div style={{...s.row, marginBottom:10, marginTop:6}}>
+                <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:22, color:done?"#27ae60":urgent?"#e74c3c":warn?"#e67e22":Y}}>{order.orderType==="llevar"?`🥡 ${order.table}`:`Mesa ${order.table}`}</span>
+              </div>
+              <div style={{background:"#2a2a2a", borderRadius:4, height:5, marginBottom:12, overflow:"hidden"}}>
+                <div style={{background:done?"#27ae60":Y, height:"100%", width:`${(checkedN/order.items.length)*100}%`, transition:"width .3s"}}/>
+              </div>
+              {order.items.map((item,i) => (
+                <div key={i} onClick={() => toggleCheck(order.id,i)} style={{display:"flex", alignItems:"center", gap:10, padding:"9px 10px", marginBottom:5, borderRadius:8, background:checks[i]?"#0a2a0a":"#252525", border:`1px solid ${checks[i]?"#27ae6055":"#333"}`, cursor:"pointer", transition:"all .2s", opacity:checks[i]?0.6:1}}>
+                  <div style={{width:22, height:22, borderRadius:6, border:`2px solid ${checks[i]?"#27ae60":"#555"}`, background:checks[i]?"#27ae60":"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:13, transition:"all .2s"}}>{checks[i]&&"✓"}</div>
+                  <div style={{flex:1}}>
+                    <span style={{fontWeight:800, fontSize:isMobile?13:15, textDecoration:checks[i]?"line-through":"none", color:checks[i]?"#555":"#eee"}}>
+                      {item.qty>1&&<span style={{color:Y, marginRight:4}}>{item.qty}×</span>}
+                      {item.name}
+                    </span>
+                    {item.itemNotes && <div style={{fontSize:11, color:Y, marginTop:3, fontStyle:"italic"}}>📝 {item.itemNotes}</div>}
+                  </div>
+                </div>
+              ))}
+              {order.notes && <div style={{marginTop:8, padding:"8px 10px", background:"#1a1500", borderRadius:8, border:"1px solid #3a3000", fontSize:12, color:"#e6c200"}}>📝 General: {order.notes}</div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 //  APP PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════
 export default function App() {
@@ -689,17 +1111,17 @@ export default function App() {
   const isDesktop = width >= 768;
   const isWide    = width >= 1024;
 
-  const [tab,           setTab]           = useState("dashboard");
-  const [orders,        setOrders]        = useState([]);
-  const [history,       setHistory]       = useState([]);
-  const [menu,          setMenu]          = useState(MENU_BASE);
-  const [draft,         setDraft]         = useState(newDraft());
-  const [cartaCatFilter,setCartaCatFilter]= useState("Todos");
-  const [showAdd,       setShowAdd]       = useState(false);
-  const [newItem,       setNewItem]       = useState({ name:"", cat:"Hamburguesas", price:"" });
-  const [loaded,        setLoaded]        = useState(false);
-  const [splash,        setSplash]        = useState(true);
-  const [toast,         setToast]         = useState(null);
+  const [tab,            setTab]            = useState("dashboard");
+  const [orders,         setOrders]         = useState([]);
+  const [history,        setHistory]        = useState([]);
+  const [menu,           setMenu]           = useState(MENU_BASE);
+  const [draft,          setDraft]          = useState(newDraft());
+  const [cartaCatFilter, setCartaCatFilter] = useState("Todos");
+  const [showAdd,        setShowAdd]        = useState(false);
+  const [newItem,        setNewItem]        = useState({ name:"", cat:"Hamburguesas", price:"" });
+  const [loaded,         setLoaded]         = useState(false);
+  const [splash,         setSplash]         = useState(true);
+  const [toast,          setToast]          = useState(null);
   
   const [editingOrder,  setEditingOrder]  = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -709,7 +1131,7 @@ export default function App() {
 
   useEffect(() => { const t=setTimeout(()=>setSplash(false),2200); return()=>clearTimeout(t); }, []);
 
-  // ¡AQUÍ ESTÁ EL CÓDIGO EN TIEMPO REAL INTEGRADO CORRECTAMENTE! 🔥
+  // Sincronización en tiempo real
   useEffect(() => {
     let unsubOrders, unsubHistory, unsubMenu;
 
@@ -744,8 +1166,6 @@ export default function App() {
 
   const showToast = (msg,color="#27ae60") => { setToast({msg,color}); setTimeout(()=>setToast(null),2800); };
   
-  // Estas funciones ahora confían en onSnapshot para actualizar el estado final,
-  // pero hacemos un cambio "optimista" para evitar clics dobles.
   const saveOrders = async (v) => { await FS.saveOrders(v); };
   const saveMenu   = async (v) => { setMenu(v); await FS.saveMenu(v.filter(i=>i.id.startsWith("CUSTOM_"))); };
 
@@ -780,7 +1200,6 @@ export default function App() {
     }
   };
 
-  // 🛡️ AQUÍ ESTÁ EL BLOQUEO ANTI-DOBLE CLIC 🛡️
   const handleConfirmCobro = async (payments) => {
     if (!cobrarTarget) return;
     const target = cobrarTarget;
@@ -788,7 +1207,7 @@ export default function App() {
 
     if (target.type === 'new') {
       const order = { ...target.data, isPaid: true, status: "pendiente", payments, paidAt: new Date().toISOString() };
-      setOrders(prev => [...prev, order]); // Optimista
+      setOrders(prev => [...prev, order]); 
       await saveOrders([...orders, order]);
       setDraft(newDraft());
       showToast("✅ Pedido cobrado y enviado a cocina");
@@ -796,10 +1215,10 @@ export default function App() {
     } 
     else if (target.type === 'existing') {
       const o = target.data;
-      if (!orders.find(x => x.id === o.id)) return; // Freno de emergencia por si pasa un doble clic
+      if (!orders.find(x => x.id === o.id)) return;
 
       const newOrders = orders.filter(x => x.id !== o.id);
-      setOrders(newOrders); // Lo borra de la pantalla al instante
+      setOrders(newOrders); 
 
       const finished = { ...o, isPaid: true, status: "pagado", payments, paidAt: new Date().toISOString() };
       await Promise.all([
@@ -813,7 +1232,7 @@ export default function App() {
   const finishPaidOrder = async (id) => {
     const o = orders.find(x=>x.id===id); if (!o) return;
     const newOrders = orders.filter(x=>x.id!==id);
-    setOrders(newOrders); // Optimista al instante
+    setOrders(newOrders); 
 
     const finished = { ...o, status: "pagado" }; 
     await Promise.all([
@@ -826,7 +1245,7 @@ export default function App() {
   const cancelOrder = async (id) => {
     const o = orders.find(x=>x.id===id); if (!o) return;
     const newOrders = orders.filter(x=>x.id!==id);
-    setOrders(newOrders); // Optimista al instante
+    setOrders(newOrders); 
 
     const finished = {...o,status:"cancelado",cancelledAt:new Date().toISOString(),createdAt:o.createdAt||new Date().toISOString()};
     await Promise.all([
@@ -838,13 +1257,13 @@ export default function App() {
 
   const deleteOrderPermanent = async (id) => {
     const newOrders = orders.filter(x=>x.id!==id);
-    setOrders(newOrders); // Optimista
+    setOrders(newOrders); 
     await saveOrders(newOrders);
     setConfirmDelete(null); showToast("🗑️ Pedido eliminado","#888");
   };
 
   const saveEditedOrder = async (updated) => {
-    setOrders(prev => prev.map(o=>o.id===updated.id?updated:o)); // Optimista
+    setOrders(prev => prev.map(o=>o.id===updated.id?updated:o)); 
     await saveOrders(orders.map(o=>o.id===updated.id?updated:o));
     setEditingOrder(null); showToast(`✏️ Pedido actualizado`,"#f39c12");
   };
@@ -857,22 +1276,6 @@ export default function App() {
     showToast(`⭐ "${item.name}" agregado`);
   };
   const deleteMenuItem = async (id) => { await saveMenu(menu.filter(i=>i.id!==id)); showToast("🗑️ Platillo eliminado","#e74c3c"); };
-
-  // Cálculos para Dashboard
-  const today = new Date().toDateString();
-  const paidArchivedToday = history.filter(o=>o.status==="pagado" && new Date(o.paidAt).toDateString()===today);
-  const paidActiveToday   = orders.filter(o=>o.isPaid && new Date(o.paidAt).toDateString()===today);
-  const allPaidToday      = [...paidArchivedToday, ...paidActiveToday];
-
-  const todayRev  = allPaidToday.reduce((s,o)=>s+o.total,0);
-  const totalRev  = history.filter(o=>o.status==="pagado").reduce((s,o)=>s+o.total,0) + paidActiveToday.reduce((s,o)=>s+o.total,0);
-  
-  const cashRev   = allPaidToday.reduce((s,o)=>s+getPay(o,"efectivo"),0);
-  const yapeRev   = allPaidToday.reduce((s,o)=>s+getPay(o,"yape"),0);
-  const cardRev   = allPaidToday.reduce((s,o)=>s+getPay(o,"tarjeta"),0);
-
-  const timeStr    = (iso) => { if(!iso)return""; const d=new Date(iso); return d.toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"}); };
-  const minutesAgo = (iso) => { const m=Math.floor((Date.now()-new Date(iso))/60000); if(m<1)return"ahora"; if(m<60)return`hace ${m}m`; return`hace ${Math.floor(m/60)}h ${m%60}m`; };
 
   if (splash) return (
     <div style={{background:"#111",height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20}}>
@@ -910,400 +1313,6 @@ export default function App() {
     title:   {color:Y,fontFamily:"'Bebas Neue',cursive",fontSize:isMobile?18:22,marginBottom:isMobile?10:14,letterSpacing:1},
     overlay: {position:"fixed",inset:0,background:"rgba(0,0,0,.85)",zIndex:200,display:"flex",alignItems:isMobile?"flex-end":"center",justifyContent:"center",padding:isMobile?0:16},
     modal:   {background:"#1a1a1a",border:`1px solid ${Y}44`,borderRadius:isMobile?"16px 16px 0 0":14,padding:isMobile?"16px 12px":20,width:"100%",maxWidth:isMobile?"100%":600,maxHeight:isMobile?"92vh":"88vh",overflowY:"auto"},
-  };
-
-  // ── Dashboard ────────────────────────────────────────────────────
-  const Dashboard = () => (
-    <div>
-      <div style={s.title}>📊 RESUMEN DEL DÍA</div>
-      <div style={s.grid(isMobile?130:140)}>
-        <div style={s.statCard}><div style={s.statNum}>{orders.length}</div><div style={s.statLbl}>Activos</div></div>
-        <div style={s.statCard}><div style={s.statNum}>{allPaidToday.length}</div><div style={s.statLbl}>Pagados hoy</div></div>
-        <div style={{...s.statCard,border:`1px solid ${Y}55`}}><div style={{...s.statNum,fontSize:isMobile?16:20}}>{fmt(todayRev)}</div><div style={s.statLbl}>Recaudado hoy</div></div>
-        <div style={s.statCard}><div style={{...s.statNum,fontSize:isMobile?16:20}}>{fmt(totalRev)}</div><div style={s.statLbl}>Total histórico</div></div>
-      </div>
-      {allPaidToday.length>0&&(
-        <div style={{...s.card,marginTop:4}}>
-          <div style={{fontWeight:800,marginBottom:8,color:"#aaa",fontSize:11,textTransform:"uppercase",letterSpacing:1}}>Desglose de Ingresos Hoy</div>
-          <div style={s.row}>
-            <div style={{textAlign:"center",flex:1}}><div style={{color:"#27ae60",fontWeight:900,fontSize:isMobile?13:16}}>💵 {fmt(cashRev)}</div><div style={{fontSize:10,color:"#666"}}>Efectivo</div></div>
-            <div style={{width:1,background:"#333",height:36}}/>
-            <div style={{textAlign:"center",flex:1}}><div style={{color:"#8e44ad",fontWeight:900,fontSize:isMobile?13:16}}>💜 {fmt(yapeRev)}</div><div style={{fontSize:10,color:"#666"}}>Yape</div></div>
-            <div style={{width:1,background:"#333",height:36}}/>
-            <div style={{textAlign:"center",flex:1}}><div style={{color:"#2980b9",fontWeight:900,fontSize:isMobile?13:16}}>💳 {fmt(cardRev)}</div><div style={{fontSize:10,color:"#666"}}>Tarjeta</div></div>
-          </div>
-        </div>
-      )}
-      {orders.length>0?(
-        <>
-          <div style={{...s.title,fontSize:isMobile?14:16,marginTop:14}}>🔥 PEDIDOS ACTIVOS</div>
-          {orders.slice(0,4).map(o=>(
-            <div key={o.id} style={s.card}>
-              <div style={s.row}>
-                <div>
-                  <span style={{fontWeight:900,fontSize:isMobile?15:17}}>{o.orderType==="llevar"?`🥡 ${o.table}`:`Mesa ${o.table}`}</span>
-                  <span style={{...s.tag("#252525"),marginLeft:8,fontSize:10}}>{minutesAgo(o.createdAt)}</span>
-                  {o.isPaid && <span style={{...s.tag("#1e5c2e"),marginLeft:6}}>✅ Pagado</span>}
-                </div>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{color:Y,fontWeight:900}}>{fmt(o.total)}</span>
-                  {o.isPaid ? (
-                    <button style={{...s.btn("blue"),padding:isMobile?"6px 9px":"8px 12px"}} onClick={()=>finishPaidOrder(o.id)}>✅ Entregado</button>
-                  ) : (
-                    <button style={{...s.btn("success"),padding:isMobile?"6px 9px":"8px 12px"}} onClick={()=>setCobrarTarget({type:'existing', data:o})}>💰 Cobrar</button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-          {orders.length>4&&<button style={{...s.btn("secondary"),marginTop:4}} onClick={()=>setTab("pedidos")}>Ver todos ({orders.length}) →</button>}
-        </>
-      ):(
-        <div style={{textAlign:"center",padding:isMobile?36:50,color:"#444"}}>
-          <div style={{fontSize:52}}>🍔</div>
-          <div style={{marginTop:8,color:"#666"}}>Sin pedidos activos</div>
-          <button style={{...s.btn(),marginTop:14,padding:"10px 24px"}} onClick={()=>setTab("mesas")}>Ver Mesas</button>
-        </div>
-      )}
-    </div>
-  );
-
-  // ── Mesas ────────────────────────────────────────────────────────
-  const Mesas = () => {
-    const llevarOrders = orders.filter(o=>o.orderType==="llevar");
-    return (
-      <div>
-        <div style={{...s.row,marginBottom:14}}>
-          <div style={s.title}>🪑 MESAS</div>
-          <button style={s.btn()} onClick={()=>{setDraft({...newDraft(),orderType:"llevar", payTiming:"ahora"});setTab("nuevo");}}>🥡 Para llevar</button>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"repeat(3, 1fr)",gap:12,marginBottom:20}}>
-          {MESAS.map(num=>{
-            const mesaOrders=orders.filter(o=>o.table===String(num)&&o.orderType!=="llevar");
-            const ocupada=mesaOrders.length>0;
-            const total=mesaOrders.reduce((s,o)=>s+o.total,0);
-            return (
-              <div key={num} onClick={()=>setMesaModal(num)} style={{background:ocupada?`${Y}15`:"#1c1c1c",border:`2px solid ${ocupada?Y:"#2a2a2a"}`,borderRadius:14,padding:16,cursor:"pointer",textAlign:"center",transition:"all .2s",position:"relative"}}>
-                {ocupada&&<div style={{position:"absolute",top:8,right:8,width:10,height:10,borderRadius:"50%",background:"#27ae60"}}/>}
-                <div style={{fontSize:36,marginBottom:6}}>🪑</div>
-                <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:22,color:ocupada?Y:"#555",letterSpacing:1}}>MESA {num}</div>
-                <div style={{fontSize:11,color:ocupada?"#aaa":"#444",marginTop:4}}>{ocupada?`${mesaOrders.length} pedido${mesaOrders.length>1?"s":""} · ${fmt(total)}`:"Libre"}</div>
-              </div>
-            );
-          })}
-        </div>
-        {llevarOrders.length>0&&(
-          <div>
-            <div style={{...s.title,fontSize:16}}>🥡 PARA LLEVAR ({llevarOrders.length})</div>
-            {llevarOrders.map(o=>(
-              <div key={o.id} style={{...s.card,borderLeft:`4px solid #3498db`}}>
-                <div style={s.row}>
-                  <div><span style={{fontWeight:900}}>🥡 {o.table}</span>{o.isPaid&&<span style={{...s.tag("#1e5c2e"),marginLeft:6}}>✅ Pagado</span>}</div>
-                  <span style={{color:Y,fontWeight:900}}>{fmt(o.total)}</span>
-                </div>
-                <div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>
-                  {o.isPaid ? (
-                    <button style={{...s.btn("blue"),flex:1}} onClick={()=>finishPaidOrder(o.id)}>✅ Entregado</button>
-                  ) : (
-                    <button style={{...s.btn("success"),flex:1}} onClick={()=>setCobrarTarget({type:'existing', data:o})}>💰 Cobrar</button>
-                  )}
-                  <button style={{...s.btn("warn"),flex:1}} onClick={()=>setEditingOrder(o)}>✏️ Editar</button>
-                  <button style={s.btn("secondary")} onClick={()=>printOrder(o)}>🖨️</button>
-                  <button style={{...s.btn("danger"),padding:"7px 10px"}} onClick={()=>cancelOrder(o.id)}>❌</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // ── Modal de Mesa ────────────────────────────────────────────────
-  const MesaModal = ({num,onClose}) => {
-    const mesaOrders = orders.filter(o=>o.table===String(num)&&o.orderType!=="llevar");
-    return (
-      <div style={s.modal} onClick={e=>e.stopPropagation()}>
-        <div style={{...s.row,marginBottom:14}}>
-          <div style={{color:Y,fontFamily:"'Bebas Neue',cursive",fontSize:22}}>🪑 MESA {num}</div>
-          <button style={{...s.btn("secondary"),padding:"4px 10px"}} onClick={onClose}>✕</button>
-        </div>
-        {mesaOrders.length===0
-          ?<div style={{textAlign:"center",padding:30,color:"#555"}}><div style={{fontSize:32}}>🟢</div><div style={{marginTop:8}}>Mesa libre</div></div>
-          :mesaOrders.map(o=>(
-            <div key={o.id} style={{...s.card,borderLeft:`3px solid ${Y}`}}>
-              <div style={s.row}>
-                <div><span style={{fontSize:12,color:"#888"}}>{minutesAgo(o.createdAt)}</span>{o.isPaid&&<span style={{...s.tag("#1e5c2e"),marginLeft:6}}>✅ Pagado</span>}</div>
-                <span style={{color:Y,fontWeight:900}}>{fmt(o.total)}</span>
-              </div>
-              <div style={{margin:"8px 0"}}>
-                {o.items.map((item,i)=>(
-                  <div key={i} style={{marginBottom:4}}>
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"3px 0",borderBottom:"1px solid #222"}}>
-                      <span>{item.qty}x {item.name}</span>
-                      <span style={{color:"#888"}}>{fmt(item.price*item.qty)}</span>
-                    </div>
-                    {item.itemNotes&&<div style={{fontSize:11,color:"#999",fontStyle:"italic",paddingLeft:4,marginTop:2}}>└ {item.itemNotes}</div>}
-                  </div>
-                ))}
-              </div>
-              {o.notes&&<div style={{fontSize:11,color:"#888",fontStyle:"italic",marginBottom:8}}>📝 {o.notes}</div>}
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                {o.isPaid ? (
-                  <button style={{...s.btn("blue"),flex:1}} onClick={()=>{finishPaidOrder(o.id);onClose();}}>✅ Finalizar</button>
-                ) : (
-                  <button style={{...s.btn("success"),flex:1}} onClick={()=>{setCobrarTarget({type:'existing', data:o});onClose();}}>💰 Cobrar</button>
-                )}
-                <button style={{...s.btn("warn"),flex:1}} onClick={()=>{setEditingOrder(o);onClose();}}>✏️ Editar</button>
-                <button style={s.btn("secondary")} onClick={()=>printOrder(o)}>🖨️</button>
-              </div>
-            </div>
-          ))
-        }
-        <button style={{...s.btn(),width:"100%",padding:12,marginTop:8}}
-          onClick={()=>{setDraft({...newDraft(),table:String(num),orderType:"mesa"});onClose();setTab("nuevo");}}>
-          + Agregar pedido a Mesa {num}
-        </button>
-      </div>
-    );
-  };
-
-  // ── Pedidos ──────────────────────────────────────────────────────
-  const Pedidos = () => (
-    <div>
-      <div style={{...s.row,marginBottom:14}}>
-        <div style={s.title}>🍽️ PEDIDOS ACTIVOS ({orders.length})</div>
-        <button style={s.btn()} onClick={()=>setTab("nuevo")}>+ Nuevo</button>
-      </div>
-      {orders.length===0
-        ?<div style={{textAlign:"center",padding:60,color:"#444"}}><div style={{fontSize:48}}>🕐</div><div>Sin pedidos activos</div></div>
-        :orders.map(o=>(
-          <div key={o.id} style={{...s.card,borderLeft:`4px solid ${Y}`}}>
-            <div style={{...s.row,marginBottom:8}}>
-              <div>
-                <span style={{fontFamily:"'Bebas Neue',cursive",fontSize:isMobile?18:22}}>{o.orderType==="llevar"?`🥡 ${o.table}`:`Mesa ${o.table}`}</span>
-                {o.isPaid&&<span style={{...s.tag("#1e5c2e"),marginLeft:8}}>✅ Pagado</span>}
-              </div>
-              <span style={{color:Y,fontWeight:900,fontSize:isMobile?16:19}}>{fmt(o.total)}</span>
-            </div>
-            <div style={{color:"#666",fontSize:11,marginBottom:8}}>🕐 {timeStr(o.createdAt)} · {minutesAgo(o.createdAt)}</div>
-            <div style={{marginBottom:8}}>
-              {o.items.map((item,i)=>(
-                <div key={i} style={{marginBottom:4}}>
-                  <div style={{display:"flex",justifyContent:"space-between",fontSize:isMobile?12:13,padding:"3px 0",borderBottom:"1px solid #222"}}>
-                    <span>{item.qty}x {item.name}</span>
-                    <span style={{color:"#888"}}>{fmt(item.price*item.qty)}</span>
-                  </div>
-                  {item.itemNotes&&<div style={{fontSize:11,color:"#999",fontStyle:"italic",paddingLeft:4,marginTop:2}}>└ {item.itemNotes}</div>}
-                </div>
-              ))}
-            </div>
-            {o.notes&&<div style={{fontSize:11,color:"#888",fontStyle:"italic",marginBottom:8}}>📝 Nota general: {o.notes}</div>}
-            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-              {o.isPaid ? (
-                <button style={{...s.btn("blue"),flex:1,minWidth:isMobile?0:90}} onClick={()=>finishPaidOrder(o.id)}>✅ Entregado</button>
-              ) : (
-                <button style={{...s.btn("success"),flex:1,minWidth:isMobile?0:90}} onClick={()=>setCobrarTarget({type:'existing', data:o})}>💰 Cobrar</button>
-              )}
-              <button style={{...s.btn("warn"),flex:1,minWidth:isMobile?0:80}} onClick={()=>setEditingOrder(o)}>✏️ Editar</button>
-              <button style={s.btn("secondary")} onClick={()=>printOrder(o)}>🖨️</button>
-              <button style={{...s.btn("danger"),padding:isMobile?"7px 10px":"8px 12px"}} onClick={()=>cancelOrder(o.id)}>❌</button>
-              <button style={{...s.btn("secondary"),padding:isMobile?"7px 10px":"8px 12px"}} onClick={()=>setConfirmDelete(o.id)}>🗑️</button>
-            </div>
-          </div>
-        ))
-      }
-    </div>
-  );
-
-  // ── Historial (Agrupado por día) ─────────────────────────────────
-  const Historial = () => {
-    const [expandedDay, setExpandedDay] = useState(new Date().toLocaleDateString("es-PE"));
-
-    const historyByDay = {};
-    history.forEach(o => {
-      const dateObj = new Date(o.paidAt || o.cancelledAt || o.createdAt);
-      const dateStr = dateObj.toLocaleDateString("es-PE");
-      const sortKey = dateObj.toISOString().split('T')[0];
-      
-      if (!historyByDay[dateStr]) {
-        historyByDay[dateStr] = { date: dateStr, sortKey, orders: [], total: 0, ef: 0, ya: 0, ta: 0, cancelados: 0 };
-      }
-      historyByDay[dateStr].orders.push(o);
-      
-      if (o.status === "pagado") {
-        historyByDay[dateStr].total += o.total;
-        historyByDay[dateStr].ef += getPay(o, "efectivo");
-        historyByDay[dateStr].ya += getPay(o, "yape");
-        historyByDay[dateStr].ta += getPay(o, "tarjeta");
-      } else if (o.status === "cancelado") {
-        historyByDay[dateStr].cancelados += 1;
-      }
-    });
-
-    const daysList = Object.values(historyByDay).sort((a,b) => b.sortKey.localeCompare(a.sortKey));
-
-    return (
-      <div>
-        <div style={s.title}>📋 HISTORIAL POR DÍAS</div>
-        {daysList.length === 0
-          ? <div style={{textAlign:"center",padding:60,color:"#444"}}><div style={{fontSize:48}}>📋</div><div>Sin registros</div></div>
-          : daysList.map(d => (
-            <div key={d.date} style={{...s.card, marginBottom:12, padding:0, overflow:"hidden"}}>
-              <div style={{padding:"14px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", background: expandedDay===d.date ? "#222" : "transparent"}} onClick={() => setExpandedDay(expandedDay===d.date ? null : d.date)}>
-                <div>
-                  <div style={{fontWeight:900, fontSize:16, color:Y}}>📅 {d.date}</div>
-                  <div style={{fontSize:11, color:"#888", marginTop:4}}>
-                    {d.orders.filter(x=>x.status==="pagado").length} cobrados {d.cancelados > 0 && `· ${d.cancelados} anulados`}
-                  </div>
-                </div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontWeight:900, fontSize:18, color:"#27ae60"}}>{fmt(d.total)}</div>
-                  <div style={{fontSize:10, color:"#aaa", marginTop:2}}>{expandedDay===d.date ? "▲ Ocultar" : "▼ Detalles"}</div>
-                </div>
-              </div>
-
-              {expandedDay === d.date && (
-                <div style={{padding:"14px", borderTop:"1px solid #333"}}>
-                  <div style={{display:"flex", gap:8, marginBottom:16, background:"#0a0a0a", padding:12, borderRadius:8, flexWrap:"wrap", border:"1px solid #222"}}>
-                    <div style={{flex:1, minWidth:70}}><span style={{color:"#888",fontSize:10,display:"block"}}>EFECTIVO</span><span style={{color:"#27ae60",fontWeight:900}}>💵 {fmt(d.ef)}</span></div>
-                    <div style={{flex:1, minWidth:70}}><span style={{color:"#888",fontSize:10,display:"block"}}>YAPE</span><span style={{color:"#8e44ad",fontWeight:900}}>💜 {fmt(d.ya)}</span></div>
-                    <div style={{flex:1, minWidth:70}}><span style={{color:"#888",fontSize:10,display:"block"}}>TARJETA</span><span style={{color:"#2980b9",fontWeight:900}}>💳 {fmt(d.ta)}</span></div>
-                  </div>
-
-                  {d.orders.map((o,idx) => {
-                    const pe = getPay(o, "efectivo");
-                    const py = getPay(o, "yape");
-                    const pt = getPay(o, "tarjeta");
-                    return (
-                      <div key={o._fid||o.id||idx} style={{marginBottom:10, paddingBottom:10, borderBottom:"1px solid #2a2a2a", opacity:o.status==="cancelado"?0.5:1}}>
-                        <div style={{...s.row, marginBottom:4}}>
-                          <div>
-                            <span style={{fontWeight:800, fontSize:13}}>{o.orderType==="llevar"?`🥡 ${o.table}`:`Mesa ${o.table}`}</span>
-                            <span style={{...s.tag(o.status==="pagado"?"#1e5c2e":"#5c1e1e"),marginLeft:8}}>{o.status==="pagado"?"✅ Pagado":"❌ Anulado"}</span>
-                          </div>
-                          <span style={{color:Y,fontWeight:900, fontSize:14}}>{fmt(o.total)}</span>
-                        </div>
-                        <div style={{display:"flex", justifyContent:"space-between", marginBottom:6}}>
-                          <div style={{color:"#666",fontSize:11}}>
-                            {timeStr(o.paidAt || o.cancelledAt || o.createdAt)} 
-                            {o.status === "pagado" && ` · ${[pe>0&&`Efe: ${fmt(pe)}`, py>0&&`Yap: ${fmt(py)}`, pt>0&&`Tar: ${fmt(pt)}`].filter(Boolean).join(" | ")}`}
-                          </div>
-                        </div>
-                        <div style={{marginTop:6}}>
-                          {o.items.map((item,i) => (
-                            <div key={i} style={{fontSize:11, color:"#ccc", paddingLeft:4, borderLeft:`2px solid ${Y}44`, marginBottom:2}}>
-                              {item.qty}x {item.name} {item.itemNotes ? <span style={{color:Y, fontStyle:"italic"}}> (📝 {item.itemNotes})</span> : ""}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          ))
-        }
-      </div>
-    );
-  };
-
-  // ── Carta ────────────────────────────────────────────────────────
-  const Carta = () => (
-    <div>
-      <div style={{...s.row,marginBottom:14}}>
-        <div style={s.title}>🍔 CARTA ({menu.length})</div>
-        <button style={s.btn()} onClick={()=>setShowAdd(!showAdd)}>{showAdd?"✕ Cancelar":"+ Agregar"}</button>
-      </div>
-      {showAdd&&(
-        <div style={{...s.cardHL,marginBottom:14}}>
-          <div style={{fontWeight:800,color:Y,marginBottom:10}}>Nuevo platillo</div>
-          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"2fr 1fr 1fr",gap:8,marginBottom:10}}>
-            <input style={s.input} placeholder="Nombre del platillo" value={newItem.name} onChange={e=>setNewItem(f=>({...f,name:e.target.value}))}/>
-            <select style={s.input} value={newItem.cat} onChange={e=>setNewItem(f=>({...f,cat:e.target.value}))}>
-              {ALL_CATS.map(c=><option key={c} value={c}>{c}</option>)}
-            </select>
-            <input style={s.input} type="number" placeholder="Precio S/." value={newItem.price} onChange={e=>setNewItem(f=>({...f,price:e.target.value}))}/>
-          </div>
-          <button style={s.btn()} onClick={addMenuItem}>Guardar Platillo</button>
-        </div>
-      )}
-      <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:10}}>
-        {["Todos",...ALL_CATS].map(c=>(
-          <button key={c} style={{...s.btn(cartaCatFilter===c?"primary":"secondary"),fontSize:isMobile?9:10,padding:isMobile?"3px 6px":"4px 9px"}} onClick={()=>setCartaCatFilter(c)}>{c}</button>
-        ))}
-      </div>
-      {menu.filter(i=>cartaCatFilter==="Todos"||i.cat===cartaCatFilter).map(item=>(
-        <div key={item.id} style={{...s.card,marginBottom:5,padding:isMobile?"8px 10px":"9px 12px"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div>
-              <span style={{marginRight:6}}>{item.icon}</span>
-              <span style={{fontWeight:700,fontSize:isMobile?13:14}}>{item.name}</span>
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <span style={{color:Y,fontWeight:900}}>{fmt(item.price)}</span>
-              {item.id.startsWith("CUSTOM_")&&(
-                <button style={{...s.btn("danger"),padding:"2px 7px",fontSize:11}} onClick={()=>deleteMenuItem(item.id)}>✕</button>
-              )}
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
-  // ── Cocina ────────────────────────────────────────────────────────
-  const Cocina = () => {
-    const sorted=[...orders].sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt));
-    const toggleCheck=(orderId,itemIdx)=>{setKitchenChecks(prev=>{const oc=prev[orderId]||{};return{...prev,[orderId]:{...oc,[itemIdx]:!oc[itemIdx]}};});};
-    const allDone=(order)=>{const c=kitchenChecks[order.id]||{};return order.items.every((_,i)=>c[i]);};
-    
-    if(sorted.length===0) return <div style={{textAlign:"center",padding:60,color:"#444"}}><div style={{fontSize:56}}>👨‍🍳</div><div style={{marginTop:12,fontSize:16}}>Sin pedidos en cocina</div></div>;
-    return (
-      <div>
-        <div style={{...s.row,marginBottom:14}}>
-          <div style={s.title}>👨‍🍳 COCINA — {sorted.length} pedido{sorted.length!==1?"s":""}</div>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:isDesktop?"1fr 1fr":"1fr",gap:12}}>
-          {sorted.map((order,priority)=>{
-            const checks=kitchenChecks[order.id]||{};
-            const done=allDone(order);
-            const checkedN=order.items.filter((_,i)=>checks[i]).length;
-            const mins=Math.floor((Date.now()-new Date(order.createdAt))/60000);
-            const urgent=mins>=15&&!done;
-            const warn=mins>=8&&mins<15&&!done;
-            return (
-              <div key={order.id} style={{background:done?"#0d1f0d":urgent?"#1f0d0d":warn?"#1f180d":"#1c1c1c",borderRadius:14,border:`2px solid ${done?"#27ae60":urgent?"#e74c3c":warn?"#e67e22":Y}`,padding:14,position:"relative",transition:"all .3s"}}>
-                <div style={{position:"absolute",top:-10,left:14,background:done?"#27ae60":urgent?"#e74c3c":warn?"#e67e22":Y,color:done||urgent||warn?"#fff":"#111",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:900}}>
-                  {done?"✅ LISTO":`#${priority+1} · ${mins<1?"ahora":`${mins}m`}`}
-                </div>
-                {order.isPaid && <div style={{position:"absolute",top:-10,right:14,background:"#2980b9",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:900}}>✅ PAGADO</div>}
-                <div style={{...s.row,marginBottom:10,marginTop:6}}>
-                  <span style={{fontFamily:"'Bebas Neue',cursive",fontSize:22,color:done?"#27ae60":urgent?"#e74c3c":warn?"#e67e22":Y}}>{order.orderType==="llevar"?`🥡 ${order.table}`:`Mesa ${order.table}`}</span>
-                </div>
-                <div style={{background:"#2a2a2a",borderRadius:4,height:5,marginBottom:12,overflow:"hidden"}}>
-                  <div style={{background:done?"#27ae60":Y,height:"100%",width:`${(checkedN/order.items.length)*100}%`,transition:"width .3s"}}/>
-                </div>
-                {order.items.map((item,i)=>(
-                  <div key={i} onClick={()=>toggleCheck(order.id,i)} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px",marginBottom:5,borderRadius:8,background:checks[i]?"#0a2a0a":"#252525",border:`1px solid ${checks[i]?"#27ae6055":"#333"}`,cursor:"pointer",transition:"all .2s",opacity:checks[i]?0.6:1}}>
-                    <div style={{width:22,height:22,borderRadius:6,border:`2px solid ${checks[i]?"#27ae60":"#555"}`,background:checks[i]?"#27ae60":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:13,transition:"all .2s"}}>{checks[i]&&"✓"}</div>
-                    <div style={{flex:1}}>
-                      <span style={{fontWeight:800,fontSize:isMobile?13:15,textDecoration:checks[i]?"line-through":"none",color:checks[i]?"#555":"#eee"}}>
-                        {item.qty>1&&<span style={{color:Y,marginRight:4}}>{item.qty}×</span>}
-                        {item.name}
-                      </span>
-                      {item.itemNotes&&<div style={{fontSize:11,color:Y,marginTop:3,fontStyle:"italic"}}>📝 {item.itemNotes}</div>}
-                    </div>
-                  </div>
-                ))}
-                {order.notes&&<div style={{marginTop:8,padding:"8px 10px",background:"#1a1500",borderRadius:8,border:"1px solid #3a3000",fontSize:12,color:"#e6c200"}}>📝 General: {order.notes}</div>}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
   };
 
   const tabs = [
@@ -1361,7 +1370,7 @@ export default function App() {
         )}
         {mesaModal&&(
           <div style={s.overlay} onClick={()=>setMesaModal(null)}>
-            <MesaModal num={mesaModal} onClose={()=>setMesaModal(null)}/>
+            <MesaModalComponent num={mesaModal} orders={orders} setDraft={setDraft} newDraft={newDraft} onClose={()=>setMesaModal(null)} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />
           </div>
         )}
         {confirmDelete&&(
@@ -1379,14 +1388,14 @@ export default function App() {
         )}
 
         <div style={s.content}>
-          {tab==="dashboard"  && <Dashboard/>}
-          {tab==="mesas"      && <Mesas/>}
-          {tab==="nuevo"      && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateItemNotes={updateItemNotes} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile}/>}
-          {tab==="pedidos"    && <Pedidos/>}
-          {tab==="cocina"     && <Cocina/>}
-          {tab==="historial"  && <Historial/>}
+          {tab==="dashboard"  && <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} />}
+          {tab==="mesas"      && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} isMobile={isMobile} s={s} Y={Y} fmt={fmt} MESAS={MESAS} />}
+          {tab==="nuevo"      && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateItemNotes={updateItemNotes} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} />}
+          {tab==="pedidos"    && <PedidosComponent orders={orders} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
+          {tab==="cocina"     && <CocinaComponent orders={orders} kitchenChecks={kitchenChecks} setKitchenChecks={setKitchenChecks} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} />}
+          {tab==="historial"  && <HistorialComponent history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} />}
           {tab==="inventario" && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/>}
-          {tab==="carta"      && <Carta/>}
+          {tab==="carta"      && <CartaComponent menu={menu} cartaCatFilter={cartaCatFilter} setCartaCatFilter={setCartaCatFilter} showAdd={showAdd} setShowAdd={setShowAdd} newItem={newItem} setNewItem={setNewItem} addMenuItem={addMenuItem} deleteMenuItem={deleteMenuItem} isMobile={isMobile} s={s} Y={Y} fmt={fmt} ALL_CATS={ALL_CATS} />}
         </div>
       </div>
     </>
