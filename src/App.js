@@ -108,12 +108,12 @@ const MENU_BASE = [
   { id:"MK02", cat:"Menú Kids",         icon:"🧒", name:"Boliquesos 6pz",            price:25,   desc:"6 piezas de boliquesos para los más pequeños" },
   { id:"MK03", cat:"Menú Kids",         icon:"🧒", name:"Nuggets 6pz",               price:18,   desc:"6 nuggets de pollo crujientes" },
   { id:"MK04", cat:"Menú Kids",         icon:"🧒", name:"Chicharrón de Pollo",       price:18,   desc:"Chicharrón de pollo crujiente" },
-  { id:"C01",  cat:"Combos",            icon:"🎁", name:"Combo Personal",            price:9.90,  desc:"Hamburguesa Piolín o Salchipapa Sencilla + Vaso de bebida" },
-  { id:"C02",  cat:"Combos",            icon:"🎁", name:"Combo Cajacho",             price:44.90, desc:"Hamburguesa Cajacha + 6pz Alitas + Papas fritas nativas + Porción de Chaufa + 1L Bebida" },
-  { id:"C03",  cat:"Combos",            icon:"🎁", name:"Combo Familiar",            price:80.90, desc:"2 Hamburguesas Speedy Gonzales + 14pz Alitas + Papas fritas nativas + Arroz Chaufa + 1.5L de bebida" },
+  { id:"C01",  cat:"Combos",            icon:"🎁", name:"Combo Personal",            price:9.90, desc:"Hamburguesa Piolín o Salchipapa Sencilla + Vaso de bebida" },
+  { id:"C02",  cat:"Combos",            icon:"🎁", name:"Combo Cajacho",             price:44.90,desc:"Hamburguesa Cajacha + 6pz Alitas + Papas fritas nativas + Porción de Chaufa + 1L Bebida" },
+  { id:"C03",  cat:"Combos",            icon:"🎁", name:"Combo Familiar",            price:80.90,desc:"2 Hamburguesas Speedy Gonzales + 14pz Alitas + Papas fritas nativas + Arroz Chaufa + 1.5L de bebida" },
   { id:"C04",  cat:"Combos",            icon:"🎁", name:"Combo Papachos",            price:110.90,desc:"2 Hamburguesas La Porky + 20pz de Alitas + Papas fritas nativas + Arroz Chaufa + 2L de Bebida" },
-  { id:"R01",  cat:"Rondas",            icon:"🔄", name:"Rondas de Sabores 20pz",    price:68,    desc:"20 pz de alitas + papas fritas nativas + ensalada + 1L de bebida" },
-  { id:"R02",  cat:"Rondas",            icon:"🔄", name:"Ronda de Sabores XL 30pz",  price:99,    desc:"30 pz de alitas + papas fritas nativas + ensalada + 1.5L de bebida" },
+  { id:"R01",  cat:"Rondas",            icon:"🔄", name:"Rondas de Sabores 20pz",    price:68,   desc:"20 pz de alitas + papas fritas nativas + ensalada + 1L de bebida" },
+  { id:"R02",  cat:"Rondas",            icon:"🔄", name:"Ronda de Sabores XL 30pz",  price:99,   desc:"30 pz de alitas + papas fritas nativas + ensalada + 1.5L de bebida" },
   { id:"B01",  cat:"Bebidas",           icon:"🥤", name:"Chicha Morada Normal 1L",   price:10,   desc:"Chicha morada preparada, 1 litro" },
   { id:"B02",  cat:"Bebidas",           icon:"🥤", name:"Chicha Morada Normal 1/2L", price:5,    desc:"Chicha morada preparada, medio litro" },
   { id:"B03",  cat:"Bebidas",           icon:"🥤", name:"Chicha Morada Normal Vaso", price:2.50, desc:"Chicha morada preparada, vaso" },
@@ -175,6 +175,8 @@ const MENU_BASE = [
   { id:"O02",  cat:"Otros",             icon:"🍵", name:"Infusiones",                price:3,    desc:"Variedad de infusiones calientes" },
   { id:"EX01", cat:"Extras",            icon:"🍟", name:"Porción de Papas",          price:6,    desc:"Porción extra de papas fritas" },
   { id:"EX02", cat:"Extras",            icon:"🥗", name:"Porción de Ensalada",       price:4,    desc:"Porción extra de ensalada" },
+  { id:"EX03", cat:"Extras",            icon:"🍚", name:"Porción de Chaufa",         price:6,    desc:"Porción extra de arroz chaufa" },
+  { id:"EX04", cat:"Extras",            icon:"🍚", name:"Arroz Blanco en Molde",     price:3,    desc:"Porción de arroz blanco" },
 ];
 
 const ALL_CATS = [...new Set(MENU_BASE.map(i => i.cat))];
@@ -414,7 +416,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
   const taperNum = Number(draft.taperCost) || 0;
 
   return (
-    <div style={{ display:"grid", gridTemplateColumns: isDesktop ? "1fr 300px" : "1fr", gap: isMobile ? 12 : 14 }}>
+    <div style={{ display:"grid", gridTemplateColumns: isDesktop ? "1fr 300px" : "1fr", gap: isMobile ? 12 : 14, paddingBottom: isMobile && draft.items.length > 0 ? 80 : 0 }}>
       <div>
         <div style={s.title}>🍔 CARTA</div>
         <input
@@ -548,14 +550,26 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
             <span style={{ fontWeight:900, fontSize:17 }}>TOTAL</span><span style={{ fontWeight:900, fontSize:17, color:Y }}>{fmt(draftTotal + taperNum)}</span>
           </div>
 
-          <button style={{ ...s.btn(), width:"100%", padding:12, fontSize:15, opacity:(!draft.table||!draft.items.length)?0.4:1 }}
-            onClick={submitOrder} disabled={!draft.table||!draft.items.length}>
-            {draft.payTiming==="ahora" ? "💵 Continuar al Cobro" : "📝 Enviar a Cocina"}
-          </button>
+          {!isMobile && (
+            <button style={{ ...s.btn(), width:"100%", padding:12, fontSize:15, opacity:(!draft.table||!draft.items.length)?0.4:1 }}
+              onClick={submitOrder} disabled={!draft.table||!draft.items.length}>
+              {draft.payTiming==="ahora" ? "💵 Continuar al Cobro" : "📝 Enviar a Cocina"}
+            </button>
+          )}
           <button style={{ ...s.btn("secondary"), width:"100%", padding:8, marginTop:6, fontSize:12 }}
             onClick={() => setDraft(newDraft())}>🗑️ Limpiar</button>
         </div>
       </div>
+
+      {isMobile && draft.items.length > 0 && (
+        <div style={{position:"fixed", bottom:0, left:0, right:0, background:"#1a1a1a", borderTop:`2px solid ${Y}`, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center", zIndex:999, boxShadow:"0 -5px 15px rgba(0,0,0,0.8)"}}>
+          <div style={{fontWeight:900, fontSize:16, color:"#fff"}}>TOTAL: <span style={{color:Y, fontSize:20}}>{fmt(draftTotal + taperNum)}</span></div>
+          <button style={{ ...s.btn(), padding:"12px 24px", fontSize:15, opacity:(!draft.table)?0.4:1 }}
+            onClick={submitOrder} disabled={!draft.table}>
+            {draft.payTiming==="ahora" ? "💵 Cobrar" : "📝 A Cocina"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -638,11 +652,11 @@ function Inventario({ menu, orders, history, isMobile, s, Y, fmt }) {
   };
 
   const counts={}, revenue={};
-  history.filter(o=>o.status==="pagado"&&inPeriod(o.paidAt)).forEach(order=>{
+  history.filter(o=>o.status==="pagado"&&inPeriod(o.createdAt)).forEach(order=>{
     order.items?.forEach(item=>{counts[item.id]=(counts[item.id]||0)+item.qty;revenue[item.id]=(revenue[item.id]||0)+item.price*item.qty;});
   });
   if (invPeriod==="hoy"||invPeriod==="semana"||invPeriod==="fecha") {
-    orders.filter(o=>o.isPaid&&inPeriod(o.paidAt)).forEach(order=>{
+    orders.filter(o=>o.isPaid&&inPeriod(o.createdAt)).forEach(order=>{
       order.items?.forEach(item=>{counts[item.id]=(counts[item.id]||0)+item.qty;revenue[item.id]=(revenue[item.id]||0)+item.price*item.qty;});
     });
   }
@@ -722,8 +736,8 @@ function DashboardComponent({ orders, history, gastos, handleAddGasto, handleDel
   const [montoGasto, setMontoGasto] = useState("");
 
   const today = new Date().toDateString();
-  const paidArchivedToday = history.filter(o => o.status==="pagado" && new Date(o.paidAt).toDateString()===today);
-  const paidActiveToday   = orders.filter(o => o.isPaid && new Date(o.paidAt).toDateString()===today);
+  const paidArchivedToday = history.filter(o => o.status==="pagado" && new Date(o.createdAt).toDateString()===today);
+  const paidActiveToday   = orders.filter(o => o.isPaid && new Date(o.createdAt).toDateString()===today);
   const allPaidToday      = [...paidArchivedToday, ...paidActiveToday];
 
   const todayRev  = allPaidToday.reduce((sum,o) => sum + o.total, 0);
@@ -733,7 +747,6 @@ function DashboardComponent({ orders, history, gastos, handleAddGasto, handleDel
   const yapeRev   = allPaidToday.reduce((sum,o) => sum + getPay(o,"yape"), 0);
   const cardRev   = allPaidToday.reduce((sum,o) => sum + getPay(o,"tarjeta"), 0);
 
-  // Gastos de Hoy y Caja Neta
   const gastosTodayList = gastos.filter(g => new Date(g.createdAt).toDateString() === today);
   const totalGastosToday = gastosTodayList.reduce((sum, g) => sum + (Number(g.monto) || 0), 0);
   const cajaFinal = todayRev - totalGastosToday;
@@ -984,12 +997,12 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
 }
 
 function HistorialComponent({ history, isMobile, s, Y, fmt, getPay }) {
-  const [expandedDay, setExpandedDay] = useState(new Date().toLocaleDateString("es-PE"));
+  const [expandedDays, setExpandedDays] = useState([new Date().toLocaleDateString("es-PE")]);
   const [histDate, setHistDate] = useState("");
 
   const historyByDay = {};
   history.forEach(o => {
-    const dateObj = new Date(o.paidAt || o.cancelledAt || o.createdAt);
+    const dateObj = new Date(o.createdAt);
     const dateStr = dateObj.toLocaleDateString("es-PE");
     const sortKey = dateObj.getFullYear() + "-" + String(dateObj.getMonth()+1).padStart(2,'0') + "-" + String(dateObj.getDate()).padStart(2,'0');
     
@@ -1014,6 +1027,10 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay }) {
     daysList = daysList.filter(d => d.sortKey === histDate);
   }
 
+  const toggleDay = (dateStr) => {
+    setExpandedDays(prev => prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]);
+  };
+
   return (
     <div>
       <div style={{...s.row, marginBottom:14}}>
@@ -1026,22 +1043,22 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay }) {
             onChange={e => {
               const val = e.target.value;
               setHistDate(val);
-              // Al elegir una fecha, buscamos su nombre formateado para expandirlo automáticamente
               const match = Object.values(historyByDay).find(x => x.sortKey === val);
-              setExpandedDay(match ? match.date : null);
+              if (match && !expandedDays.includes(match.date)) {
+                 setExpandedDays(prev => [...prev, match.date]);
+              }
             }} 
           />
-          {histDate && <button style={s.btn("secondary")} onClick={()=>{setHistDate(""); setExpandedDay(null);}}>✕</button>}
+          {histDate && <button style={s.btn("secondary")} onClick={()=>{setHistDate("");}}>✕</button>}
         </div>
       </div>
       {daysList.length === 0
         ? <div style={{textAlign:"center", padding:60, color:"#444"}}><div style={{fontSize:48}}>📋</div><div>Sin registros</div></div>
         : daysList.map(d => {
-          // CORRECCIÓN: Ahora solo depende de si el usuario ha tocado este día, sin forzarlo
-          const isExpanded = expandedDay === d.date; 
+          const isExpanded = expandedDays.includes(d.date); 
           return (
             <div key={d.date} style={{...s.card, marginBottom:12, padding:0, overflow:"hidden"}}>
-              <div style={{padding:"14px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", background: isExpanded ? "#222" : "transparent"}} onClick={() => setExpandedDay(isExpanded ? null : d.date)}>
+              <div style={{padding:"14px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", background: isExpanded ? "#222" : "transparent"}} onClick={() => toggleDay(d.date)}>
                 <div>
                   <div style={{fontWeight:900, fontSize:16, color:Y}}>📅 {d.date}</div>
                   <div style={{fontSize:11, color:"#888", marginTop:4}}>
@@ -1148,8 +1165,21 @@ function CartaComponent({ menu, cartaCatFilter, setCartaCatFilter, showAdd, setS
 
 function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, isMobile, isDesktop, s, Y }) {
   const sorted = [...orders].sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
-  const toggleCheck = (orderId,itemIdx) => { setKitchenChecks(prev => { const oc=prev[orderId]||{}; return {...prev, [orderId]:{...oc, [itemIdx]:!oc[itemIdx]}}; }); };
-  const allDone = (order) => { const c=kitchenChecks[order.id]||{}; return order.items.every((_,i) => c[i]); };
+  
+  const toggleCheck = (orderId, itemIdx, maxQty) => { 
+    setKitchenChecks(prev => { 
+      const oc = prev[orderId] || {}; 
+      const curr = Number(oc[itemIdx]) || (oc[itemIdx] === true ? maxQty : 0);
+      let next = curr + 1;
+      if (next > maxQty) next = 0;
+      return {...prev, [orderId]:{...oc, [itemIdx]: next}}; 
+    }); 
+  };
+  
+  const allDone = (order) => { 
+    const c = kitchenChecks[order.id] || {}; 
+    return order.items.every((item, i) => (Number(c[i]) || (c[i] === true ? item.qty : 0)) === item.qty); 
+  };
   
   if(sorted.length === 0) return <div style={{textAlign:"center", padding:60, color:"#444"}}><div style={{fontSize:56}}>👨‍🍳</div><div style={{marginTop:12, fontSize:16}}>Sin pedidos en cocina</div></div>;
   return (
@@ -1161,10 +1191,14 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, isMobile, is
         {sorted.map((order,priority) => {
           const checks = kitchenChecks[order.id] || {};
           const done = allDone(order);
-          const checkedN = order.items.filter((_,i) => checks[i]).length;
+          
+          const totalPortions = order.items.reduce((sum, item) => sum + item.qty, 0);
+          const donePortions = order.items.reduce((sum, item, i) => sum + (Number(checks[i]) || (checks[i] === true ? item.qty : 0)), 0);
+          
           const mins = Math.floor((Date.now() - new Date(order.createdAt))/60000);
           const urgent = mins >= 15 && !done;
           const warn = mins >= 8 && mins < 15 && !done;
+          
           return (
             <div key={order.id} style={{background:done?"#0d1f0d":urgent?"#1f0d0d":warn?"#1f180d":"#1c1c1c", borderRadius:14, border:`2px solid ${done?"#27ae60":urgent?"#e74c3c":warn?"#e67e22":Y}`, padding:14, position:"relative", transition:"all .3s"}}>
               <div style={{position:"absolute", top:-10, left:14, background:done?"#27ae60":urgent?"#e74c3c":warn?"#e67e22":Y, color:done||urgent||warn?"#fff":"#111", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:900}}>
@@ -1175,20 +1209,27 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, isMobile, is
                 <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:22, color:done?"#27ae60":urgent?"#e74c3c":warn?"#e67e22":Y}}>{order.orderType==="llevar"?`🥡 ${order.table}`:`Mesa ${order.table}`}</span>
               </div>
               <div style={{background:"#2a2a2a", borderRadius:4, height:5, marginBottom:12, overflow:"hidden"}}>
-                <div style={{background:done?"#27ae60":Y, height:"100%", width:`${(checkedN/order.items.length)*100}%`, transition:"width .3s"}}/>
+                <div style={{background:done?"#27ae60":Y, height:"100%", width:`${totalPortions > 0 ? (donePortions/totalPortions)*100 : 0}%`, transition:"width .3s"}}/>
               </div>
-              {order.items.map((item,i) => (
-                <div key={i} onClick={() => toggleCheck(order.id,i)} style={{display:"flex", alignItems:"center", gap:10, padding:"9px 10px", marginBottom:5, borderRadius:8, background:checks[i]?"#0a2a0a":"#252525", border:`1px solid ${checks[i]?"#27ae6055":"#333"}`, cursor:"pointer", transition:"all .2s", opacity:checks[i]?0.6:1}}>
-                  <div style={{width:22, height:22, borderRadius:6, border:`2px solid ${checks[i]?"#27ae60":"#555"}`, background:checks[i]?"#27ae60":"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:13, transition:"all .2s"}}>{checks[i]&&"✓"}</div>
-                  <div style={{flex:1}}>
-                    <span style={{fontWeight:800, fontSize:isMobile?13:15, textDecoration:checks[i]?"line-through":"none", color:checks[i]?"#555":"#eee"}}>
-                      {item.qty>1&&<span style={{color:Y, marginRight:4}}>{item.qty}×</span>}
-                      {item.name}
-                    </span>
-                    {item.itemNotes && <div style={{fontSize:11, color:Y, marginTop:3, fontStyle:"italic"}}>📝 {item.itemNotes}</div>}
+              {order.items.map((item,i) => {
+                const doneQty = Number(checks[i]) || (checks[i] === true ? item.qty : 0);
+                const isDone = doneQty === item.qty;
+                
+                return (
+                  <div key={i} onClick={() => toggleCheck(order.id, i, item.qty)} style={{display:"flex", alignItems:"center", gap:10, padding:"9px 10px", marginBottom:5, borderRadius:8, background:isDone?"#0a2a0a":"#252525", border:`1px solid ${isDone?"#27ae6055":"#333"}`, cursor:"pointer", transition:"all .2s", opacity:isDone?0.6:1}}>
+                    <div style={{minWidth:26, height:26, borderRadius:6, border:`2px solid ${isDone?"#27ae60":"#555"}`, background:isDone?"#27ae60":"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:13, transition:"all .2s", color:isDone?"#fff":"#aaa", fontWeight:"bold", padding:"0 4px"}}>
+                      {item.qty > 1 ? `${doneQty}/${item.qty}` : (isDone ? "✓" : "")}
+                    </div>
+                    <div style={{flex:1}}>
+                      <span style={{fontWeight:800, fontSize:isMobile?13:15, textDecoration:isDone?"line-through":"none", color:isDone?"#555":"#eee"}}>
+                        {item.qty>1&&<span style={{color:Y, marginRight:4}}>{item.qty}×</span>}
+                        {item.name}
+                      </span>
+                      {item.itemNotes && <div style={{fontSize:11, color:Y, marginTop:3, fontStyle:"italic"}}>📝 {item.itemNotes}</div>}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
               {order.notes && <div style={{marginTop:8, padding:"8px 10px", background:"#1a1500", borderRadius:8, border:"1px solid #3a3000", fontSize:12, color:"#e6c200"}}>📝 General: {order.notes}</div>}
             </div>
           );
@@ -1211,7 +1252,7 @@ export default function App() {
   const [tab,            setTab]            = useState("dashboard");
   const [orders,         setOrders]         = useState([]);
   const [history,        setHistory]        = useState([]);
-  const [gastos,         setGastos]         = useState([]); // NUEVO ESTADO PARA GASTOS
+  const [gastos,         setGastos]         = useState([]);
   const [menu,           setMenu]           = useState(MENU_BASE);
   const [draft,          setDraft]          = useState(newDraft());
   const [cartaCatFilter, setCartaCatFilter] = useState("Todos");
@@ -1250,7 +1291,6 @@ export default function App() {
         setHistory(hist);
       });
 
-      // LECTURA DE GASTOS EN TIEMPO REAL
       const qGastos = query(FS.gastosCol(), orderBy("createdAt", "desc"), limit(200));
       unsubGastos = onSnapshot(qGastos, (snapshot) => {
         setGastos(snapshot.docs.map(d => ({ _fid: d.id, ...d.data() })));
@@ -1382,7 +1422,6 @@ export default function App() {
   };
   const deleteMenuItem = async (id) => { await saveMenu(menu.filter(i=>i.id!==id)); showToast("🗑️ Platillo eliminado","#e74c3c"); };
 
-  // FUNCIONES DE GASTOS
   const handleAddGasto = async (descripcion, monto) => {
     if (!descripcion.trim() || !monto) return;
     await FS.addGasto({ descripcion, monto: Number(monto), createdAt: new Date().toISOString() });
@@ -1464,7 +1503,7 @@ export default function App() {
         </nav>
 
         {toast&&(
-          <div style={{position:"fixed",bottom:isMobile?70:20,left:"50%",transform:"translateX(-50%)",background:toast.color,color:"#fff",padding:"10px 20px",borderRadius:12,fontWeight:800,zIndex:999,fontSize:14,boxShadow:"0 4px 20px rgba(0,0,0,.5)",whiteSpace:"nowrap"}}>
+          <div style={{position:"fixed",bottom:isMobile ? 90 : 20,left:"50%",transform:"translateX(-50%)",background:toast.color,color:"#fff",padding:"10px 20px",borderRadius:12,fontWeight:800,zIndex:9999,fontSize:14,boxShadow:"0 4px 20px rgba(0,0,0,.5)",whiteSpace:"nowrap"}}>
             {toast.msg}
           </div>
         )}
