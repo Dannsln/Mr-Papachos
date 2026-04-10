@@ -173,10 +173,12 @@ const MENU_BASE = [
 ];
 
 const ALL_CATS = [...new Set(MENU_BASE.map(i => i.cat))];
-const SALSAS_ALITAS = ["BBQ", "Buffalo", "Maracuyá", "Acevichada", "Miel y Mostaza", "Clásica"];
+// NUEVAS SALSAS
+const SALSAS_ALITAS = ["Maracuyá", "BBQ", "Picante", "Huancaina", "Mango Abanero", "Broaster", "Hawaiana", "Acevichada", "Maracumango", "Aguaimanto"];
 
 const fmt      = (n) => `S/.${Number(n).toFixed(2)}`;
-const newDraft = () => ({ table:"", items:[], payTiming:"despues", notes:"", phone:"", orderType:"mesa", taperCost:0, sunatDocType:"Varios", sunatDocNum:"", sunatCustomerName:"", sunatCustomerAddress:"" });
+// Eliminamos campos de SUNAT del Draft
+const newDraft = () => ({ table:"", items:[], payTiming:"despues", notes:"", phone:"", orderType:"mesa", taperCost:0 });
 const MESAS    = [1, 2, 3, 4, 5, 6];
 
 const getPay = (o, type) => o.payments ? (Number(o.payments[type]) || 0) : (o.payment === type ? o.total : 0);
@@ -203,14 +205,8 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
   const [eNotes,     setENotes]     = useState(order.notes || "");
   const [ePhone,     setEPhone]     = useState(order.phone || "");
   const [eOrderType, setEOrderType] = useState(order.orderType || "mesa");
-  // Ocultamos eTaperCost del total visual aquí si ya fue inyectado como item "TAPER"
   const taperItem = eItems.find(i => i.id === "TAPER");
   const [eTaperCost, setETaperCost] = useState(taperItem ? 0 : (order.taperCost || 0));
-  
-  const [eSunatDocType, setESunatDocType] = useState(order.sunatDocType || "Varios");
-  const [eSunatDocNum, setESunatDocNum] = useState(order.sunatDocNum || "");
-  const [eSunatCustomerName, setESunatCustomerName] = useState(order.sunatCustomerName || "");
-  const [eSunatCustomerAddress, setESunatCustomerAddress] = useState(order.sunatCustomerAddress || "");
 
   const [eCat,       setECat]       = useState("Todos");
   const [eSearch,    setESearch]    = useState("");
@@ -260,7 +256,8 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
     if (eTaperCost > 0 && !taperItem) {
       finalItems.push({ id: "TAPER", cartId: "TAPER", name: "Taper / Bolsa", price: eTaperCost, qty: 1, individualNotes: [""] });
     }
-    onSave({ ...order, table: eTable, items: finalItems, notes: eNotes, phone: ePhone, total: eTotal, orderType: eOrderType, taperCost: 0, sunatDocType: eSunatDocType, sunatDocNum: eSunatDocNum, sunatCustomerName: eSunatCustomerName, sunatCustomerAddress: eSunatCustomerAddress });
+    // Mantenemos datos SUNAT originales si ya existían
+    onSave({ ...order, table: eTable, items: finalItems, notes: eNotes, phone: ePhone, total: eTotal, orderType: eOrderType, taperCost: 0 });
   };
 
   return (
@@ -300,29 +297,6 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
             value={eTaperCost || ""} onChange={e => setETaperCost(e.target.value)} />
         </div>
       )}
-
-      <div style={{ marginBottom:10, padding:10, border:`1px solid ${Y}55`, borderRadius:8 }}>
-        <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Comprobante (SUNAT)</label>
-        <div style={{ display:"flex", gap:6, marginTop:4 }}>
-          {["Varios","Boleta","Factura"].map(t => {
-              const val = t === "Varios" ? "Varios" : t === "Boleta" ? "DNI" : "RUC";
-              return (
-            <button key={t} style={{ ...s.btn(eSunatDocType===val?"primary":"secondary"), flex:1, padding:"6px 0" }}
-              onClick={() => setESunatDocType(val)}>
-              {t}
-            </button>
-          )})}
-        </div>
-        {eSunatDocType !== "Varios" && (
-          <div style={{marginTop:8, display:"flex", flexDirection:"column", gap:6}}>
-            <input style={s.input} placeholder={eSunatDocType==="DNI" ? "Número de DNI" : "Número de RUC"} value={eSunatDocNum} onChange={e=>setESunatDocNum(e.target.value)} />
-            <input style={s.input} placeholder={eSunatDocType==="DNI" ? "Nombre completo" : "Razón Social"} value={eSunatCustomerName} onChange={e=>setESunatCustomerName(e.target.value)} />
-            {eSunatDocType === "RUC" && (
-              <input style={s.input} placeholder="Dirección Fiscal (Obligatorio para RUC)" value={eSunatCustomerAddress} onChange={e=>setESunatCustomerAddress(e.target.value)} />
-            )}
-          </div>
-        )}
-      </div>
 
       <div style={{ marginBottom:10 }}>
         <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas Generales</label>
@@ -406,15 +380,33 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  MODAL MULTICOBRO
+//  MODAL MULTICOBRO (Ahora con SUNAT)
 // ═══════════════════════════════════════════════════════════════════
-function CobrarModal({ total, onConfirm, onClose, s, Y }) {
+function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
   const [ef, setEf] = useState(total);
   const [ya, setYa] = useState(0);
   const [ta, setTa] = useState(0);
 
+  // Estados de SUNAT en el cobro
+  const [sunatDocType, setSunatDocType] = useState(orderContext?.sunatDocType || "Varios");
+  const [sunatDocNum, setSunatDocNum] = useState(orderContext?.sunatDocNum || "");
+  const [sunatCustomerName, setSunatCustomerName] = useState(orderContext?.sunatCustomerName || "");
+  const [sunatCustomerAddress, setSunatCustomerAddress] = useState(orderContext?.sunatCustomerAddress || "");
+
   const sum = Number(ef||0) + Number(ya||0) + Number(ta||0);
   const diff = total - sum;
+
+  const handleConfirm = () => {
+    onConfirm({
+      efectivo: Number(ef||0), 
+      yape: Number(ya||0), 
+      tarjeta: Number(ta||0),
+      sunatDocType,
+      sunatDocNum,
+      sunatCustomerName,
+      sunatCustomerAddress
+    });
+  };
 
   return (
     <div style={s.modal} onClick={e => e.stopPropagation()}>
@@ -425,6 +417,30 @@ function CobrarModal({ total, onConfirm, onClose, s, Y }) {
 
       <div style={{fontSize:22, fontWeight:900, marginBottom:16, textAlign:"center", background:"#111", padding:12, borderRadius:8}}>
         TOTAL A COBRAR: <span style={{color:Y}}>{fmt(total)}</span>
+      </div>
+
+      {/* Recuadro de SUNAT integrado en el cobro */}
+      <div style={{ marginBottom:16, padding:10, border:`1px solid ${Y}55`, borderRadius:8 }}>
+        <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Comprobante (SUNAT)</label>
+        <div style={{ display:"flex", gap:6, marginTop:4 }}>
+          {["Varios","Boleta","Factura"].map(t => {
+              const val = t === "Varios" ? "Varios" : t === "Boleta" ? "DNI" : "RUC";
+              return (
+            <button key={t} style={{ ...s.btn(sunatDocType===val?"primary":"secondary"), flex:1, padding:"6px 0" }}
+              onClick={() => setSunatDocType(val)}>
+              {t}
+            </button>
+          )})}
+        </div>
+        {sunatDocType !== "Varios" && (
+          <div style={{marginTop:8, display:"flex", flexDirection:"column", gap:6}}>
+            <input style={s.input} placeholder={sunatDocType==="DNI" ? "Número de DNI" : "Número de RUC"} value={sunatDocNum} onChange={e=>setSunatDocNum(e.target.value)} />
+            <input style={s.input} placeholder={sunatDocType==="DNI" ? "Nombre completo" : "Razón Social"} value={sunatCustomerName} onChange={e=>setSunatCustomerName(e.target.value)} />
+            {sunatDocType === "RUC" && (
+              <input style={s.input} placeholder="Dirección Fiscal (Obligatorio para RUC)" value={sunatCustomerAddress} onChange={e=>setSunatCustomerAddress(e.target.value)} />
+            )}
+          </div>
+        )}
       </div>
 
       <div style={{display:"flex", flexDirection:"column", gap:12}}>
@@ -450,7 +466,7 @@ function CobrarModal({ total, onConfirm, onClose, s, Y }) {
       </div>
 
       <button style={{...s.btn("success"), width:"100%", padding:14, fontSize:16, marginTop:16, opacity: Math.abs(diff)>0.01 ? 0.5 : 1}} 
-        onClick={()=>onConfirm({efectivo:Number(ef||0), yape:Number(ya||0), tarjeta:Number(ta||0)})} disabled={Math.abs(diff)>0.01}>
+        onClick={handleConfirm} disabled={Math.abs(diff)>0.01}>
         ✅ Confirmar Cobro
       </button>
     </div>
@@ -547,29 +563,6 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
             💵 Pagar ahora
           </button>
         </div>
-      </div>
-
-      <div style={{ marginBottom:10, padding:10, border:`1px solid ${Y}55`, borderRadius:8 }}>
-        <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Comprobante (SUNAT)</label>
-        <div style={{ display:"flex", gap:6, marginTop:4 }}>
-          {["Varios","Boleta","Factura"].map(t => {
-              const val = t === "Varios" ? "Varios" : t === "Boleta" ? "DNI" : "RUC";
-              return (
-            <button key={t} style={{ ...s.btn(draft.sunatDocType===val?"primary":"secondary"), flex:1, padding:"6px 0" }}
-              onClick={() => setDraft(d => ({...d, sunatDocType:val}))}>
-              {t}
-            </button>
-          )})}
-        </div>
-        {draft.sunatDocType !== "Varios" && (
-          <div style={{marginTop:8, display:"flex", flexDirection:"column", gap:6}}>
-            <input style={s.input} placeholder={draft.sunatDocType==="DNI" ? "Número de DNI" : "Número de RUC"} value={draft.sunatDocNum} onChange={e=>setDraft(d=>({...d, sunatDocNum:e.target.value}))} />
-            <input style={s.input} placeholder={draft.sunatDocType==="DNI" ? "Nombre completo" : "Razón Social"} value={draft.sunatCustomerName} onChange={e=>setDraft(d=>({...d, sunatCustomerName:e.target.value}))} />
-            {draft.sunatDocType === "RUC" && (
-              <input style={s.input} placeholder="Dirección Fiscal (Obligatorio para RUC)" value={draft.sunatCustomerAddress} onChange={e=>setDraft(d=>({...d, sunatCustomerAddress:e.target.value}))} />
-            )}
-          </div>
-        )}
       </div>
 
       <div style={{ marginBottom:12 }}>
@@ -736,11 +729,9 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
   );
 }
 
-// ── Impresión para cocina ──────────────────────────────────────────
+// ── Impresión mejorada para móviles ──────────────────────────────────────────
 function printOrder(order) {
-  const win = window.open("", "_blank", "width=220,height=600");
   const items = order.items.map(i => {
-    // Unir las notas individuales que no estén vacías
     const validNotes = (i.individualNotes || []).filter(n => n.trim() !== "");
     let notesHtml = "";
     if (validNotes.length > 0) {
@@ -756,7 +747,7 @@ function printOrder(order) {
   const fecha = new Date().toLocaleDateString("es-PE",{day:"2-digit",month:"2-digit",year:"2-digit"});
   const paidMarker = order.isPaid ? `<div style="text-align:center;font-weight:bold;margin-top:2mm;border:1px solid #000;padding:2px;">** PAGADO **</div>` : "";
   
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Pedido</title>
+  const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Pedido</title>
 <style>
   @page{size:50mm auto;margin:0}*{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Courier New',monospace;font-size:11px;width:50mm;padding:10mm 2mm 4mm;background:#fff;color:#000}
@@ -784,9 +775,22 @@ function printOrder(order) {
   <div class="total-row"><span>TOTAL</span><span>S/.${order.total.toFixed(2)}</span></div>
   ${paidMarker}
   <div class="footer">— Cocina —</div>
-  <script>window.onload=function(){window.print();setTimeout(function(){window.close();},500);}<\/script>
-</body></html>`);
-  win.document.close();
+</body></html>`;
+
+  // Uso de un iframe oculto para no abrir ventanas no deseadas en el celular
+  const iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  document.body.appendChild(iframe);
+  iframe.contentDocument.write(htmlContent);
+  iframe.contentDocument.close();
+  
+  setTimeout(() => {
+    iframe.contentWindow.focus();
+    iframe.contentWindow.print();
+    setTimeout(() => {
+      document.body.removeChild(iframe);
+    }, 1000);
+  }, 500);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -970,7 +974,7 @@ function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, set
   );
 }
 
-function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, finishPaidOrder, setCobrarTarget, setEditingOrder, printOrder, cancelOrder, isMobile, s, Y, fmt, MESAS }) {
+function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, finishPaidOrder, setCobrarTarget, setEditingOrder, printOrder, cancelOrder, isMobile, isTablet, s, Y, fmt, MESAS }) {
   const llevarOrders = orders.filter(o => o.orderType==="llevar");
   return (
     <div>
@@ -978,7 +982,13 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
         <div style={s.title}>🪑 MESAS</div>
         <button style={s.btn()} onClick={() => { setDraft({...newDraft(), orderType:"llevar", payTiming:"ahora"}); setTab("nuevo"); }}>🥡 Para llevar</button>
       </div>
-      <div style={{display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(3, 1fr)", gap:12, marginBottom:20}}>
+      <div style={{
+          display:"grid", 
+          gridTemplateColumns:isMobile?"1fr 1fr":"repeat(3, 1fr)", 
+          gridAutoRows: isTablet ? "minmax(22vh, auto)" : "auto", 
+          gap: isMobile ? 12 : 20, 
+          marginBottom:20
+      }}>
         {MESAS.map(num => {
           const mesaOrders = orders.filter(o => o.table===String(num) && o.orderType!=="llevar");
           const ocupada = mesaOrders.length > 0;
@@ -989,7 +999,7 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
                 border:`2px solid ${ocupada?Y:"#2a2a2a"}`, 
                 borderRadius:14, 
                 padding: "24px 16px",
-                minHeight: isMobile ? 140 : 160, 
+                minHeight: isMobile ? 140 : "100%", 
                 display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center",
                 cursor:"pointer", textAlign:"center", transition:"all .2s", position:"relative"
             }}>
@@ -1329,38 +1339,42 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, isMobile, is
   
   const allDone = (order) => { 
     const c = kitchenChecks[order.id] || {}; 
-    return order.items.every((item, i) => (Number(c[i]) || (c[i] === true ? item.qty : 0)) === item.qty); 
+    // Si tiene items y TODOS tienen la cantidad completada
+    return order.items.length > 0 && order.items.every((item, i) => (Number(c[i]) || (c[i] === true ? item.qty : 0)) === item.qty); 
   };
+
+  // Filtramos para Ocultar los que ya están listos al 100%
+  const activeOrders = sorted.filter(order => !allDone(order));
   
-  if(sorted.length === 0) return <div style={{textAlign:"center", padding:60, color:"#444"}}><div style={{fontSize:56}}>👨‍🍳</div><div style={{marginTop:12, fontSize:16}}>Sin pedidos en cocina</div></div>;
+  if(activeOrders.length === 0) return <div style={{textAlign:"center", padding:60, color:"#444"}}><div style={{fontSize:56}}>👨‍🍳</div><div style={{marginTop:12, fontSize:16}}>Sin pedidos pendientes en cocina</div></div>;
+  
   return (
     <div>
       <div style={{...s.row, marginBottom:14}}>
-        <div style={s.title}>👨‍🍳 COCINA — {sorted.length} pedido{sorted.length!==1?"s":""}</div>
+        <div style={s.title}>👨‍🍳 COCINA — {activeOrders.length} pedido{activeOrders.length!==1?"s":""}</div>
       </div>
       <div style={{display:"grid", gridTemplateColumns:isDesktop?"1fr 1fr":"1fr", gap:12}}>
-        {sorted.map((order,priority) => {
+        {activeOrders.map((order,priority) => {
           const checks = kitchenChecks[order.id] || {};
-          const done = allDone(order);
           
           const totalPortions = order.items.reduce((sum, item) => sum + item.qty, 0);
           const donePortions = order.items.reduce((sum, item, i) => sum + (Number(checks[i]) || (checks[i] === true ? item.qty : 0)), 0);
           
           const mins = Math.floor((Date.now() - new Date(order.createdAt))/60000);
-          const urgent = mins >= 15 && !done;
-          const warn = mins >= 8 && mins < 15 && !done;
+          const urgent = mins >= 15;
+          const warn = mins >= 8 && mins < 15;
           
           return (
-            <div key={order.id} style={{background:done?"#0d1f0d":urgent?"#1f0d0d":warn?"#1f180d":"#1c1c1c", borderRadius:14, border:`2px solid ${done?"#27ae60":urgent?"#e74c3c":warn?"#e67e22":Y}`, padding:14, position:"relative", transition:"all .3s"}}>
-              <div style={{position:"absolute", top:-10, left:14, background:done?"#27ae60":urgent?"#e74c3c":warn?"#e67e22":Y, color:done||urgent||warn?"#fff":"#111", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:900}}>
-                {done?"✅ LISTO":`#${priority+1} · ${mins<1?"ahora":`${mins}m`}`}
+            <div key={order.id} style={{background:urgent?"#1f0d0d":warn?"#1f180d":"#1c1c1c", borderRadius:14, border:`2px solid ${urgent?"#e74c3c":warn?"#e67e22":Y}`, padding:14, position:"relative", transition:"all .3s"}}>
+              <div style={{position:"absolute", top:-10, left:14, background:urgent?"#e74c3c":warn?"#e67e22":Y, color:urgent||warn?"#fff":"#111", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:900}}>
+                {`#${priority+1} · ${mins<1?"ahora":`${mins}m`}`}
               </div>
               {order.isPaid && <div style={{position:"absolute", top:-10, right:14, background:"#2980b9", color:"#fff", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:900}}>✅ PAGADO</div>}
               <div style={{...s.row, marginBottom:10, marginTop:6}}>
-                <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:22, color:done?"#27ae60":urgent?"#e74c3c":warn?"#e67e22":Y}}>{order.orderType==="llevar"?`🥡 ${order.table}`:`Mesa ${order.table}`}</span>
+                <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:22, color:urgent?"#e74c3c":warn?"#e67e22":Y}}>{order.orderType==="llevar"?`🥡 ${order.table}`:`Mesa ${order.table}`}</span>
               </div>
               <div style={{background:"#2a2a2a", borderRadius:4, height:5, marginBottom:12, overflow:"hidden"}}>
-                <div style={{background:done?"#27ae60":Y, height:"100%", width:`${totalPortions > 0 ? (donePortions/totalPortions)*100 : 0}%`, transition:"width .3s"}}/>
+                <div style={{background:Y, height:"100%", width:`${totalPortions > 0 ? (donePortions/totalPortions)*100 : 0}%`, transition:"width .3s"}}/>
               </div>
               {order.items.map((item,i) => {
                 const doneQty = Number(checks[i]) || (checks[i] === true ? item.qty : 0);
@@ -1399,7 +1413,7 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, isMobile, is
 export default function App() {
   const width     = useWindowWidth();
   const isMobile  = width < 480;
-  const isTablet  = width >= 480 && width < 768;
+  const isTablet  = width >= 480 && width < 1024; // Ajuste para captar tablets (ej. iPad)
   const isDesktop = width >= 768;
   const isWide    = width >= 1024;
 
@@ -1464,7 +1478,6 @@ export default function App() {
   const saveMenu   = async (v) => { setMenu(v); await FS.saveMenu(v.filter(i=>i.id.startsWith("CUSTOM_"))); };
 
   const addItem = (item) => setDraft(d => {
-    // Buscar si ya existe el mismo cartId
     const cartIdToUse = item.cartId || item.id;
     const ex = d.items.find(i => i.cartId === cartIdToUse);
     if (ex) {
@@ -1522,7 +1535,6 @@ export default function App() {
     ) ?? null;
 
     if (existingMesaOrder && forceMerge === null) {
-      // Mostrar modal de confirmación
       setMergeModal({ existingOrder: existingMesaOrder, newDraftData: { ...draft, total, taperNum } });
       setMergeName("");
       return;
@@ -1537,7 +1549,6 @@ export default function App() {
     }
 
     if (forceMerge === "merge" && mergeModal) {
-      // Fusionar ítems con el pedido existente
       const existing = mergeModal.existingOrder;
       const isLlevarDraft = mergeModal.newDraftData.orderType === "llevar";
       
@@ -1553,7 +1564,6 @@ export default function App() {
       const mergedItems = [...existing.items];
 
       newItems.forEach(newItem => {
-        // Si es para llevar o tiene notas distintas, le forzamos un ID único para no juntarlo visualmente en cocina
         if (newItem.isLlevar) {
             newItem.cartId = `${newItem.cartId}-LLEVAR-${Date.now()}`;
             mergedItems.push(newItem);
@@ -1573,7 +1583,14 @@ export default function App() {
 
       const mergedTotal = mergedItems.reduce((s, i) => s + i.price * i.qty, 0);
       const mergedNotes = [existing.notes, mergeModal.newDraftData.notes].filter(Boolean).join(" | ");
-      const updated = { ...existing, items: mergedItems, total: mergedTotal, notes: mergedNotes, taperCost: 0 };
+      // Extraemos datos SUNAT del pedido existente para conservarlos
+      const updated = { 
+        ...existing, 
+        items: mergedItems, 
+        total: mergedTotal, 
+        notes: mergedNotes, 
+        taperCost: 0 
+      };
 
       setOrders(prev => prev.map(o => o.id === existing.id ? updated : o));
       await saveOrders(orders.map(o => o.id === existing.id ? updated : o));
@@ -1585,19 +1602,21 @@ export default function App() {
       return;
     }
 
-    // Nuevo pedido normal (forceMerge === "new" o no hay existente)
+    // Nuevo pedido normal
     if (mergeModal) {
       setMergeModal(null);
       setMergeName("");
     }
 
-    // Para envíos directos sin merge
-    const finalDraft = { ...draft, items: finalItems, taperCost: 0 }; // Reseteamos taperCost porque ya es un item
+    const finalDraft = { ...draft, items: finalItems, taperCost: 0 }; 
 
     if (draft.payTiming === "ahora") {
       setCobrarTarget({ type: 'new', data: { id:Date.now().toString(), ...finalDraft, total, createdAt:new Date().toISOString() } });
     } else {
-      const order = { id:Date.now().toString(), ...finalDraft, total, isPaid: false, status:"pendiente", createdAt:new Date().toISOString() };
+      // Pedido Pagar Después NO lleva datos de SUNAT hasta que se cobre
+      const { sunatDocType, sunatDocNum, sunatCustomerName, sunatCustomerAddress, ...draftWithoutSunat } = finalDraft;
+      const order = { id:Date.now().toString(), ...draftWithoutSunat, total, isPaid: false, status:"pendiente", createdAt:new Date().toISOString() };
+      
       setOrders(prev => [...prev, order]); 
       await saveOrders([...orders,order]);
       setDraft(newDraft());
@@ -1606,13 +1625,29 @@ export default function App() {
     }
   };
 
-  const handleConfirmCobro = async (payments) => {
+  const handleConfirmCobro = async (paymentData) => {
     if (!cobrarTarget) return;
     const target = cobrarTarget;
     setCobrarTarget(null);
+    
+    const payments = { 
+      efectivo: paymentData.efectivo, 
+      yape: paymentData.yape, 
+      tarjeta: paymentData.tarjeta 
+    };
 
     if (target.type === 'new') {
-      const order = { ...target.data, isPaid: true, status: "pendiente", payments, paidAt: new Date().toISOString() };
+      const order = { 
+        ...target.data, 
+        isPaid: true, 
+        status: "pendiente", 
+        payments, 
+        paidAt: new Date().toISOString(),
+        sunatDocType: paymentData.sunatDocType,
+        sunatDocNum: paymentData.sunatDocNum,
+        sunatCustomerName: paymentData.sunatCustomerName,
+        sunatCustomerAddress: paymentData.sunatCustomerAddress
+      };
       setOrders(prev => [...prev, order]); 
       await saveOrders([...orders, order]);
       setDraft(newDraft());
@@ -1626,7 +1661,17 @@ export default function App() {
       const newOrders = orders.filter(x => x.id !== o.id);
       setOrders(newOrders); 
 
-      const finished = { ...o, isPaid: true, status: "pagado", payments, paidAt: new Date().toISOString() };
+      const finished = { 
+        ...o, 
+        isPaid: true, 
+        status: "pagado", 
+        payments, 
+        paidAt: new Date().toISOString(),
+        sunatDocType: paymentData.sunatDocType,
+        sunatDocNum: paymentData.sunatDocNum,
+        sunatCustomerName: paymentData.sunatCustomerName,
+        sunatCustomerAddress: paymentData.sunatCustomerAddress
+      };
       await Promise.all([
         FS.addHistory(finished),
         saveOrders(newOrders)
@@ -1761,6 +1806,7 @@ export default function App() {
         {cobrarTarget && (
           <div style={s.overlay} onClick={()=>setCobrarTarget(null)}>
             <CobrarModal 
+              orderContext={cobrarTarget.data}
               total={cobrarTarget.data.total} 
               onConfirm={handleConfirmCobro} 
               onClose={()=>setCobrarTarget(null)} 
@@ -1868,7 +1914,7 @@ export default function App() {
 
         <div style={s.content}>
           {tab==="dashboard"  && <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} />}
-          {tab==="mesas"      && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} isMobile={isMobile} s={s} Y={Y} fmt={fmt} MESAS={MESAS} />}
+          {tab==="mesas"      && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} MESAS={MESAS} />}
           {tab==="nuevo"      && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} />}
           {tab==="pedidos"    && <PedidosComponent orders={orders} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
           {tab==="cocina"     && <CocinaComponent orders={orders} kitchenChecks={kitchenChecks} setKitchenChecks={setKitchenChecks} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} />}
