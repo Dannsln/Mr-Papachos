@@ -107,6 +107,7 @@ exports.generarBoleta = onDocumentCreated("mrpapachos_historial/{orderId}", asyn
       "total_gravada": gravada.toFixed(2),
       "total_igv": igv.toFixed(2),
       "total": total.toFixed(2),
+      "formato_de_pdf": "TICKET", // <--- 🚨 ESTA ES LA LÍNEA MÁGICA 🚨
       "enviar_automaticamente_a_la_sunat": "true",
       "enviar_automaticamente_al_cliente": "false",
       "codigo_unico": order.id,
