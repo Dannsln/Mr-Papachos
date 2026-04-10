@@ -1314,7 +1314,7 @@ function CartaComponent({ menu, cartaCatFilter, setCartaCatFilter, showAdd, setS
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  APP COMPONENTE PRINCIPAL
+//  APP PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════
 export default function App() {
   const width     = useWindowWidth();
@@ -1536,6 +1536,15 @@ export default function App() {
     setEditingOrder(null); showToast(`✏️ Pedido actualizado`,"#f39c12");
   };
 
+  const addMenuItem = async () => {
+    if (!newItem.name.trim()||!newItem.price) return;
+    const item = {id:"CUSTOM_"+Date.now(),cat:newItem.cat,icon:"⭐",name:newItem.name,price:parseFloat(newItem.price),desc:""};
+    await saveMenu([...menu,item]);
+    setNewItem({name:"",cat:"Hamburguesas",price:""}); setShowAdd(false);
+    showToast(`⭐ "${item.name}" agregado`);
+  };
+  const deleteMenuItem = async (id) => { await saveMenu(menu.filter(i=>i.id!==id)); showToast("🗑️ Platillo eliminado","#e74c3c"); };
+
   if (splash) return (
     <div style={{background:"#111",height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20}}>
       <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito:wght@400;700;900&display=swap" rel="stylesheet"/>
@@ -1603,7 +1612,7 @@ export default function App() {
 
         <nav style={s.nav}>{tabs.map(t=>(<button key={t.id} style={{...s.navBtn(tab===t.id),flex:isMobile?1:"none"}} onClick={()=>setTab(t.id)}>{t.label}</button>))}</nav>
 
-        {toast&&(<div style={{position:"fixed",bottom:isMobile ? 90 : 20,left:"50%",transform:"translateX(-50%)",background:toast.color,color:"#fff",padding:"10px 20px",borderRadius:12,fontWeight:800,zIndex:9999,fontSize:14,boxShadow:"0 4px 20px rgba(0,0,0,.5)",whiteSpace:"nowrap"}}>{toast.msg}</div>)}
+        {toast&&(<div style={{position:"fixed",bottom:isMobile ? 90 : 20,left:"50%",transform:"translateX(-50%)",background:toast.color,color:"#fff",padding:"10px 20px",borderRadius:12,fontWeight:800,zIndex:9999,fontSize:14,boxShadow:"0 4px 20px rgba(0,0,0,.5)"}}>{toast.msg}</div>)}
 
         {cobrarTarget && <div style={s.overlay} onClick={()=>setCobrarTarget(null)}><CobrarModal orderContext={cobrarTarget.data} total={cobrarTarget.data.total} onConfirm={handleConfirmCobro} onClose={()=>setCobrarTarget(null)} s={s} Y={Y} /></div>}
         {splitTarget && <SplitBillModal order={splitTarget} onProceed={(items, total) => { setCobrarTarget({ type: 'split', data: { originalOrder: splitTarget, splitItems: items, total }}); setSplitTarget(null); }} onClose={() => setSplitTarget(null)} s={s} Y={Y} fmt={fmt} />}
