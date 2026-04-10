@@ -1,11 +1,7 @@
-\import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { initializeApp, getApps } from "firebase/app";
 import {
-  getFirestore,
-  doc, setDoc, getDoc, deleteDoc,
-  collection, getDocs, addDoc,
-  query, orderBy, limit,
-  onSnapshot
+  getFirestore, doc, setDoc, getDoc, collection, addDoc, query, orderBy, limit, onSnapshot
 } from "firebase/firestore";
 
 const FIREBASE_CONFIG = {
@@ -41,7 +37,6 @@ const FS = {
   }
 };
 
-// ─── MENÚ BASE ────────────────────────────────────────────
 const MENU_BASE = [
   { id:"H01",  cat:"Hamburguesas",      icon:"🍔", name:"La Silvestre",             price:7,    desc:"Carne, papa frita, ensalada" },
   { id:"H02",  cat:"Hamburguesas",      icon:"🍔", name:"La Piolin",                 price:8,    desc:"Carne o pollo, huevo, papa frita, ensalada" },
@@ -173,14 +168,13 @@ const MENU_BASE = [
 ];
 
 const ALL_CATS = [...new Set(MENU_BASE.map(i => i.cat))];
-const SALSAS_ALITAS = ["Maracuyá", "BBQ", "Picante", "Huancaina", "Mango Abanero", "Broaster", "Hawaiana", "Acevichada", "Maracumango", "Aguaimanto"];
+const SALSAS_ALITAS = ["Clásica", "Maracuyá", "BBQ", "Picante", "Huancaina", "Mango Abanero", "Broaster", "Hawaiana", "Acevichada", "Maracumango", "Aguaimanto"];
 
 const fmt      = (n) => `S/.${Number(n).toFixed(2)}`;
 const newDraft = () => ({ table:"", items:[], payTiming:"despues", notes:"", phone:"", orderType:"mesa", taperCost:0 });
 const MESAS    = [1, 2, 3, 4, 5, 6];
 
 const getPay = (o, type) => o.payments ? (Number(o.payments[type]) || 0) : (o.payment === type ? o.total : 0);
-
 const timeStr    = (iso) => { if(!iso)return""; const d=new Date(iso); return d.toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"}); };
 const minutesAgo = (iso) => { const m=Math.floor((Date.now()-new Date(iso))/60000); if(m<1)return"ahora"; if(m<60)return`hace ${m}m`; return`hace ${Math.floor(m/60)}h ${m%60}m`; };
 
@@ -195,6 +189,34 @@ function useWindowWidth() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+//  LOGIN SCREEN (Preparando Base para Rol/Auth)
+// ═══════════════════════════════════════════════════════════════════
+function LoginScreen({ onLogin, s, Y }) {
+  const roles = [
+    { id: 'admin', icon: '👑', label: 'Administrador' },
+    { id: 'cajero', icon: '💰', label: 'Cajero' },
+    { id: 'mesero', icon: '📝', label: 'Mesero' },
+    { id: 'cocinero', icon: '👨‍🍳', label: 'Cocina' }
+  ];
+
+  return (
+    <div style={{background:"#111", height:"100vh", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", color:"#fff"}}>
+      <div style={{fontSize:60, marginBottom:10}}>🍔</div>
+      <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:32, color:Y, letterSpacing:2, marginBottom:40}}>MR. PAPACHOS</div>
+      <div style={{fontSize:13, color:"#888", marginBottom:20, textTransform:"uppercase", letterSpacing:1}}>Selecciona tu usuario</div>
+      <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:16}}>
+        {roles.map(r => (
+          <button key={r.id} onClick={() => onLogin(r)} style={{...s.card, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", padding:20, border:`1px solid #333`}}>
+            <div style={{fontSize:32, marginBottom:10}}>{r.icon}</div>
+            <div style={{fontWeight:800, fontSize:14}}>{r.label}</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 //  MODAL CONFIGURADOR DE SALSAS
 // ═══════════════════════════════════════════════════════════════════
 function SalsasModalComponent({ initialSalsas = [], onSave, onClose, s, Y }) {
@@ -204,8 +226,8 @@ function SalsasModalComponent({ initialSalsas = [], onSave, onClose, s, Y }) {
     if (selected.find(x => x.name === salsa)) {
       setSelected(selected.filter(x => x.name !== salsa));
     } else {
-      if (selected.length >= 4) return; // Máximo 4 salsas
-      setSelected([...selected, { name: salsa, style: "Bañadas" }]);
+      if (selected.length >= 4) return;
+      setSelected([...selected, { name: salsa, style: salsa === "Clásica" ? "Sin crema" : "Bañadas" }]);
     }
   };
 
@@ -224,12 +246,9 @@ function SalsasModalComponent({ initialSalsas = [], onSave, onClose, s, Y }) {
           {SALSAS_ALITAS.map(salsa => {
             const isSelected = selected.find(x => x.name === salsa);
             return (
-              <button 
-                key={salsa} 
+              <button key={salsa} 
                 style={{...s.btn(isSelected ? "primary" : "secondary"), fontSize:11, opacity: (!isSelected && selected.length >= 4) ? 0.4 : 1}}
-                onClick={() => toggleSalsa(salsa)}
-                disabled={!isSelected && selected.length >= 4}
-              >
+                onClick={() => toggleSalsa(salsa)} disabled={!isSelected && selected.length >= 4}>
                 {salsa}
               </button>
             )
@@ -242,12 +261,14 @@ function SalsasModalComponent({ initialSalsas = [], onSave, onClose, s, Y }) {
             {selected.map(salsa => (
               <div key={salsa.name} style={{display:"flex", justifyContent:"space-between", alignItems:"center", background:"#222", padding:"8px 12px", borderRadius:8, marginBottom:6}}>
                 <span style={{fontWeight:800, color:Y, fontSize:13}}>{salsa.name}</span>
-                <button 
-                  style={{...s.btn(salsa.style === "Bañadas" ? "warn" : "blue"), padding:"4px 10px", fontSize:11}} 
-                  onClick={() => toggleStyle(salsa.name)}
-                >
-                  {salsa.style}
-                </button>
+                {salsa.name === "Clásica" ? (
+                  <span style={{color:"#888", fontSize:11, fontStyle:"italic"}}>Sin cremas</span>
+                ) : (
+                  <button style={{...s.btn(salsa.style === "Bañadas" ? "warn" : "blue"), padding:"4px 10px", fontSize:11}} 
+                    onClick={() => toggleStyle(salsa.name)}>
+                    {salsa.style}
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -261,6 +282,69 @@ function SalsasModalComponent({ initialSalsas = [], onSave, onClose, s, Y }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  MODAL DIVIDIR CUENTA (SPLIT BILL)
+// ═══════════════════════════════════════════════════════════════════
+function SplitBillModal({ order, onProceed, onClose, s, Y, fmt }) {
+  const [splitItems, setSplitItems] = useState(
+    order.items.map(i => ({ ...i, splitQty: 0 }))
+  );
+
+  const splitTotal = splitItems.reduce((acc, i) => acc + (i.price * i.splitQty), 0);
+
+  const handleQty = (cartId, delta, maxQty) => {
+    setSplitItems(prev => prev.map(i => {
+      if (i.cartId === cartId) {
+        let newQty = i.splitQty + delta;
+        if (newQty < 0) newQty = 0;
+        if (newQty > maxQty) newQty = maxQty;
+        return { ...i, splitQty: newQty };
+      }
+      return i;
+    }));
+  };
+
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={{...s.modal, maxWidth:420}} onClick={e => e.stopPropagation()}>
+        <div style={{...s.row, marginBottom:14}}>
+          <h2 style={{color:Y, fontFamily:"'Bebas Neue',cursive", margin:0, fontSize:24, letterSpacing:1}}>✂️ DIVIDIR CUENTA</h2>
+          <button style={{...s.btn("secondary"), padding:"4px 10px"}} onClick={onClose}>✕</button>
+        </div>
+        
+        <div style={{fontSize:12, color:"#aaa", marginBottom:16}}>
+          Selecciona las cantidades que el cliente actual va a pagar. El resto se quedará en la cuenta de la mesa.
+        </div>
+
+        <div style={{maxHeight: 300, overflowY:"auto", marginBottom:16}}>
+          {splitItems.map(item => (
+            <div key={item.cartId} style={{display:"flex", alignItems:"center", justifyContent:"space-between", background:"#1a1a1a", padding:10, borderRadius:8, marginBottom:8, border:"1px solid #333"}}>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:800, fontSize:13}}>{item.name} {item.isLlevar && "🥡"}</div>
+                <div style={{fontSize:11, color:"#888"}}>{item.qty} disponible(s) · {fmt(item.price)} c/u</div>
+              </div>
+              <div style={{display:"flex", alignItems:"center", gap:10}}>
+                <button style={{...s.btn("danger"), padding:"4px 10px"}} onClick={() => handleQty(item.cartId, -1, item.qty)}>−</button>
+                <span style={{fontWeight:900, fontSize:16, minWidth:20, textAlign:"center", color: item.splitQty > 0 ? Y : "#666"}}>{item.splitQty}</span>
+                <button style={{...s.btn(), padding:"4px 10px"}} onClick={() => handleQty(item.cartId, 1, item.qty)}>+</button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{display:"flex", justifyContent:"space-between", padding:"12px 0", borderTop:`2px solid ${Y}55`, marginBottom:12}}>
+          <span style={{fontWeight:900, fontSize:16}}>SUBTOTAL A COBRAR</span>
+          <span style={{fontWeight:900, fontSize:16, color:Y}}>{fmt(splitTotal)}</span>
+        </div>
+
+        <button style={{...s.btn("success"), width:"100%", padding:14, fontSize:15, opacity: splitTotal === 0 ? 0.4 : 1}} 
+          onClick={() => onProceed(splitItems.filter(i => i.splitQty > 0), splitTotal)} disabled={splitTotal === 0}>
+          💵 Proceder a Cobrar S/. {splitTotal.toFixed(2)}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ═══════════════════════════════════════════════════════════════════
 //  MODAL DE EDICIÓN
@@ -408,7 +492,6 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
                 </div>
               )}
 
-              {/* Cajas de notas separadas por cada plato */}
               {item.id !== "TAPER" && Array.from({ length: item.qty }).map((_, idx) => (
                 <textarea 
                   key={idx}
@@ -471,89 +554,93 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  MODAL MULTICOBRO (Ahora con SUNAT)
+//  MODAL MULTICOBRO (Con SUNAT / RENIEC Simulado)
 // ═══════════════════════════════════════════════════════════════════
 function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
   const [ef, setEf] = useState(total);
   const [ya, setYa] = useState(0);
   const [ta, setTa] = useState(0);
 
-  // Estados de SUNAT
   const [sunatDocType, setSunatDocType] = useState(orderContext?.sunatDocType || "Varios");
   const [sunatDocNum, setSunatDocNum] = useState(orderContext?.sunatDocNum || "");
   const [sunatCustomerName, setSunatCustomerName] = useState(orderContext?.sunatCustomerName || "");
   const [sunatCustomerAddress, setSunatCustomerAddress] = useState(orderContext?.sunatCustomerAddress || "");
+  const [loadingDoc, setLoadingDoc] = useState(false);
 
   const sum = Number(ef||0) + Number(ya||0) + Number(ta||0);
   const diff = total - sum;
 
+  const handleSearchDoc = () => {
+    if (sunatDocNum.length < 8) return;
+    setLoadingDoc(true);
+    setTimeout(() => {
+      setSunatCustomerName(sunatDocType === "DNI" ? "JUAN PEREZ (API)" : "EMPRESA TECNOLOGICA S.A.C. (API)");
+      if(sunatDocType === "RUC") setSunatCustomerAddress("LIMA, PERU");
+      setLoadingDoc(false);
+    }, 800);
+  };
+
   const handleConfirm = () => {
     onConfirm({
-      efectivo: Number(ef||0), 
-      yape: Number(ya||0), 
-      tarjeta: Number(ta||0),
-      sunatDocType,
-      sunatDocNum,
-      sunatCustomerName,
-      sunatCustomerAddress
+      efectivo: Number(ef||0), yape: Number(ya||0), tarjeta: Number(ta||0),
+      sunatDocType, sunatDocNum, sunatCustomerName, sunatCustomerAddress
     });
   };
 
   return (
     <div style={s.modal} onClick={e => e.stopPropagation()}>
       <div style={{...s.row, marginBottom:16}}>
-        <h2 style={{color:Y, fontFamily:"'Bebas Neue',cursive", margin:0, fontSize:24, letterSpacing:1}}>💰 MULTICOBRO</h2>
+        <h2 style={{color:Y, fontFamily:"'Bebas Neue',cursive", margin:0, fontSize:24, letterSpacing:1}}>💰 COBRAR</h2>
         <button style={{...s.btn("secondary"), padding:"4px 10px"}} onClick={onClose}>✕</button>
       </div>
 
       <div style={{fontSize:22, fontWeight:900, marginBottom:16, textAlign:"center", background:"#111", padding:12, borderRadius:8}}>
-        TOTAL A COBRAR: <span style={{color:Y}}>{fmt(total)}</span>
+        TOTAL: <span style={{color:Y}}>{fmt(total)}</span>
       </div>
 
-      {/* SUNAT Integrado en la Caja */}
       <div style={{ marginBottom:16, padding:10, border:`1px solid ${Y}55`, borderRadius:8 }}>
         <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Comprobante (SUNAT)</label>
         <div style={{ display:"flex", gap:6, marginTop:4 }}>
           {["Varios","Boleta","Factura"].map(t => {
               const val = t === "Varios" ? "Varios" : t === "Boleta" ? "DNI" : "RUC";
               return (
-            <button key={t} style={{ ...s.btn(sunatDocType===val?"primary":"secondary"), flex:1, padding:"6px 0" }}
-              onClick={() => setSunatDocType(val)}>
+            <button key={t} style={{ ...s.btn(sunatDocType===val?"primary":"secondary"), flex:1, padding:"6px 0" }} onClick={() => setSunatDocType(val)}>
               {t}
             </button>
           )})}
         </div>
         {sunatDocType !== "Varios" && (
           <div style={{marginTop:8, display:"flex", flexDirection:"column", gap:6}}>
-            <input style={s.input} placeholder={sunatDocType==="DNI" ? "Número de DNI" : "Número de RUC"} value={sunatDocNum} onChange={e=>setSunatDocNum(e.target.value)} spellCheck="false" />
+            <div style={{display:"flex", gap:6}}>
+              <input style={s.input} placeholder={sunatDocType==="DNI" ? "N° DNI" : "N° RUC"} value={sunatDocNum} onChange={e=>setSunatDocNum(e.target.value)} spellCheck="false" />
+              <button style={{...s.btn(loadingDoc ? "secondary" : "blue"), padding:"0 14px"}} onClick={handleSearchDoc} disabled={loadingDoc}>
+                {loadingDoc ? "..." : "🔍"}
+              </button>
+            </div>
             <input style={s.input} placeholder={sunatDocType==="DNI" ? "Nombre completo" : "Razón Social"} value={sunatCustomerName} onChange={e=>setSunatCustomerName(e.target.value)} spellCheck="false" />
             {sunatDocType === "RUC" && (
-              <input style={s.input} placeholder="Dirección Fiscal (Obligatorio para RUC)" value={sunatCustomerAddress} onChange={e=>setSunatCustomerAddress(e.target.value)} spellCheck="false" />
+              <input style={s.input} placeholder="Dirección Fiscal" value={sunatCustomerAddress} onChange={e=>setSunatCustomerAddress(e.target.value)} spellCheck="false" />
             )}
           </div>
         )}
       </div>
 
-      <div style={{display:"flex", flexDirection:"column", gap:12}}>
+      <div style={{display:"flex", flexDirection:"column", gap:10}}>
         <div style={{display:"flex", alignItems:"center", gap:10}}>
-          <span style={{width:90, fontWeight:700}}>💵 Efectivo</span>
+          <span style={{width:80, fontWeight:700}}>💵 Efectivo</span>
           <input type="number" style={s.input} value={ef} onChange={e=>setEf(e.target.value)} min="0" step="0.5" />
           <button style={s.btn("secondary")} onClick={()=>{setEf(total);setYa(0);setTa(0);}}>Todo</button>
         </div>
         <div style={{display:"flex", alignItems:"center", gap:10}}>
-          <span style={{width:90, fontWeight:700}}>💜 Yape</span>
+          <span style={{width:80, fontWeight:700}}>💜 Yape</span>
           <input type="number" style={s.input} value={ya} onChange={e=>setYa(e.target.value)} min="0" step="0.5" />
           <button style={s.btn("secondary")} onClick={()=>{setEf(0);setYa(total);setTa(0);}}>Todo</button>
         </div>
         <div style={{display:"flex", alignItems:"center", gap:10}}>
-          <span style={{width:90, fontWeight:700}}>💳 Tarjeta</span>
+          <span style={{width:80, fontWeight:700}}>💳 Tarjeta</span>
           <input type="number" style={s.input} value={ta} onChange={e=>setTa(e.target.value)} min="0" step="0.5" />
           <button style={s.btn("secondary")} onClick={()=>{setEf(0);setYa(0);setTa(total);}}>Todo</button>
         </div>
-      </div>
-
-      <div style={{marginTop:20, fontSize:15, fontWeight:900, textAlign:"center", padding:12, borderRadius:8, background: Math.abs(diff)<0.01 ? "#1e402a" : "#4a1c1c", color: Math.abs(diff)<0.01 ? "#2ecc71" : "#e74c3c"}}>
-        Ingresado: {fmt(sum)} {Math.abs(diff)>0.01 && `(Falta: ${fmt(diff)})`}
       </div>
 
       <button style={{...s.btn("success"), width:"100%", padding:14, fontSize:16, marginTop:16, opacity: Math.abs(diff)>0.01 ? 0.5 : 1}} 
@@ -571,13 +658,9 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
   const [search,    setSearch]    = useState("");
   const [catFilter, setCatFilter] = useState("Todos");
   const [showCartModal, setShowCartModal] = useState(false);
-  const [salsasModal, setSalsasModal] = useState(null); // { cartId, salsas }
+  const [salsasModal, setSalsasModal] = useState(null);
 
-  const filteredMenu = menu.filter(i =>
-    (catFilter === "Todos" || i.cat === catFilter) &&
-    i.name.toLowerCase().includes(search.toLowerCase())
-  );
-
+  const filteredMenu = menu.filter(i => (catFilter === "Todos" || i.cat === catFilter) && i.name.toLowerCase().includes(search.toLowerCase()));
   const taperNum = Number(draft.taperCost) || 0;
   const itemCount = draft.items.reduce((sum, i) => sum + i.qty, 0);
 
@@ -590,8 +673,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
             setDraft(prev => ({...prev, items: prev.items.map(i => i.cartId === salsasModal.cartId ? {...i, salsas} : i)}));
             setSalsasModal(null);
           }} 
-          onClose={() => setSalsasModal(null)} 
-          s={s} Y={Y} 
+          onClose={() => setSalsasModal(null)} s={s} Y={Y} 
         />
       )}
 
@@ -617,30 +699,21 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
 
       {draft.orderType === "llevar" && (
         <div style={{ marginBottom:10 }}>
-          <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Teléfono</label>
+          <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Teléfono / Info</label>
           <input style={{ ...s.input, marginTop:4 }} value={draft.phone || ""} onChange={e => setDraft(d => ({...d, phone: e.target.value}))} placeholder="Ej: 9 87654321" />
         </div>
       )}
 
       <div style={{ marginBottom:10 }}>
-        <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>
-          🥡 Taper / Bolsa (S/.)
-        </label>
-        <input style={{ ...s.input, marginTop:4 }} type="number" min="0" step="0.50" placeholder="0.00"
-          value={draft.taperCost || ""} onChange={e => setDraft(d => ({...d, taperCost: e.target.value}))} />
+        <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>🥡 Taper / Bolsa (S/.)</label>
+        <input style={{ ...s.input, marginTop:4 }} type="number" min="0" step="0.50" placeholder="0.00" value={draft.taperCost || ""} onChange={e => setDraft(d => ({...d, taperCost: e.target.value}))} />
       </div>
 
       <div style={{ marginBottom:10 }}>
         <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Momento del Cobro</label>
         <div style={{ display:"flex", gap:6, marginTop:4 }}>
-          <button style={{ ...s.btn(draft.payTiming==="despues"?"primary":"secondary"), flex:1 }}
-            onClick={() => setDraft(d => ({...d,payTiming:"despues"}))}>
-            ⏱ Pagar después
-          </button>
-          <button style={{ ...s.btn(draft.payTiming==="ahora"?"primary":"secondary"), flex:1 }}
-            onClick={() => setDraft(d => ({...d,payTiming:"ahora"}))}>
-            💵 Pagar ahora
-          </button>
+          <button style={{ ...s.btn(draft.payTiming==="despues"?"primary":"secondary"), flex:1 }} onClick={() => setDraft(d => ({...d,payTiming:"despues"}))}>⏱ Pagar después</button>
+          <button style={{ ...s.btn(draft.payTiming==="ahora"?"primary":"secondary"), flex:1 }} onClick={() => setDraft(d => ({...d,payTiming:"ahora"}))}>💵 Pagar ahora</button>
         </div>
       </div>
 
@@ -671,37 +744,18 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
                   <button style={{ ...s.btn(), padding:"4px 10px", fontSize:14 }} onClick={() => changeQty(item.cartId,1)}>+</button>
                   <span style={{ color:Y, fontWeight:900, fontSize:14, minWidth:55, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
                 </div>
-                
-                {item.salsas?.length > 0 && (
-                  <div style={{color:Y, fontSize:11, marginBottom:4, fontStyle:"italic"}}>
-                    🥫 Salsas: {item.salsas.map(sa => `${sa.name} (${sa.style})`).join(", ")}
-                  </div>
-                )}
-
-                {/* Notas individuales por cada plato de esta categoría */}
+                {item.salsas?.length > 0 && <div style={{color:Y, fontSize:11, marginBottom:4, fontStyle:"italic"}}>🥫 Salsas: {item.salsas.map(sa => `${sa.name} (${sa.style})`).join(", ")}</div>}
                 {Array.from({ length: item.qty }).map((_, idx) => (
-                  <textarea 
-                    key={idx}
-                    style={{ ...s.input, fontSize:13, padding:"6px 10px", marginTop: 4, background:"#141414", resize:"vertical", minHeight:36 }} 
-                    placeholder={`Nota para el plato ${idx + 1}...`} 
-                    value={item.individualNotes?.[idx] || ""} 
-                    spellCheck="false"
-                    onChange={e => updateIndividualNote(item.cartId, idx, e.target.value)} 
-                  />
+                  <textarea key={idx} style={{ ...s.input, fontSize:13, padding:"6px 10px", marginTop: 4, background:"#141414", resize:"vertical", minHeight:36 }} 
+                    placeholder={`Nota para el plato ${idx + 1}...`} value={item.individualNotes?.[idx] || ""} spellCheck="false" onChange={e => updateIndividualNote(item.cartId, idx, e.target.value)} />
                 ))}
               </div>
             ))}
           </div>
       }
 
-      {taperNum > 0 && (
-        <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderTop:"1px solid #2a2a2a", color:"#aaa", fontSize:12 }}>
-          <span>🥡 Taper/Bolsa</span><span>{fmt(taperNum)}</span>
-        </div>
-      )}
-      <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderTop:`2px solid ${Y}55`, marginBottom:12 }}>
-        <span style={{ fontWeight:900, fontSize:17 }}>TOTAL</span><span style={{ fontWeight:900, fontSize:17, color:Y }}>{fmt(draftTotal + taperNum)}</span>
-      </div>
+      {taperNum > 0 && <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderTop:"1px solid #2a2a2a", color:"#aaa", fontSize:12 }}><span>🥡 Taper/Bolsa</span><span>{fmt(taperNum)}</span></div>}
+      <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderTop:`2px solid ${Y}55`, marginBottom:12 }}><span style={{ fontWeight:900, fontSize:17 }}>TOTAL</span><span style={{ fontWeight:900, fontSize:17, color:Y }}>{fmt(draftTotal + taperNum)}</span></div>
 
       <button style={{ ...s.btn(), width:"100%", padding:16, fontSize:16, opacity:(!draft.table||!draft.items.length)?0.4:1 }}
         onClick={() => { submitOrder(); if(isMobile) setShowCartModal(false); }} disabled={!draft.table||!draft.items.length}>
@@ -714,43 +768,23 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
 
   return (
     <div style={{ display:"grid", gridTemplateColumns: isDesktop ? "1fr 320px" : "1fr", gap: isMobile ? 12 : 14 }}>
-      {/* Columna Izquierda: Carta */}
       <div>
         <div style={s.title}>🍔 CARTA</div>
-        <input
-          style={{ ...s.input, marginBottom:8 }}
-          placeholder="Buscar platillo..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
+        <input style={{ ...s.input, marginBottom:8 }} placeholder="Buscar platillo..." value={search} onChange={e => setSearch(e.target.value)} />
         <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:10 }}>
-          {["Todos",...ALL_CATS].map(c => (
-            <button key={c}
-              style={{ ...s.btn(catFilter===c?"primary":"secondary"), fontSize: isMobile?9:10, padding: isMobile?"3px 6px":"4px 10px" }}
-              onClick={() => setCatFilter(c)}>
-              {c}
-            </button>
-          ))}
+          {["Todos",...ALL_CATS].map(c => <button key={c} style={{ ...s.btn(catFilter===c?"primary":"secondary"), fontSize: isMobile?9:10, padding: isMobile?"3px 6px":"4px 10px" }} onClick={() => setCatFilter(c)}>{c}</button>)}
         </div>
         <div>
           {filteredMenu.length === 0 && <div style={{ color:"#555", textAlign:"center", padding:20 }}>Sin resultados</div>}
           {filteredMenu.map(item => {
             const inDraftQty = draft.items.filter(i => i.id === item.id).reduce((s,i) => s + i.qty, 0);
             return (
-              <div key={item.id} onClick={() => addItem(item)}
-                style={{ ...s.card, cursor:"pointer",
-                  border: inDraftQty > 0 ? `1px solid ${Y}66`:"1px solid #2a2a2a", marginBottom:5, padding: isMobile?"8px 10px":"10px 12px" }}>
+              <div key={item.id} onClick={() => addItem(item)} style={{ ...s.card, cursor:"pointer", border: inDraftQty > 0 ? `1px solid ${Y}66`:"1px solid #2a2a2a", marginBottom:5, padding: isMobile?"8px 10px":"10px 12px" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                  <div style={{ flex:1 }}>
-                    <span style={{ marginRight:6 }}>{item.icon}</span>
-                    <span style={{ fontWeight:700, fontSize: isMobile?13:14 }}>{item.name}</span>
-                  </div>
+                  <div style={{ flex:1 }}><span style={{ marginRight:6 }}>{item.icon}</span><span style={{ fontWeight:700, fontSize: isMobile?13:14 }}>{item.name}</span></div>
                   <div style={{ display:"flex", alignItems:"center", gap:6 }}>
                     <span style={{ color:Y, fontWeight:900, fontSize: isMobile?13:14 }}>{fmt(item.price)}</span>
-                    {inDraftQty > 0
-                      ? <span style={{ background:Y, color:"#111", borderRadius:12, padding:"1px 8px", fontSize:12, fontWeight:900 }}>×{inDraftQty}</span>
-                      : <span style={{ background:"#2a2a2a", borderRadius:"50%", width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:16, color:"#aaa" }}>+</span>
-                    }
+                    {inDraftQty > 0 ? <span style={{ background:Y, color:"#111", borderRadius:12, padding:"1px 8px", fontSize:12, fontWeight:900 }}>×{inDraftQty}</span> : <span style={{ background:"#2a2a2a", borderRadius:"50%", width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:16, color:"#aaa" }}>+</span>}
                   </div>
                 </div>
                 {item.desc && <div style={{ fontSize:10, color:"#555", marginTop:3, paddingLeft:22 }}>{item.desc}</div>}
@@ -759,28 +793,11 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
           })}
         </div>
       </div>
-
-      {/* Columna Derecha o Modal flotante en celular */}
-      {isDesktop ? (
-        <div>{CartContent()}</div>
-      ) : (
+      {isDesktop ? <div>{CartContent()}</div> : (
         <>
-          {showCartModal && (
-            <div style={{...s.overlay, zIndex:9999}} onClick={() => setShowCartModal(false)}>
-              <div style={s.modal} onClick={e => e.stopPropagation()}>
-                {CartContent()}
-              </div>
-            </div>
-          )}
-          <button 
-            onClick={() => setShowCartModal(true)}
-            style={{ position: "fixed", bottom: 20, right: 20, width: 66, height: 66, borderRadius: 33, background: Y, border: "none", boxShadow: "0 6px 16px rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, zIndex: 999, cursor: "pointer", paddingLeft: 4 }}>
-            🛒
-            {itemCount > 0 && (
-              <div style={{ position: "absolute", top: 0, right: 0, background: "#e74c3c", color: "#fff", borderRadius: 12, padding: "2px 7px", fontSize: 13, fontWeight: 900, border: "2px solid #111" }}>
-                {itemCount}
-              </div>
-            )}
+          {showCartModal && <div style={{...s.overlay, zIndex:9999}} onClick={() => setShowCartModal(false)}><div style={s.modal} onClick={e => e.stopPropagation()}>{CartContent()}</div></div>}
+          <button onClick={() => setShowCartModal(true)} style={{ position: "fixed", bottom: 20, right: 20, width: 66, height: 66, borderRadius: 33, background: Y, border: "none", boxShadow: "0 6px 16px rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, zIndex: 999, cursor: "pointer", paddingLeft: 4 }}>
+            🛒{itemCount > 0 && <div style={{ position: "absolute", top: 0, right: 0, background: "#e74c3c", color: "#fff", borderRadius: 12, padding: "2px 7px", fontSize: 13, fontWeight: 900, border: "2px solid #111" }}>{itemCount}</div>}
           </button>
         </>
       )}
@@ -788,7 +805,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
   );
 }
 
-// ── Impresión mejorada con Blob (Evita bloqueos en Móvil) ────────────
+// ── Impresión mejorada con Blob (Evita bloqueos en Móvil/Tablet) ────────────
 function printOrder(order) {
   const items = order.items.map(i => {
     const validNotes = (i.individualNotes || []).filter(n => n.trim() !== "");
@@ -838,122 +855,14 @@ function printOrder(order) {
   <script>window.onload=function(){window.print();}<\/script>
 </body></html>`;
 
-  // El uso de Blob forzará una descarga/visualización nativa perfecta en móviles
   const blob = new Blob([htmlContent], { type: 'text/html' });
   const url = URL.createObjectURL(blob);
   window.open(url, '_blank');
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  INVENTARIO
+//  COMPONENTES SECUNDARIOS (Mesas, Cocina, Historial)
 // ═══════════════════════════════════════════════════════════════════
-function Inventario({ menu, orders, history, isMobile, s, Y, fmt }) {
-  const localNow = new Date();
-  const todayIso = localNow.getFullYear() + "-" + String(localNow.getMonth()+1).padStart(2,'0') + "-" + String(localNow.getDate()).padStart(2,'0');
-
-  const [invCat,    setInvCat]    = useState("Todos");
-  const [invPeriod, setInvPeriod] = useState("hoy");
-  const [invDate,   setInvDate]   = useState(todayIso);
-  const [invSortBy, setInvSortBy] = useState("cantidad");
-  const [search,    setSearch]    = useState("");
-
-  const now      = new Date();
-  const todayStr = now.toDateString();
-  const weekAgo  = new Date(now - 7*24*60*60*1000);
-
-  const inPeriod = (iso) => {
-    if (!iso) return false;
-    const d = new Date(iso);
-    if (invPeriod === "hoy") return d.toDateString() === todayStr;
-    if (invPeriod === "semana") return d >= weekAgo;
-    if (invPeriod === "fecha") {
-      if (!invDate) return false;
-      const dStr = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,'0') + "-" + String(d.getDate()).padStart(2,'0');
-      return dStr === invDate;
-    }
-    return true;
-  };
-
-  const counts={}, revenue={};
-  history.filter(o=>o.status==="pagado"&&inPeriod(o.createdAt)).forEach(order=>{
-    order.items?.forEach(item=>{counts[item.id]=(counts[item.id]||0)+item.qty;revenue[item.id]=(revenue[item.id]||0)+item.price*item.qty;});
-  });
-  if (invPeriod==="hoy"||invPeriod==="semana"||invPeriod==="fecha") {
-    orders.filter(o=>o.isPaid&&inPeriod(o.createdAt)).forEach(order=>{
-      order.items?.forEach(item=>{counts[item.id]=(counts[item.id]||0)+item.qty;revenue[item.id]=(revenue[item.id]||0)+item.price*item.qty;});
-    });
-  }
-
-  let items = menu
-    .map(item=>({...item,qty:counts[item.id]||0,revenue:revenue[item.id]||0}))
-    .filter(item=>(invCat==="Todos"||item.cat===invCat)&&item.name.toLowerCase().includes(search.toLowerCase()));
-  if (invSortBy==="cantidad") items=items.sort((a,b)=>b.qty-a.qty);
-  else items=items.sort((a,b)=>a.name.localeCompare(b.name));
-
-  const totalQty=items.reduce((s,i)=>s+i.qty,0);
-  const totalRev=items.reduce((s,i)=>s+i.revenue,0);
-  const maxQty=Math.max(...items.map(i=>i.qty),1);
-  const periodLabel = invPeriod==="hoy" ? "hoy" : invPeriod==="semana" ? "esta semana" : invPeriod==="fecha" ? "esa fecha" : "histórico";
-
-  return (
-    <div>
-      <div style={s.title}>📦 INVENTARIO DE VENTAS</div>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10, alignItems:"center"}}>
-        {[["hoy","📅 Hoy"],["semana","📆 Semana"],["fecha","🔍 Fecha"],["total","🗂️ Total"]].map(([v,l])=>(
-          <button key={v} style={{...s.btn(invPeriod===v?"primary":"secondary"),fontSize:11}} onClick={()=>setInvPeriod(v)}>{l}</button>
-        ))}
-        {invPeriod === "fecha" && (
-          <input type="date" style={{...s.input, width:"auto", padding:"4px 8px"}} value={invDate} onChange={e => setInvDate(e.target.value)} />
-        )}
-        <div style={{width:1,background:"#333", height:20, margin:"0 4px"}}/>
-        {[["cantidad","# Cantidad"],["nombre","A-Z Nombre"]].map(([v,l])=>(
-          <button key={v} style={{...s.btn(invSortBy===v?"primary":"secondary"),fontSize:11}} onClick={()=>setInvSortBy(v)}>{l}</button>
-        ))}
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
-        <div style={s.statCard}><div style={{...s.statNum,fontSize:isMobile?18:24}}>{totalQty}</div><div style={s.statLbl}>Items {periodLabel}</div></div>
-        <div style={{...s.statCard,border:`1px solid ${Y}55`}}><div style={{...s.statNum,fontSize:isMobile?14:18}}>{fmt(totalRev)}</div><div style={s.statLbl}>Ingresos {periodLabel}</div></div>
-        <div style={s.statCard}><div style={{...s.statNum,fontSize:isMobile?18:24}}>{items.filter(i=>i.qty>0).length}</div><div style={s.statLbl}>Platos distintos</div></div>
-      </div>
-      <input style={{...s.input,marginBottom:8}} placeholder="Buscar platillo..." value={search} onChange={e=>setSearch(e.target.value)}/>
-      <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:12}}>
-        {["Todos",...ALL_CATS].map(c=>(
-          <button key={c} style={{...s.btn(invCat===c?"primary":"secondary"),fontSize:isMobile?9:10,padding:isMobile?"3px 6px":"4px 9px"}} onClick={()=>setInvCat(c)}>{c}</button>
-        ))}
-      </div>
-      {items.length===0
-        ?<div style={{textAlign:"center",padding:40,color:"#444"}}>Sin resultados</div>
-        :items.map(item=>(
-          <div key={item.id} style={{...s.card,marginBottom:6,padding:"10px 12px",opacity:item.qty===0?0.4:1}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:item.qty>0?6:0}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0}}>
-                <span style={{fontSize:18}}>{item.icon}</span>
-                <div style={{minWidth:0}}>
-                  <div style={{fontWeight:800,fontSize:isMobile?12:14,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.name}</div>
-                  <div style={{fontSize:10,color:"#555"}}>{item.cat} · {fmt(item.price)}</div>
-                </div>
-              </div>
-              <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
-                <div style={{fontWeight:900,fontSize:isMobile?16:20,color:item.qty>0?Y:"#444"}}>{item.qty>0?`×${item.qty}`:"—"}</div>
-                {item.qty>0&&<div style={{fontSize:10,color:"#27ae60"}}>{fmt(item.revenue)}</div>}
-              </div>
-            </div>
-            {item.qty>0&&(
-              <div style={{background:"#222",borderRadius:4,height:5,overflow:"hidden"}}>
-                <div style={{background:`linear-gradient(90deg,${Y},#e6b800)`,height:"100%",width:`${(item.qty/maxQty)*100}%`,borderRadius:4,transition:"width .3s"}}/>
-              </div>
-            )}
-          </div>
-        ))
-      }
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════
-//  COMPONENTES DE PESTAÑAS
-// ═══════════════════════════════════════════════════════════════════
-
 function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, setCobrarTarget, isMobile, s, Y }) {
   const today = new Date().toDateString();
   const paidArchivedToday = history.filter(o => o.status==="pagado" && new Date(o.createdAt).toDateString()===today);
@@ -962,7 +871,6 @@ function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, set
 
   const todayRev  = allPaidToday.reduce((sum,o) => sum + o.total, 0);
   const totalRev  = history.filter(o => o.status==="pagado").reduce((sum,o) => sum + o.total, 0) + paidActiveToday.reduce((sum,o) => sum + o.total, 0);
-  
   const cashRev   = allPaidToday.reduce((sum,o) => sum + getPay(o,"efectivo"), 0);
   const yapeRev   = allPaidToday.reduce((sum,o) => sum + getPay(o,"yape"), 0);
   const cardRev   = allPaidToday.reduce((sum,o) => sum + getPay(o,"tarjeta"), 0);
@@ -976,10 +884,8 @@ function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, set
         <div style={{...s.statCard, border:`1px solid ${Y}55`}}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(todayRev)}</div><div style={s.statLbl}>Recaudado hoy</div></div>
         <div style={s.statCard}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(totalRev)}</div><div style={s.statLbl}>Total histórico</div></div>
       </div>
-      
       {allPaidToday.length > 0 && (
         <div style={{...s.card, marginTop:8}}>
-          <div style={{fontWeight:800, marginBottom:8, color:"#aaa", fontSize:11, textTransform:"uppercase", letterSpacing:1}}>Desglose de Ingresos Hoy</div>
           <div style={s.row}>
             <div style={{textAlign:"center", flex:1}}><div style={{color:"#27ae60", fontWeight:900, fontSize:isMobile?13:16}}>💵 {fmt(cashRev)}</div><div style={{fontSize:10, color:"#666"}}>Efectivo</div></div>
             <div style={{width:1, background:"#333", height:36}}/>
@@ -989,43 +895,11 @@ function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, set
           </div>
         </div>
       )}
-
-      {orders.length > 0 ? (
-        <>
-          <div style={{...s.title, fontSize:isMobile?14:16, marginTop:14}}>🔥 PEDIDOS PENDIENTES DE COBRO/ENTREGA</div>
-          {orders.slice(0,4).map(o => (
-            <div key={o.id} style={s.card}>
-              <div style={s.row}>
-                <div>
-                  <span style={{fontWeight:900, fontSize:isMobile?15:17}}>{o.orderType==="llevar" ? `🥡 ${o.table}` : `Mesa ${o.table}`}</span>
-                  <span style={{...s.tag("#252525"), marginLeft:8, fontSize:10}}>{minutesAgo(o.createdAt)}</span>
-                  {o.isPaid && <span style={{...s.tag("#1e5c2e"), marginLeft:6}}>✅ Pagado</span>}
-                </div>
-                <div style={{display:"flex", alignItems:"center", gap:8}}>
-                  <span style={{color:Y, fontWeight:900}}>{fmt(o.total)}</span>
-                  {o.isPaid ? (
-                    <button style={{...s.btn("blue"), padding:isMobile?"6px 9px":"8px 12px"}} onClick={()=>finishPaidOrder(o.id)}>✅ Entregado</button>
-                  ) : (
-                    <button style={{...s.btn("success"), padding:isMobile?"6px 9px":"8px 12px"}} onClick={()=>setCobrarTarget({type:'existing', data:o})}>💰 Cobrar</button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-          {orders.length > 4 && <button style={{...s.btn("secondary"), marginTop:4}} onClick={()=>setTab("pedidos")}>Ver todos ({orders.length}) →</button>}
-        </>
-      ) : (
-        <div style={{textAlign:"center", padding:isMobile?36:50, color:"#444"}}>
-          <div style={{fontSize:52}}>🍔</div>
-          <div style={{marginTop:8, color:"#666"}}>Sin pedidos activos</div>
-          <button style={{...s.btn(), marginTop:14, padding:"10px 24px"}} onClick={()=>setTab("mesas")}>Ver Mesas</button>
-        </div>
-      )}
     </div>
   );
 }
 
-function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, finishPaidOrder, setCobrarTarget, setEditingOrder, printOrder, cancelOrder, isMobile, isTablet, s, Y, fmt, MESAS }) {
+function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, finishPaidOrder, setCobrarTarget, setSplitTarget, isMobile, isTablet, s, Y, fmt, MESAS }) {
   const llevarOrders = orders.filter(o => o.orderType==="llevar");
   return (
     <div>
@@ -1033,27 +907,13 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
         <div style={s.title}>🪑 MESAS</div>
         <button style={s.btn()} onClick={() => { setDraft({...newDraft(), orderType:"llevar", payTiming:"ahora"}); setTab("nuevo"); }}>🥡 Para llevar</button>
       </div>
-      <div style={{
-          display:"grid", 
-          gridTemplateColumns:isMobile?"1fr 1fr":"repeat(3, 1fr)", 
-          gridAutoRows: isTablet ? "minmax(30vh, auto)" : "auto", 
-          gap: isMobile ? 12 : 20, 
-          marginBottom:20
-      }}>
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(3, 1fr)", gridAutoRows: isTablet ? "minmax(25vh, auto)" : "auto", gap: isMobile ? 12 : 20, marginBottom:20 }}>
         {MESAS.map(num => {
           const mesaOrders = orders.filter(o => o.table===String(num) && o.orderType!=="llevar");
           const ocupada = mesaOrders.length > 0;
           const total = mesaOrders.reduce((sum,o) => sum + o.total, 0);
           return (
-            <div key={num} onClick={() => setMesaModal(num)} style={{
-                background:ocupada?`${Y}15`:"#1c1c1c", 
-                border:`2px solid ${ocupada?Y:"#2a2a2a"}`, 
-                borderRadius:14, 
-                padding: "24px 16px",
-                minHeight: isMobile ? 140 : isTablet ? "30vh" : 160, 
-                display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center",
-                cursor:"pointer", textAlign:"center", transition:"all .2s", position:"relative"
-            }}>
+            <div key={num} onClick={() => setMesaModal(num)} style={{ background:ocupada?`${Y}15`:"#1c1c1c", border:`2px solid ${ocupada?Y:"#2a2a2a"}`, borderRadius:14, padding: "24px 16px", minHeight: isMobile ? 140 : isTablet ? "25vh" : 160, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", cursor:"pointer", textAlign:"center", position:"relative" }}>
               {ocupada && <div style={{position:"absolute", top:10, right:10, width:12, height:12, borderRadius:"50%", background:"#27ae60", boxShadow:"0 0 8px #27ae60"}}/>}
               <div style={{fontSize:42, marginBottom:8}}>🪑</div>
               <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:24, color:ocupada?Y:"#555", letterSpacing:1}}>MESA {num}</div>
@@ -1062,35 +922,11 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
           );
         })}
       </div>
-      {llevarOrders.length > 0 && (
-        <div>
-          <div style={{...s.title, fontSize:16}}>🥡 PARA LLEVAR ({llevarOrders.length})</div>
-          {llevarOrders.map(o => (
-            <div key={o.id} style={{...s.card, borderLeft:`4px solid #3498db`}}>
-              <div style={s.row}>
-                <div><span style={{fontWeight:900}}>🥡 {o.table}</span>{o.isPaid&&<span style={{...s.tag("#1e5c2e"), marginLeft:6}}>✅ Pagado</span>}</div>
-                <span style={{color:Y, fontWeight:900}}>{fmt(o.total)}</span>
-              </div>
-              <div style={{display:"flex", gap:6, marginTop:8, flexWrap:"wrap"}}>
-                {o.isPaid ? (
-                  <button style={{...s.btn("blue"), flex:1}} onClick={() => finishPaidOrder(o.id)}>✅ Entregado</button>
-                ) : (
-                  <button style={{...s.btn("success"), flex:1}} onClick={() => setCobrarTarget({type:'existing', data:o})}>💰 Cobrar</button>
-                )}
-                <button style={{...s.btn("warn"), flex:1}} onClick={() => setEditingOrder(o)}>✏️ Editar</button>
-                <button style={s.btn("secondary")} onClick={() => printOrder(o)}>🖨️</button>
-                {o.enlace_pdf && <button style={{...s.btn("blue"), padding:"7px 10px"}} onClick={() => window.open(o.enlace_pdf, "_blank")}>🧾 SUNAT</button>}
-                <button style={{...s.btn("danger"), padding:"7px 10px"}} onClick={() => cancelOrder(o.id)}>❌</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
 
-function MesaModalComponent({ num, orders, setDraft, newDraft, onClose, setTab, finishPaidOrder, setCobrarTarget, setEditingOrder, printOrder, isMobile, s, Y, fmt }) {
+function MesaModalComponent({ num, orders, setDraft, newDraft, onClose, setTab, setCobrarTarget, setSplitTarget, setEditingOrder, printOrder, isMobile, s, Y, fmt }) {
   const mesaOrders = orders.filter(o => o.table===String(num) && o.orderType!=="llevar");
   return (
     <div style={s.modal} onClick={e => e.stopPropagation()}>
@@ -1115,47 +951,36 @@ function MesaModalComponent({ num, orders, setDraft, newDraft, onClose, setTab, 
                     <span>{item.qty}x {item.name}{item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:10, fontWeight:700}}>🥡 Llevar</span>}</span>
                     <span style={{color:"#888"}}>{fmt(item.price*item.qty)}</span>
                   </div>
-                  {item.salsas?.length > 0 && (
-                    <div style={{fontSize:11, color:Y, paddingLeft:4, marginTop:2}}>🥫 {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>
-                  )}
-                  {validNotes.map((n, idx) => (
-                    <div key={idx} style={{fontSize:11, color:"#999", fontStyle:"italic", paddingLeft:4, marginTop:2}}>└ Plato {idx+1}: {n}</div>
-                  ))}
+                  {item.salsas?.length > 0 && <div style={{fontSize:11, color:Y, paddingLeft:4, marginTop:2}}>🥫 {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>}
+                  {validNotes.map((n, idx) => <div key={idx} style={{fontSize:11, color:"#999", fontStyle:"italic", paddingLeft:4, marginTop:2}}>└ Plato {idx+1}: {n}</div>)}
                 </div>
               )})}
             </div>
             {o.notes && <div style={{fontSize:11, color:"#888", fontStyle:"italic", marginBottom:8}}>📝 {o.notes}</div>}
             <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
-              {o.isPaid ? (
-                <button style={{...s.btn("blue"), flex:1}} onClick={() => { finishPaidOrder(o.id); onClose(); }}>✅ Finalizar</button>
-              ) : (
-                <button style={{...s.btn("success"), flex:1}} onClick={() => { setCobrarTarget({type:'existing', data:o}); onClose(); }}>💰 Cobrar</button>
-              )}
+              {!o.isPaid && <button style={{...s.btn("success"), flex:1}} onClick={() => { setCobrarTarget({type:'existing', data:o}); onClose(); }}>💰 Cobrar Todo</button>}
+              {!o.isPaid && <button style={{...s.btn("secondary"), flex:1}} onClick={() => { setSplitTarget(o); onClose(); }}>✂️ Dividir</button>}
               <button style={{...s.btn("warn"), flex:1}} onClick={() => { setEditingOrder(o); onClose(); }}>✏️ Editar</button>
-              <button style={s.btn("secondary")} onClick={() => printOrder(o)}>🖨️</button>
-              {o.enlace_pdf && <button style={{...s.btn("blue"), flex:1}} onClick={() => window.open(o.enlace_pdf, "_blank")}>🧾 SUNAT</button>}
+              <button style={s.btn("secondary")} onClick={() => printOrder(o)}>🖨️ Ticket</button>
             </div>
           </div>
         ))
       }
-      <button style={{...s.btn(), width:"100%", padding:12, marginTop:8}}
-        onClick={() => { setDraft({...newDraft(), table:String(num), orderType:"mesa"}); onClose(); setTab("nuevo"); }}>
+      <button style={{...s.btn(), width:"100%", padding:12, marginTop:8}} onClick={() => { setDraft({...newDraft(), table:String(num), orderType:"mesa"}); onClose(); setTab("nuevo"); }}>
         + Agregar pedido a Mesa {num}
       </button>
     </div>
   );
 }
 
-function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, setEditingOrder, printOrder, cancelOrder, setConfirmDelete, isMobile, s, Y, fmt }) {
+function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, setSplitTarget, setEditingOrder, printOrder, cancelOrder, setConfirmDelete, isMobile, s, Y, fmt }) {
   return (
     <div>
       <div style={{...s.row, marginBottom:14}}>
-        <div style={s.title}>🍽️ PEDIDOS ACTIVOS ({orders.length})</div>
+        <div style={s.title}>🍽️ PEDIDOS ACTIVOS</div>
         <button style={s.btn()} onClick={() => setTab("nuevo")}>+ Nuevo</button>
       </div>
-      {orders.length === 0
-        ? <div style={{textAlign:"center", padding:60, color:"#444"}}><div style={{fontSize:48}}>🕐</div><div>Sin pedidos activos</div></div>
-        : orders.map(o => (
+      {orders.length === 0 ? <div style={{textAlign:"center", padding:60, color:"#444"}}><div style={{fontSize:48}}>🕐</div><div>Sin pedidos activos</div></div> : orders.map(o => (
           <div key={o.id} style={{...s.card, borderLeft:`4px solid ${Y}`}}>
             <div style={{...s.row, marginBottom:8}}>
               <div>
@@ -1173,26 +998,19 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
                 <div key={i} style={{marginBottom:6}}>
                   <div style={{display:"flex", justifyContent:"space-between", fontSize:isMobile?12:13, padding:"3px 0", borderBottom:"1px solid #222"}}>
                     <span>{item.qty}x {item.name}{item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:10, fontWeight:700}}>🥡 Llevar</span>}</span>
-                    <span style={{color:"#888"}}>{fmt(item.price*item.qty)}</span>
                   </div>
-                  {item.salsas?.length > 0 && (
-                    <div style={{fontSize:11, color:Y, paddingLeft:4, marginTop:2}}>🥫 {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>
-                  )}
-                  {validNotes.map((n, idx) => (
-                    <div key={idx} style={{fontSize:11, color:"#999", fontStyle:"italic", paddingLeft:4, marginTop:2}}>└ Plato {idx+1}: {n}</div>
-                  ))}
+                  {item.salsas?.length > 0 && <div style={{fontSize:11, color:Y, paddingLeft:4, marginTop:2}}>🥫 {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>}
+                  {validNotes.map((n, idx) => <div key={idx} style={{fontSize:11, color:"#999", fontStyle:"italic", paddingLeft:4, marginTop:2}}>└ Plato {idx+1}: {n}</div>)}
                 </div>
               )})}
             </div>
-            {o.notes && <div style={{fontSize:11, color:"#888", fontStyle:"italic", marginBottom:8}}>📝 Nota general: {o.notes}</div>}
+            {o.notes && <div style={{fontSize:11, color:"#888", fontStyle:"italic", marginBottom:8}}>📝 {o.notes}</div>}
             <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
-              {o.isPaid ? (
-                <button style={{...s.btn("blue"), flex:1, minWidth:isMobile?0:90}} onClick={() => finishPaidOrder(o.id)}>✅ Entregado</button>
-              ) : (
-                <button style={{...s.btn("success"), flex:1, minWidth:isMobile?0:90}} onClick={() => setCobrarTarget({type:'existing', data:o})}>💰 Cobrar</button>
-              )}
-              <button style={{...s.btn("warn"), flex:1, minWidth:isMobile?0:80}} onClick={() => setEditingOrder(o)}>✏️ Editar</button>
-              <button style={s.btn("secondary")} onClick={() => printOrder(o)}>🖨️</button>
+              {o.isPaid ? <button style={{...s.btn("blue"), flex:1}} onClick={() => finishPaidOrder(o.id)}>✅ Entregado</button> 
+               : <><button style={{...s.btn("success"), flex:1}} onClick={() => setCobrarTarget({type:'existing', data:o})}>💰 Cobrar Todo</button>
+                   <button style={{...s.btn("secondary"), flex:1}} onClick={() => setSplitTarget(o)}>✂️ Dividir</button></>}
+              <button style={{...s.btn("warn"), flex:1}} onClick={() => setEditingOrder(o)}>✏️ Editar</button>
+              <button style={s.btn("secondary")} onClick={() => printOrder(o)}>🖨️ Ticket</button>
               {o.enlace_pdf && <button style={{...s.btn("blue"), padding:isMobile?"7px 10px":"8px 12px"}} onClick={() => window.open(o.enlace_pdf, "_blank")}>🧾 SUNAT</button>}
               <button style={{...s.btn("danger"), padding:isMobile?"7px 10px":"8px 12px"}} onClick={() => cancelOrder(o.id)}>❌</button>
               <button style={{...s.btn("secondary"), padding:isMobile?"7px 10px":"8px 12px"}} onClick={() => setConfirmDelete(o.id)}>🗑️</button>
@@ -1204,267 +1022,52 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
   );
 }
 
-function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder }) {
-  const [expandedDays, setExpandedDays] = useState([new Date().toLocaleDateString("es-PE")]);
-  const [histDate, setHistDate] = useState("");
-
-  const historyByDay = {};
-  history.forEach(o => {
-    const dateObj = new Date(o.createdAt);
-    const dateStr = dateObj.toLocaleDateString("es-PE");
-    const sortKey = dateObj.getFullYear() + "-" + String(dateObj.getMonth()+1).padStart(2,'0') + "-" + String(dateObj.getDate()).padStart(2,'0');
-    
-    if (!historyByDay[dateStr]) {
-      historyByDay[dateStr] = { date: dateStr, sortKey, orders: [], total: 0, ef: 0, ya: 0, ta: 0, cancelados: 0 };
-    }
-    historyByDay[dateStr].orders.push(o);
-    
-    if (o.status === "pagado") {
-      historyByDay[dateStr].total += o.total;
-      historyByDay[dateStr].ef += getPay(o, "efectivo");
-      historyByDay[dateStr].ya += getPay(o, "yape");
-      historyByDay[dateStr].ta += getPay(o, "tarjeta");
-    } else if (o.status === "cancelado") {
-      historyByDay[dateStr].cancelados += 1;
-    }
-  });
-
-  let daysList = Object.values(historyByDay).sort((a,b) => b.sortKey.localeCompare(a.sortKey));
-  
-  if (histDate) {
-    daysList = daysList.filter(d => d.sortKey === histDate);
-  }
-
-  const toggleDay = (dateStr) => {
-    setExpandedDays(prev => prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]);
-  };
-
-  return (
-    <div>
-      <div style={{...s.row, marginBottom:14}}>
-        <div style={{...s.title, marginBottom:0}}>📋 HISTORIAL POR DÍAS</div>
-        <div style={{display:"flex", gap:6}}>
-          <input 
-            type="date" 
-            style={{...s.input, padding:"6px 10px", width:"auto"}} 
-            value={histDate} 
-            onChange={e => {
-              const val = e.target.value;
-              setHistDate(val);
-              const match = Object.values(historyByDay).find(x => x.sortKey === val);
-              if (match && !expandedDays.includes(match.date)) {
-                setExpandedDays(prev => [...prev, match.date]);
-              }
-            }} 
-          />
-          {histDate && <button style={s.btn("secondary")} onClick={()=>{setHistDate("");}}>✕</button>}
-        </div>
-      </div>
-      {daysList.length === 0
-        ? <div style={{textAlign:"center", padding:60, color:"#444"}}><div style={{fontSize:48}}>📋</div><div>Sin registros</div></div>
-        : daysList.map(d => {
-          const isExpanded = expandedDays.includes(d.date); 
-          return (
-            <div key={d.date} style={{...s.card, marginBottom:12, padding:0, overflow:"hidden"}}>
-              <div style={{padding:"14px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", background: isExpanded ? "#222" : "transparent"}} onClick={() => toggleDay(d.date)}>
-                <div>
-                  <div style={{fontWeight:900, fontSize:16, color:Y}}>📅 {d.date}</div>
-                  <div style={{fontSize:11, color:"#888", marginTop:4}}>
-                    {d.orders.filter(x => x.status==="pagado").length} cobrados {d.cancelados > 0 && `· ${d.cancelados} anulados`}
-                  </div>
-                </div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontWeight:900, fontSize:18, color:"#27ae60"}}>{fmt(d.total)}</div>
-                  <div style={{fontSize:10, color:"#aaa", marginTop:2}}>{isExpanded ? "▲ Ocultar" : "▼ Detalles"}</div>
-                </div>
-              </div>
-
-              {isExpanded && (
-                <div style={{padding:"14px", borderTop:"1px solid #333"}}>
-                  <div style={{display:"flex", gap:8, marginBottom:16, background:"#0a0a0a", padding:12, borderRadius:8, flexWrap:"wrap", border:"1px solid #222"}}>
-                    <div style={{flex:1, minWidth:70}}><span style={{color:"#888", fontSize:10, display:"block"}}>EFECTIVO</span><span style={{color:"#27ae60", fontWeight:900}}>💵 {fmt(d.ef)}</span></div>
-                    <div style={{flex:1, minWidth:70}}><span style={{color:"#888", fontSize:10, display:"block"}}>YAPE</span><span style={{color:"#8e44ad", fontWeight:900}}>💜 {fmt(d.ya)}</span></div>
-                    <div style={{flex:1, minWidth:70}}><span style={{color:"#888", fontSize:10, display:"block"}}>TARJETA</span><span style={{color:"#2980b9", fontWeight:900}}>💳 {fmt(d.ta)}</span></div>
-                  </div>
-
-                  {d.orders.map((o,idx) => {
-                    const pe = getPay(o, "efectivo");
-                    const py = getPay(o, "yape");
-                    const pt = getPay(o, "tarjeta");
-                    return (
-                      <div key={o._fid||o.id||idx} style={{marginBottom:10, paddingBottom:10, borderBottom:"1px solid #2a2a2a", opacity:o.status==="cancelado"?0.5:1}}>
-                        <div style={{...s.row, marginBottom:4}}>
-                          <div>
-                            <span style={{fontWeight:800, fontSize:13}}>{o.orderType==="llevar" ? `🥡 ${o.table}` : `Mesa ${o.table}`}</span>
-                            <span style={{...s.tag(o.status==="pagado" ? "#1e5c2e" : "#5c1e1e"), marginLeft:8}}>{o.status==="pagado" ? "✅ Pagado" : "❌ Anulado"}</span>
-                          </div>
-                          <span style={{color:Y, fontWeight:900, fontSize:14}}>{fmt(o.total)}</span>
-                        </div>
-                        <div style={{display:"flex", justifyContent:"space-between", marginBottom:6, alignItems:"flex-start"}}>
-                          <div style={{color:"#666", fontSize:11}}>
-                            {timeStr(o.paidAt || o.cancelledAt || o.createdAt)} 
-                            {o.status === "pagado" && ` · ${[pe>0&&`Efe: ${fmt(pe)}`, py>0&&`Yap: ${fmt(py)}`, pt>0&&`Tar: ${fmt(pt)}`].filter(Boolean).join(" | ")}`}
-                          </div>
-                          <div style={{display:"flex", gap:6}}>
-                            <button style={{...s.btn("secondary"), padding:"4px 8px", fontSize:10}} onClick={(e) => { e.stopPropagation(); printOrder(o); }}>🖨️ Ticket</button>
-                            {o.enlace_pdf && (
-                              <button style={{...s.btn("blue"), padding:"4px 8px", fontSize:10}} onClick={(e) => { e.stopPropagation(); window.open(o.enlace_pdf, "_blank"); }}>🧾 SUNAT</button>
-                            )}
-                          </div>
-                        </div>
-                        <div style={{marginTop:6}}>
-                          {o.items.map((item,i) => {
-                            const validNotes = (item.individualNotes || []).filter(n => n.trim() !== "");
-                            return (
-                            <div key={i} style={{fontSize:11, color:"#ccc", paddingLeft:4, borderLeft:`2px solid ${Y}44`, marginBottom:4}}>
-                              {item.qty}x {item.name} {item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:10, fontWeight:700}}>🥡 Llevar</span>}
-                              {item.salsas?.length > 0 && <div style={{color:Y, fontStyle:"italic", marginTop:1}}>🥫 {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>}
-                              {validNotes.map((n, idx) => (
-                                <div key={idx} style={{color:"#aaa", fontStyle:"italic", marginTop:1}}> └ Plato {idx+1}: {n}</div>
-                              ))}
-                            </div>
-                          )})}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })
-      }
-    </div>
-  );
-}
-
-function CartaComponent({ menu, cartaCatFilter, setCartaCatFilter, showAdd, setShowAdd, newItem, setNewItem, addMenuItem, deleteMenuItem, isMobile, s, Y, fmt, ALL_CATS }) {
-  return (
-    <div>
-      <div style={{...s.row, marginBottom:14}}>
-        <div style={s.title}>🍔 CARTA ({menu.length})</div>
-        <button style={s.btn()} onClick={() => setShowAdd(!showAdd)}>{showAdd ? "✕ Cancelar" : "+ Agregar"}</button>
-      </div>
-      {showAdd && (
-        <div style={{...s.cardHL, marginBottom:14}}>
-          <div style={{fontWeight:800, color:Y, marginBottom:10}}>Nuevo platillo</div>
-          <div style={{display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr 1fr", gap:8, marginBottom:10}}>
-            <input style={s.input} placeholder="Nombre del platillo" value={newItem.name} onChange={e => setNewItem(f => ({...f, name:e.target.value}))}/>
-            <select style={s.input} value={newItem.cat} onChange={e => setNewItem(f => ({...f, cat:e.target.value}))}>
-              {ALL_CATS.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <input style={s.input} type="number" placeholder="Precio S/." value={newItem.price} onChange={e => setNewItem(f => ({...f, price:e.target.value}))}/>
-          </div>
-          <button style={s.btn()} onClick={addMenuItem}>Guardar Platillo</button>
-        </div>
-      )}
-      <div style={{display:"flex", gap:4, flexWrap:"wrap", marginBottom:10}}>
-        {["Todos",...ALL_CATS].map(c => (
-          <button key={c} style={{...s.btn(cartaCatFilter===c ? "primary" : "secondary"), fontSize:isMobile?9:10, padding:isMobile?"3px 6px":"4px 9px"}} onClick={() => setCartaCatFilter(c)}>{c}</button>
-        ))}
-      </div>
-      {menu.filter(i => cartaCatFilter==="Todos" || i.cat===cartaCatFilter).map(item => (
-        <div key={item.id} style={{...s.card, marginBottom:5, padding:isMobile?"8px 10px":"9px 12px"}}>
-          <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
-            <div>
-              <span style={{marginRight:6}}>{item.icon}</span>
-              <span style={{fontWeight:700, fontSize:isMobile?13:14}}>{item.name}</span>
-            </div>
-            <div style={{display:"flex", alignItems:"center", gap:10}}>
-              <span style={{color:Y, fontWeight:900}}>{fmt(item.price)}</span>
-              {item.id.startsWith("CUSTOM_") && (
-                <button style={{...s.btn("danger"), padding:"2px 7px", fontSize:11}} onClick={() => deleteMenuItem(item.id)}>✕</button>
-              )}
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenListo, isMobile, isDesktop, s, Y }) {
   const sorted = [...orders].sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
   
   const toggleCheck = (order, itemIdx, maxQty) => { 
     const orderId = order.id;
     let isFullyDone = false;
-
     setKitchenChecks(prev => { 
       const oc = prev[orderId] || {}; 
       const curr = Number(oc[itemIdx]) || (oc[itemIdx] === true ? maxQty : 0);
-      let next = curr + 1;
-      if (next > maxQty) next = 0;
-      
+      let next = curr + 1; if (next > maxQty) next = 0;
       const newOrderChecks = {...oc, [itemIdx]: next};
-
-      // Evaluamos si ya completó TODO en el mismo instante
-      isFullyDone = order.items.length > 0 && order.items.every((item, i) => {
-         const val = (i === itemIdx) ? next : (Number(oc[i]) || 0);
-         return val === item.qty;
-      });
-
+      isFullyDone = order.items.length > 0 && order.items.every((item, i) => { const val = (i === itemIdx) ? next : (Number(oc[i]) || 0); return val === item.qty; });
       return {...prev, [orderId]: newOrderChecks}; 
     }); 
-
-    // Auto-quitar de la cocina (Despachar)
-    if (isFullyDone) {
-      setTimeout(() => markKitchenListo(orderId), 400); // Pequeño delay visual para que vean el check verde
-    }
+    if (isFullyDone) setTimeout(() => markKitchenListo(orderId), 500); // 1/2 segundo para ver el check antes de desaparecer
   };
 
-  // Filtramos para NO MOSTRAR los que ya fueron marcados como 'listo'
   const activeOrders = sorted.filter(order => order.kitchenStatus !== 'listo');
-  
   if(activeOrders.length === 0) return <div style={{textAlign:"center", padding:60, color:"#444"}}><div style={{fontSize:56}}>👨‍🍳</div><div style={{marginTop:12, fontSize:16}}>Sin pedidos pendientes en cocina</div></div>;
   
   return (
     <div>
-      <div style={{...s.row, marginBottom:14}}>
-        <div style={s.title}>👨‍🍳 COCINA — {activeOrders.length} pedido{activeOrders.length!==1?"s":""}</div>
-      </div>
+      <div style={{...s.row, marginBottom:14}}><div style={s.title}>👨‍🍳 COCINA — {activeOrders.length} pendiente{activeOrders.length!==1?"s":""}</div></div>
       <div style={{display:"grid", gridTemplateColumns:isDesktop?"1fr 1fr":"1fr", gap:12}}>
         {activeOrders.map((order,priority) => {
           const checks = kitchenChecks[order.id] || {};
-          
           const totalPortions = order.items.reduce((sum, item) => sum + item.qty, 0);
           const donePortions = order.items.reduce((sum, item, i) => sum + (Number(checks[i]) || 0), 0);
-          
           const mins = Math.floor((Date.now() - new Date(order.createdAt))/60000);
-          const urgent = mins >= 15;
-          const warn = mins >= 8 && mins < 15;
           
           return (
-            <div key={order.id} style={{background:urgent?"#1f0d0d":warn?"#1f180d":"#1c1c1c", borderRadius:14, border:`2px solid ${urgent?"#e74c3c":warn?"#e67e22":Y}`, padding:14, position:"relative", transition:"all .3s"}}>
-              <div style={{position:"absolute", top:-10, left:14, background:urgent?"#e74c3c":warn?"#e67e22":Y, color:urgent||warn?"#fff":"#111", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:900}}>
-                {`#${priority+1} · ${mins<1?"ahora":`${mins}m`}`}
-              </div>
-              {order.isPaid && <div style={{position:"absolute", top:-10, right:14, background:"#2980b9", color:"#fff", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:900}}>✅ PAGADO</div>}
-              <div style={{...s.row, marginBottom:10, marginTop:6}}>
-                <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:22, color:urgent?"#e74c3c":warn?"#e67e22":Y}}>{order.orderType==="llevar"?`🥡 ${order.table}`:`Mesa ${order.table}`}</span>
-              </div>
-              <div style={{background:"#2a2a2a", borderRadius:4, height:5, marginBottom:12, overflow:"hidden"}}>
-                <div style={{background:Y, height:"100%", width:`${totalPortions > 0 ? (donePortions/totalPortions)*100 : 0}%`, transition:"width .3s"}}/>
-              </div>
+            <div key={order.id} style={{background:mins>=15?"#1f0d0d":mins>=8?"#1f180d":"#1c1c1c", borderRadius:14, border:`2px solid ${mins>=15?"#e74c3c":mins>=8?"#e67e22":Y}`, padding:14, position:"relative", transition:"all .3s"}}>
+              <div style={{position:"absolute", top:-10, left:14, background:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y, color:mins>=8?"#fff":"#111", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:900}}>{`#${priority+1} · ${mins<1?"ahora":`${mins}m`}`}</div>
+              <div style={{...s.row, marginBottom:10, marginTop:6}}><span style={{fontFamily:"'Bebas Neue',cursive", fontSize:22, color:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y}}>{order.orderType==="llevar"?`🥡 ${order.table}`:`Mesa ${order.table}`}</span></div>
+              <div style={{background:"#2a2a2a", borderRadius:4, height:5, marginBottom:12, overflow:"hidden"}}><div style={{background:Y, height:"100%", width:`${totalPortions > 0 ? (donePortions/totalPortions)*100 : 0}%`, transition:"width .3s"}}/></div>
               {order.items.map((item,i) => {
                 const doneQty = Number(checks[i]) || 0;
                 const isDone = doneQty === item.qty;
                 const validNotes = (item.individualNotes || []).filter(n => n.trim() !== "");
-                
                 return (
                   <div key={i} onClick={() => toggleCheck(order, i, item.qty)} style={{display:"flex", alignItems:"center", gap:10, padding:"9px 10px", marginBottom:5, borderRadius:8, background:isDone?"#0a2a0a":"#252525", border:`1px solid ${isDone?"#27ae6055":"#333"}`, cursor:"pointer", transition:"all .2s", opacity:isDone?0.6:1}}>
-                    <div style={{minWidth:26, height:26, borderRadius:6, border:`2px solid ${isDone?"#27ae60":"#555"}`, background:isDone?"#27ae60":"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:13, transition:"all .2s", color:isDone?"#fff":"#aaa", fontWeight:"bold", padding:"0 4px"}}>
-                      {item.qty > 1 ? `${doneQty}/${item.qty}` : (isDone ? "✓" : "")}
-                    </div>
+                    <div style={{minWidth:26, height:26, borderRadius:6, border:`2px solid ${isDone?"#27ae60":"#555"}`, background:isDone?"#27ae60":"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:13, color:isDone?"#fff":"#aaa", fontWeight:"bold"}}>{item.qty > 1 ? `${doneQty}/${item.qty}` : (isDone ? "✓" : "")}</div>
                     <div style={{flex:1}}>
-                      <span style={{fontWeight:800, fontSize:isMobile?13:15, textDecoration:isDone?"line-through":"none", color:isDone?"#555":"#eee"}}>
-                        {item.qty>1&&<span style={{color:Y, marginRight:4}}>{item.qty}×</span>}
-                        {item.name} {item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:10, fontWeight:700}}>🥡 Llevar</span>}
-                      </span>
+                      <span style={{fontWeight:800, fontSize:isMobile?13:15, textDecoration:isDone?"line-through":"none", color:isDone?"#555":"#eee"}}>{item.qty>1&&<span style={{color:Y, marginRight:4}}>{item.qty}×</span>}{item.name} {item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:10}}>🥡 Llevar</span>}</span>
                       {item.salsas?.length > 0 && <div style={{color:Y, fontSize:11, fontStyle:"italic", marginTop:2}}>🥫 {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>}
-                      {validNotes.map((n, idx) => (
-                        <div key={idx} style={{fontSize:11, color:"#aaa", marginTop:3, fontStyle:"italic"}}>📝 Plato {idx+1}: {n}</div>
-                      ))}
+                      {validNotes.map((n, idx) => <div key={idx} style={{fontSize:11, color:"#aaa", marginTop:3, fontStyle:"italic"}}>📝 Plato {idx+1}: {n}</div>)}
                     </div>
                   </div>
                 )
@@ -1484,11 +1087,13 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
 export default function App() {
   const width     = useWindowWidth();
   const isMobile  = width < 480;
-  const isTablet  = width >= 480 && width < 1024;
+  const isTablet  = width >= 480 && width < 1024; // Ajuste para captar tablets (ej. iPad)
   const isDesktop = width >= 768;
   const isWide    = width >= 1024;
 
-  const [tab,            setTab]            = useState("dashboard");
+  const [currentUser,    setCurrentUser]    = useState(null); // Sistema de Roles Base
+
+  const [tab,            setTab]            = useState("mesas");
   const [orders,         setOrders]         = useState([]);
   const [history,        setHistory]        = useState([]);
   const [menu,           setMenu]           = useState(MENU_BASE);
@@ -1505,6 +1110,7 @@ export default function App() {
   const [mesaModal,     setMesaModal]     = useState(null);
   const [kitchenChecks, setKitchenChecks] = useState({});
   const [cobrarTarget,  setCobrarTarget]  = useState(null);
+  const [splitTarget,   setSplitTarget]   = useState(null); // Modal de Dividir
   const [mergeModal,    setMergeModal]    = useState(null);
   const [mergeName,     setMergeName]     = useState("");
 
@@ -1512,24 +1118,16 @@ export default function App() {
 
   useEffect(() => {
     let unsubOrders, unsubHistory, unsubMenu;
-
     const setupListeners = () => {
       unsubOrders = onSnapshot(FS.ordersRef(), (docSnap) => {
-        if (docSnap.exists()) setOrders(docSnap.data().list || []);
-        else setOrders([]);
+        if (docSnap.exists()) setOrders(docSnap.data().list || []); else setOrders([]);
       });
-
       unsubMenu = onSnapshot(FS.menuRef(), (docSnap) => {
-        if (docSnap.exists()) setMenu([...MENU_BASE, ...(docSnap.data().list || [])]);
-        else setMenu(MENU_BASE);
+        if (docSnap.exists()) setMenu([...MENU_BASE, ...(docSnap.data().list || [])]); else setMenu(MENU_BASE);
       });
-
-      const q = query(FS.historyCol(), orderBy("createdAt", "desc"), limit(1000));
-      unsubHistory = onSnapshot(q, (snapshot) => {
-        const hist = snapshot.docs.map(d => ({ _fid: d.id, ...d.data() }));
-        setHistory(hist);
+      unsubHistory = onSnapshot(query(FS.historyCol(), orderBy("createdAt", "desc"), limit(1000)), (snapshot) => {
+        setHistory(snapshot.docs.map(d => ({ _fid: d.id, ...d.data() })));
       });
-
       setLoaded(true);
     };
     setupListeners();
@@ -1540,7 +1138,6 @@ export default function App() {
   const saveOrders = async (v) => { await FS.saveOrders(v); };
   const saveMenu   = async (v) => { setMenu(v); await FS.saveMenu(v.filter(i=>i.id.startsWith("CUSTOM_"))); };
 
-  // Función para Despachar desde Cocina
   const markKitchenListo = async (orderId) => {
     const updatedOrders = orders.map(o => o.id === orderId ? {...o, kitchenStatus: 'listo'} : o);
     setOrders(updatedOrders);
@@ -1592,142 +1189,92 @@ export default function App() {
     if (!draft.table.trim()||!draft.items.length) return;
     const taperNum = Number(draft.taperCost) || 0;
     const total = draftTotal + taperNum;
-
-    const existingMesaOrder = orders.find(o =>
-      o.table === draft.table.trim() && o.orderType === "mesa" && !o.isPaid
-    ) ?? null;
+    const existingMesaOrder = orders.find(o => o.table === draft.table.trim() && o.orderType === "mesa" && !o.isPaid) ?? null;
 
     if (existingMesaOrder && forceMerge === null) {
       setMergeModal({ existingOrder: existingMesaOrder, newDraftData: { ...draft, total, taperNum } });
-      setMergeName("");
-      return;
+      setMergeName(""); return;
     }
 
     let finalItems = forceMerge === "merge" ? [...mergeModal.newDraftData.items] : [...draft.items];
     const currentTaperNum = forceMerge === "merge" ? mergeModal.newDraftData.taperNum : taperNum;
-
-    if (currentTaperNum > 0) {
-      finalItems.push({ id: "TAPER", cartId: "TAPER", name: "Taper / Bolsa", price: currentTaperNum, qty: 1, cat: "Extras", individualNotes: [""] });
-    }
+    if (currentTaperNum > 0) finalItems.push({ id: "TAPER", cartId: "TAPER", name: "Taper / Bolsa", price: currentTaperNum, qty: 1, cat: "Extras", individualNotes: [""] });
 
     if (forceMerge === "merge" && mergeModal) {
       const existing = mergeModal.existingOrder;
       const isLlevarDraft = mergeModal.newDraftData.orderType === "llevar";
-      
       const newItems = finalItems.map(i => {
         let nameTag = mergeName.trim() ? `[Llevar: ${mergeName.trim()}]` : "";
-        return {
-          ...i,
-          ...(isLlevarDraft ? { isLlevar: true } : {}),
-          individualNotes: isLlevarDraft && nameTag ? i.individualNotes.map(n => n ? `${nameTag} ${n}` : nameTag) : i.individualNotes
-        }
+        return { ...i, ...(isLlevarDraft ? { isLlevar: true } : {}), individualNotes: isLlevarDraft && nameTag ? i.individualNotes.map(n => n ? `${nameTag} ${n}` : nameTag) : i.individualNotes }
       });
-
       const mergedItems = [...existing.items];
-
       newItems.forEach(newItem => {
-        if (newItem.isLlevar) {
-            newItem.cartId = `${newItem.cartId}-LLEVAR-${Date.now()}`;
-            mergedItems.push(newItem);
-        } else {
+        if (newItem.isLlevar) { newItem.cartId = `${newItem.cartId}-LLEVAR-${Date.now()}`; mergedItems.push(newItem); } 
+        else {
             const idx = mergedItems.findIndex(i => i.cartId === newItem.cartId && !i.isLlevar && JSON.stringify(i.salsas) === JSON.stringify(newItem.salsas));
-            if (idx >= 0) {
-              mergedItems[idx] = { 
-                ...mergedItems[idx], 
-                qty: mergedItems[idx].qty + newItem.qty,
-                individualNotes: [...(mergedItems[idx].individualNotes || []), ...(newItem.individualNotes || [])]
-              };
-            } else {
-              mergedItems.push(newItem);
-            }
+            if (idx >= 0) { mergedItems[idx] = { ...mergedItems[idx], qty: mergedItems[idx].qty + newItem.qty, individualNotes: [...(mergedItems[idx].individualNotes || []), ...(newItem.individualNotes || [])] }; } 
+            else { mergedItems.push(newItem); }
         }
       });
-
-      const mergedTotal = mergedItems.reduce((s, i) => s + i.price * i.qty, 0);
-      const mergedNotes = [existing.notes, mergeModal.newDraftData.notes].filter(Boolean).join(" | ");
-      const updated = { 
-        ...existing, 
-        items: mergedItems, 
-        total: mergedTotal, 
-        notes: mergedNotes, 
-        taperCost: 0,
-        kitchenStatus: 'pendiente' // Regresa a cocina si le agregaron cosas
-      };
-
+      const updated = { ...existing, items: mergedItems, total: mergedItems.reduce((s, i) => s + i.price * i.qty, 0), notes: [existing.notes, mergeModal.newDraftData.notes].filter(Boolean).join(" | "), taperCost: 0, kitchenStatus: 'pendiente' };
       setOrders(prev => prev.map(o => o.id === existing.id ? updated : o));
       await saveOrders(orders.map(o => o.id === existing.id ? updated : o));
-      setDraft(newDraft());
-      setMergeModal(null);
-      setMergeName("");
-      showToast(`➕ Ítems agregados a Mesa ${existing.table}`);
-      setTab("pedidos");
-      return;
+      setDraft(newDraft()); setMergeModal(null); setMergeName(""); showToast(`➕ Ítems agregados a Mesa ${existing.table}`); setTab("pedidos"); return;
     }
 
-    if (mergeModal) {
-      setMergeModal(null);
-      setMergeName("");
-    }
-
+    if (mergeModal) { setMergeModal(null); setMergeName(""); }
     const finalDraft = { ...draft, items: finalItems, taperCost: 0 }; 
 
     if (draft.payTiming === "ahora") {
       setCobrarTarget({ type: 'new', data: { id:Date.now().toString(), ...finalDraft, total, createdAt:new Date().toISOString() } });
     } else {
       const order = { id:Date.now().toString(), ...finalDraft, total, isPaid: false, status:"pendiente", kitchenStatus:"pendiente", createdAt:new Date().toISOString() };
-      
-      setOrders(prev => [...prev, order]); 
-      await saveOrders([...orders,order]);
-      setDraft(newDraft());
-      showToast(`📝 Pedido enviado a cocina`);
-      setTab("pedidos");
+      setOrders(prev => [...prev, order]); await saveOrders([...orders,order]);
+      setDraft(newDraft()); showToast(`📝 Pedido enviado a cocina`); setTab("pedidos");
     }
   };
 
   const handleConfirmCobro = async (paymentData) => {
     if (!cobrarTarget) return;
-    const target = cobrarTarget;
-    setCobrarTarget(null);
-    
+    const target = cobrarTarget; setCobrarTarget(null);
     const payments = { efectivo: paymentData.efectivo, yape: paymentData.yape, tarjeta: paymentData.tarjeta };
+    const sunatData = { sunatDocType: paymentData.sunatDocType, sunatDocNum: paymentData.sunatDocNum, sunatCustomerName: paymentData.sunatCustomerName, sunatCustomerAddress: paymentData.sunatCustomerAddress };
+
+    if (target.type === 'split') {
+        const originalOrder = target.data.originalOrder;
+        const splitItems = target.data.splitItems;
+        const paidItems = splitItems.map(si => ({...si, qty: si.splitQty}));
+        const finishedOrder = { ...originalOrder, id: Date.now().toString(), items: paidItems, total: target.data.total, isPaid: true, status: "pagado", payments, paidAt: new Date().toISOString(), ...sunatData };
+        
+        let remainingItems = originalOrder.items.map(origItem => {
+           const splitItem = splitItems.find(si => si.cartId === origItem.cartId);
+           if (splitItem) {
+               return { ...origItem, qty: origItem.qty - splitItem.splitQty, individualNotes: origItem.individualNotes.slice(splitItem.splitQty) };
+           }
+           return origItem;
+        }).filter(i => i.qty > 0);
+        
+        if (remainingItems.length === 0) {
+           const newOrders = orders.filter(x => x.id !== originalOrder.id);
+           setOrders(newOrders); await Promise.all([ FS.addHistory(finishedOrder), saveOrders(newOrders) ]);
+        } else {
+           const newTotal = remainingItems.reduce((s,i) => s + i.price * i.qty, 0);
+           const updatedOriginal = { ...originalOrder, items: remainingItems, total: newTotal };
+           const newOrders = orders.map(o => o.id === originalOrder.id ? updatedOriginal : o);
+           setOrders(newOrders); await Promise.all([ FS.addHistory(finishedOrder), saveOrders(newOrders) ]);
+        }
+        showToast("💰 Cuenta dividida cobrada");
+        setTab("pedidos"); return;
+    }
 
     if (target.type === 'new') {
-      const order = { 
-        ...target.data, 
-        isPaid: true, 
-        status: "pendiente", 
-        kitchenStatus: "pendiente",
-        payments, 
-        paidAt: new Date().toISOString(),
-        sunatDocType: paymentData.sunatDocType,
-        sunatDocNum: paymentData.sunatDocNum,
-        sunatCustomerName: paymentData.sunatCustomerName,
-        sunatCustomerAddress: paymentData.sunatCustomerAddress
-      };
-      setOrders(prev => [...prev, order]); 
-      await saveOrders([...orders, order]);
-      setDraft(newDraft());
-      showToast("✅ Pedido cobrado y enviado a cocina");
-      setTab("pedidos");
-    } 
-    else if (target.type === 'existing') {
+      const order = { ...target.data, isPaid: true, status: "pendiente", kitchenStatus: "pendiente", payments, paidAt: new Date().toISOString(), ...sunatData };
+      setOrders(prev => [...prev, order]); await saveOrders([...orders, order]);
+      setDraft(newDraft()); showToast("✅ Pedido cobrado y enviado a cocina"); setTab("pedidos");
+    } else if (target.type === 'existing') {
       const o = target.data;
-      if (!orders.find(x => x.id === o.id)) return;
-
-      const newOrders = orders.filter(x => x.id !== o.id);
-      setOrders(newOrders); 
-
-      const finished = { 
-        ...o, 
-        isPaid: true, 
-        status: "pagado", 
-        payments, 
-        paidAt: new Date().toISOString(),
-        sunatDocType: paymentData.sunatDocType,
-        sunatDocNum: paymentData.sunatDocNum,
-        sunatCustomerName: paymentData.sunatCustomerName,
-        sunatCustomerAddress: paymentData.sunatCustomerAddress
-      };
+      const newOrders = orders.filter(x => x.id !== o.id); setOrders(newOrders); 
+      const finished = { ...o, isPaid: true, status: "pagado", payments, paidAt: new Date().toISOString(), ...sunatData };
       await Promise.all([FS.addHistory(finished), saveOrders(newOrders)]);
       showToast("💰 Pedido cobrado y archivado");
     }
@@ -1735,43 +1282,27 @@ export default function App() {
 
   const finishPaidOrder = async (id) => {
     const o = orders.find(x=>x.id===id); if (!o) return;
-    const newOrders = orders.filter(x=>x.id!==id);
-    setOrders(newOrders); 
-    const finished = { ...o, status: "pagado" }; 
-    await Promise.all([FS.addHistory(finished), saveOrders(newOrders)]);
+    const newOrders = orders.filter(x=>x.id!==id); setOrders(newOrders); 
+    const finished = { ...o, status: "pagado" }; await Promise.all([FS.addHistory(finished), saveOrders(newOrders)]);
     showToast("✅ Pedido entregado y archivado");
   };
 
   const cancelOrder = async (id) => {
     const o = orders.find(x=>x.id===id); if (!o) return;
-    const newOrders = orders.filter(x=>x.id!==id);
-    setOrders(newOrders); 
+    const newOrders = orders.filter(x=>x.id!==id); setOrders(newOrders); 
     const finished = {...o,status:"cancelado",cancelledAt:new Date().toISOString(),createdAt:o.createdAt||new Date().toISOString()};
-    await Promise.all([FS.addHistory(finished), saveOrders(newOrders)]);
-    showToast("❌ Pedido cancelado","#e74c3c");
+    await Promise.all([FS.addHistory(finished), saveOrders(newOrders)]); showToast("❌ Pedido cancelado","#e74c3c");
   };
 
   const deleteOrderPermanent = async (id) => {
-    const newOrders = orders.filter(x=>x.id!==id);
-    setOrders(newOrders); 
-    await saveOrders(newOrders);
+    const newOrders = orders.filter(x=>x.id!==id); setOrders(newOrders); await saveOrders(newOrders);
     setConfirmDelete(null); showToast("🗑️ Pedido eliminado","#888");
   };
 
   const saveEditedOrder = async (updated) => {
-    setOrders(prev => prev.map(o=>o.id===updated.id?updated:o)); 
-    await saveOrders(orders.map(o=>o.id===updated.id?updated:o));
+    setOrders(prev => prev.map(o=>o.id===updated.id?updated:o)); await saveOrders(orders.map(o=>o.id===updated.id?updated:o));
     setEditingOrder(null); showToast(`✏️ Pedido actualizado`,"#f39c12");
   };
-
-  const addMenuItem = async () => {
-    if (!newItem.name.trim()||!newItem.price) return;
-    const item = {id:"CUSTOM_"+Date.now(),cat:newItem.cat,icon:"⭐",name:newItem.name,price:parseFloat(newItem.price),desc:""};
-    await saveMenu([...menu,item]);
-    setNewItem({name:"",cat:"Hamburguesas",price:""}); setShowAdd(false);
-    showToast(`⭐ "${item.name}" agregado`);
-  };
-  const deleteMenuItem = async (id) => { await saveMenu(menu.filter(i=>i.id!==id)); showToast("🗑️ Platillo eliminado","#e74c3c"); };
 
   if (splash) return (
     <div style={{background:"#111",height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20}}>
@@ -1779,12 +1310,6 @@ export default function App() {
       <div style={{fontSize:90}}>🍔</div>
       <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:36,color:"#FFD700",letterSpacing:4}}>MR. PAPACHOS</div>
       <div style={{fontFamily:"'Nunito',sans-serif",color:"#555",fontSize:13,letterSpacing:3,textTransform:"uppercase"}}>Cajamarca</div>
-    </div>
-  );
-
-  if (!loaded) return (
-    <div style={{background:"#111",color:"#FFD700",height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"sans-serif"}}>
-      <div style={{textAlign:"center"}}><div style={{fontSize:52}}>🍔</div><div style={{marginTop:12,fontWeight:700,letterSpacing:2}}>Cargando...</div></div>
     </div>
   );
 
@@ -1811,16 +1336,23 @@ export default function App() {
     modal:   {background:"#1a1a1a",border:`1px solid ${Y}44`,borderRadius:isMobile?"16px 16px 0 0":14,padding:isMobile?"16px 12px":20,width:"100%",maxWidth:isMobile?"100%":600,maxHeight:isMobile?"92vh":"88vh",overflowY:"auto"},
   };
 
-  const tabs = [
-    {id:"dashboard", label:isMobile?"📊":"📊 Inicio"},
-    {id:"mesas",     label:isMobile?"🪑":"🪑 Mesas"},
-    {id:"nuevo",     label:isMobile?"➕":"➕ Nuevo"},
-    {id:"pedidos",   label:isMobile?`🍽️${orders.length>0?` ${orders.length}`:""}` : `🍽️ Pedidos${orders.length>0?` (${orders.length})`:""}`},
-    {id:"cocina",    label:isMobile?`👨‍🍳${orders.filter(o => o.kitchenStatus !== 'listo').length>0?` ${orders.filter(o => o.kitchenStatus !== 'listo').length}`:""}` : `👨‍🍳 Cocina${orders.filter(o => o.kitchenStatus !== 'listo').length>0?` (${orders.filter(o => o.kitchenStatus !== 'listo').length})`:""}`},
-    {id:"historial", label:isMobile?"📋":"📋 Historial"},
-    {id:"inventario",label:isMobile?"📦":"📦 Inventario"},
-    {id:"carta",     label:isMobile?"🍔":"🍔 Carta"},
+  if (!currentUser) return <LoginScreen onLogin={(user) => { setCurrentUser(user); setTab(user.id === 'cocinero' ? 'cocina' : 'mesas'); }} s={s} Y={Y} />;
+  if (!loaded) return <div style={{background:"#111",color:"#FFD700",height:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{textAlign:"center"}}><div style={{fontSize:52}}>🍔</div><div style={{marginTop:12,fontWeight:700,letterSpacing:2}}>Cargando Base...</div></div></div>;
+
+  const allTabs = [
+    {id:"dashboard", label:isMobile?"📊":"📊 Inicio"}, {id:"mesas", label:isMobile?"🪑":"🪑 Mesas"}, {id:"nuevo", label:isMobile?"➕":"➕ Nuevo"},
+    {id:"pedidos", label:isMobile?`🍽️${orders.length>0?` ${orders.length}`:""}` : `🍽️ Pedidos${orders.length>0?` (${orders.length})`:""}`},
+    {id:"cocina", label:isMobile?`👨‍🍳${orders.filter(o => o.kitchenStatus !== 'listo').length>0?` ${orders.filter(o => o.kitchenStatus !== 'listo').length}`:""}` : `👨‍🍳 Cocina${orders.filter(o => o.kitchenStatus !== 'listo').length>0?` (${orders.filter(o => o.kitchenStatus !== 'listo').length})`:""}`},
+    {id:"historial", label:isMobile?"📋":"📋 Historial"}, {id:"inventario",label:isMobile?"📦":"📦 Inventario"}, {id:"carta", label:isMobile?"🍔":"🍔 Carta"},
   ];
+
+  const tabs = allTabs.filter(t => {
+    if (currentUser.id === 'admin') return true;
+    if (currentUser.id === 'cajero') return ['dashboard', 'mesas', 'pedidos', 'historial', 'nuevo'].includes(t.id);
+    if (currentUser.id === 'mesero') return ['mesas', 'nuevo', 'pedidos', 'carta'].includes(t.id);
+    if (currentUser.id === 'cocinero') return ['cocina'].includes(t.id);
+    return false;
+  });
 
   return (
     <>
@@ -1829,133 +1361,44 @@ export default function App() {
         <header style={s.header}>
           <div>
             <h1 style={s.logo}>🍔 MR. PAPACHOS · CAJAMARCA</h1>
-            {!isMobile&&<div style={{fontSize:11,color:"#555",fontWeight:700}}>Sistema de Pedidos</div>}
+            {!isMobile&&<div style={{fontSize:11,color:"#555",fontWeight:700}}>Modo: {currentUser.label}</div>}
           </div>
-          {!isMobile&&<div style={{fontSize:11,color:"#333",fontWeight:700,textAlign:"right"}}>
-            <div>{new Date().toLocaleDateString("es-PE",{weekday:"long",day:"numeric",month:"long"})}</div>
-          </div>}
+          <div style={{display:"flex", gap:10, alignItems:"center"}}>
+            {!isMobile&&<div style={{fontSize:11,color:"#333",fontWeight:700,textAlign:"right"}}>{new Date().toLocaleDateString("es-PE",{weekday:"long",day:"numeric",month:"long"})}</div>}
+            <button style={{...s.btn("danger"), fontSize:10, padding:"4px 8px"}} onClick={()=>setCurrentUser(null)}>Salir</button>
+          </div>
         </header>
 
-        <nav style={s.nav}>
-          {tabs.map(t=>(
-            <button key={t.id} style={{...s.navBtn(tab===t.id),flex:isMobile?1:"none"}} onClick={()=>setTab(t.id)}>{t.label}</button>
-          ))}
-        </nav>
+        <nav style={s.nav}>{tabs.map(t=>(<button key={t.id} style={{...s.navBtn(tab===t.id),flex:isMobile?1:"none"}} onClick={()=>setTab(t.id)}>{t.label}</button>))}</nav>
 
-        {toast&&(
-          <div style={{position:"fixed",bottom:isMobile ? 90 : 20,left:"50%",transform:"translateX(-50%)",background:toast.color,color:"#fff",padding:"10px 20px",borderRadius:12,fontWeight:800,zIndex:9999,fontSize:14,boxShadow:"0 4px 20px rgba(0,0,0,.5)",whiteSpace:"nowrap"}}>
-            {toast.msg}
-          </div>
-        )}
+        {toast&&(<div style={{position:"fixed",bottom:isMobile ? 90 : 20,left:"50%",transform:"translateX(-50%)",background:toast.color,color:"#fff",padding:"10px 20px",borderRadius:12,fontWeight:800,zIndex:9999,fontSize:14,boxShadow:"0 4px 20px rgba(0,0,0,.5)"}}>{toast.msg}</div>)}
 
-        {cobrarTarget && (
-          <div style={s.overlay} onClick={()=>setCobrarTarget(null)}>
-            <CobrarModal 
-              orderContext={cobrarTarget.data}
-              total={cobrarTarget.data.total} 
-              onConfirm={handleConfirmCobro} 
-              onClose={()=>setCobrarTarget(null)} 
-              s={s} Y={Y} 
-            />
-          </div>
-        )}
-
-        {editingOrder&&(
-          <div style={s.overlay} onClick={()=>setEditingOrder(null)}>
-            <EditOrderModal order={editingOrder} onSave={saveEditedOrder} onClose={()=>setEditingOrder(null)} menu={menu} isMobile={isMobile} s={s} Y={Y}/>
-          </div>
-        )}
-        {mesaModal&&(
-          <div style={s.overlay} onClick={()=>setMesaModal(null)}>
-            <MesaModalComponent num={mesaModal} orders={orders} setDraft={setDraft} newDraft={newDraft} onClose={()=>setMesaModal(null)} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />
-          </div>
-        )}
+        {cobrarTarget && <div style={s.overlay} onClick={()=>setCobrarTarget(null)}><CobrarModal orderContext={cobrarTarget.data} total={cobrarTarget.data.total} onConfirm={handleConfirmCobro} onClose={()=>setCobrarTarget(null)} s={s} Y={Y} /></div>}
+        {splitTarget && <SplitBillModal order={splitTarget} onProceed={(items, total) => { setCobrarTarget({ type: 'split', data: { originalOrder: splitTarget, splitItems: items, total }}); setSplitTarget(null); }} onClose={() => setSplitTarget(null)} s={s} Y={Y} fmt={fmt} />}
+        {editingOrder&&<div style={s.overlay} onClick={()=>setEditingOrder(null)}><EditOrderModal order={editingOrder} onSave={saveEditedOrder} onClose={()=>setEditingOrder(null)} menu={menu} isMobile={isMobile} s={s} Y={Y}/></div>}
+        {mesaModal&&<div style={s.overlay} onClick={()=>setMesaModal(null)}><MesaModalComponent num={mesaModal} orders={orders} setDraft={setDraft} newDraft={newDraft} onClose={()=>setMesaModal(null)} setTab={setTab} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} isMobile={isMobile} s={s} Y={Y} fmt={fmt} /></div>}
         
         {mergeModal && (
           <div style={s.overlay} onClick={() => setMergeModal(null)}>
             <div style={{...s.modal, maxWidth:400}} onClick={e => e.stopPropagation()}>
               <div style={{fontSize:36, textAlign:"center", marginBottom:10}}>➕</div>
-              <div style={{fontWeight:900, fontSize:18, marginBottom:6, color:"#FFD700", textAlign:"center", fontFamily:"'Bebas Neue',cursive", letterSpacing:1}}>
-                MESA {mergeModal.existingOrder.table} YA TIENE PEDIDO
-              </div>
-              <div style={{color:"#aaa", fontSize:13, textAlign:"center", marginBottom:16}}>
-                {mergeModal.newDraftData.orderType === "llevar"
-                  ? <>¿Deseas <b style={{color:"#3498db"}}>acoplar este pedido 🥡 Para Llevar</b> a la mesa?</>
-                  : "¿Qué quieres hacer con los nuevos ítems?"}
-              </div>
-
-              {mergeModal.newDraftData.orderType === "llevar" && (
-                <div style={{marginBottom:14}}>
-                  <input style={{...s.input, borderColor:"#3498db"}} placeholder="Nombre (Ej: Juan)" value={mergeName} onChange={e => setMergeName(e.target.value)} spellCheck="false" />
-                </div>
-              )}
-
-              <div style={{background:"#111", borderRadius:8, padding:10, marginBottom:12, border:"1px solid #2a2a2a"}}>
-                <div style={{fontSize:11, color:"#666", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>Pedido existente</div>
-                {mergeModal.existingOrder.items.map((item,i) => (
-                  <div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:12, color:"#888", padding:"2px 0"}}>
-                    <span>{item.qty}x {item.name}</span>
-                    <span>{fmt(item.price * item.qty)}</span>
-                  </div>
-                ))}
-                <div style={{borderTop:"1px solid #2a2a2a", marginTop:6, paddingTop:6, display:"flex", justifyContent:"space-between", fontWeight:900, fontSize:13}}>
-                  <span>Subtotal</span><span style={{color:"#FFD700"}}>{fmt(mergeModal.existingOrder.total)}</span>
-                </div>
-              </div>
-
-              <div style={{background:"#0a1f0a", borderRadius:8, padding:10, marginBottom:16, border:"1px solid #27ae6044"}}>
-                <div style={{fontSize:11, color:"#27ae60", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>
-                  {mergeModal.newDraftData.orderType === "llevar" ? "🥡 Ítems Para Llevar a agregar" : "Nuevos ítems a agregar"}
-                </div>
-                {mergeModal.newDraftData.items.map((item,i) => (
-                  <div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:12, color:"#aaa", padding:"2px 0"}}>
-                    <span>{item.qty}x {item.name}</span>
-                    <span>{fmt(item.price * item.qty)}</span>
-                  </div>
-                ))}
-                <div style={{borderTop:"1px solid #27ae6033", marginTop:6, paddingTop:6, display:"flex", justifyContent:"space-between", fontWeight:900, fontSize:13}}>
-                  <span style={{color:"#27ae60"}}>+ Subtotal</span>
-                  <span style={{color:"#27ae60"}}>{fmt(mergeModal.newDraftData.items.reduce((s,i)=>s+i.price*i.qty,0))}</span>
-                </div>
-              </div>
-
-              <div style={{display:"flex", flexDirection:"column", gap:8}}>
-                <button style={{...s.btn("success"), padding:14, fontSize:14, width:"100%"}} onClick={() => submitOrder("merge")}>
-                  ➕ Agregar al pedido existente
-                  <div style={{fontSize:11, fontWeight:400, marginTop:2, opacity:0.8}}>
-                    Total: {fmt(mergeModal.existingOrder.total + mergeModal.newDraftData.items.reduce((s,i)=>s+i.price*i.qty,0) + (mergeModal.newDraftData.taperNum || 0))}
-                  </div>
-                </button>
-                <button style={{...s.btn("blue"), padding:12, fontSize:13, width:"100%"}} onClick={() => submitOrder("new")}>
-                  📋 Crear pedido separado para Mesa {mergeModal.existingOrder.table}
-                </button>
-                <button style={{...s.btn("secondary"), padding:10, fontSize:12, width:"100%"}} onClick={() => setMergeModal(null)}>
-                  ✕ Cancelar
-                </button>
-              </div>
+              <div style={{fontWeight:900, fontSize:18, marginBottom:6, color:Y, textAlign:"center", fontFamily:"'Bebas Neue',cursive", letterSpacing:1}}>MESA {mergeModal.existingOrder.table} YA TIENE PEDIDO</div>
+              <div style={{color:"#aaa", fontSize:13, textAlign:"center", marginBottom:16}}>{mergeModal.newDraftData.orderType === "llevar" ? <>¿Deseas <b style={{color:"#3498db"}}>acoplar este pedido 🥡 Para Llevar</b> a la mesa?</> : "¿Qué quieres hacer con los nuevos ítems?"}</div>
+              {mergeModal.newDraftData.orderType === "llevar" && <div style={{marginBottom:14}}><input style={{...s.input, borderColor:"#3498db"}} placeholder="Nombre (Ej: Juan)" value={mergeName} onChange={e => setMergeName(e.target.value)} spellCheck="false" /></div>}
+              <div style={{background:"#111", borderRadius:8, padding:10, marginBottom:12, border:"1px solid #2a2a2a"}}><div style={{fontSize:11, color:"#666", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>Pedido existente</div>{mergeModal.existingOrder.items.map((item,i) => (<div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:12, color:"#888", padding:"2px 0"}}><span>{item.qty}x {item.name}</span><span>{fmt(item.price * item.qty)}</span></div>))}<div style={{borderTop:"1px solid #2a2a2a", marginTop:6, paddingTop:6, display:"flex", justifyContent:"space-between", fontWeight:900, fontSize:13}}><span>Subtotal</span><span style={{color:Y}}>{fmt(mergeModal.existingOrder.total)}</span></div></div>
+              <div style={{background:"#0a1f0a", borderRadius:8, padding:10, marginBottom:16, border:"1px solid #27ae6044"}}><div style={{fontSize:11, color:"#27ae60", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>{mergeModal.newDraftData.orderType === "llevar" ? "🥡 Ítems Para Llevar a agregar" : "Nuevos ítems a agregar"}</div>{mergeModal.newDraftData.items.map((item,i) => (<div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:12, color:"#aaa", padding:"2px 0"}}><span>{item.qty}x {item.name}</span><span>{fmt(item.price * item.qty)}</span></div>))}<div style={{borderTop:"1px solid #27ae6033", marginTop:6, paddingTop:6, display:"flex", justifyContent:"space-between", fontWeight:900, fontSize:13}}><span style={{color:"#27ae60"}}>+ Subtotal</span><span style={{color:"#27ae60"}}>{fmt(mergeModal.newDraftData.items.reduce((s,i)=>s+i.price*i.qty,0))}</span></div></div>
+              <div style={{display:"flex", flexDirection:"column", gap:8}}><button style={{...s.btn("success"), padding:14, fontSize:14, width:"100%"}} onClick={() => submitOrder("merge")}>➕ Agregar al pedido existente<div style={{fontSize:11, fontWeight:400, marginTop:2, opacity:0.8}}>Total: {fmt(mergeModal.existingOrder.total + mergeModal.newDraftData.items.reduce((s,i)=>s+i.price*i.qty,0) + (mergeModal.newDraftData.taperNum || 0))}</div></button><button style={{...s.btn("blue"), padding:12, fontSize:13, width:"100%"}} onClick={() => submitOrder("new")}>📋 Crear pedido separado para Mesa {mergeModal.existingOrder.table}</button><button style={{...s.btn("secondary"), padding:10, fontSize:12, width:"100%"}} onClick={() => setMergeModal(null)}>✕ Cancelar</button></div>
             </div>
           </div>
         )}
 
-        {confirmDelete&&(
-          <div style={s.overlay} onClick={()=>setConfirmDelete(null)}>
-            <div style={{...s.modal,maxWidth:340,textAlign:"center"}} onClick={e=>e.stopPropagation()}>
-              <div style={{fontSize:42,marginBottom:12}}>🗑️</div>
-              <div style={{fontWeight:900,fontSize:17,marginBottom:8,color:"#eee"}}>¿Eliminar pedido?</div>
-              <div style={{color:"#888",fontSize:13,marginBottom:20}}>Esta acción no se puede deshacer.</div>
-              <div style={{display:"flex",gap:10}}>
-                <button style={{...s.btn("secondary"),flex:1}} onClick={()=>setConfirmDelete(null)}>Cancelar</button>
-                <button style={{...s.btn("danger"),flex:1}} onClick={()=>deleteOrderPermanent(confirmDelete)}>🗑️ Eliminar</button>
-              </div>
-            </div>
-          </div>
-        )}
+        {confirmDelete&&<div style={s.overlay} onClick={()=>setConfirmDelete(null)}><div style={{...s.modal,maxWidth:340,textAlign:"center"}} onClick={e=>e.stopPropagation()}><div style={{fontSize:42,marginBottom:12}}>🗑️</div><div style={{fontWeight:900,fontSize:17,marginBottom:8,color:"#eee"}}>¿Eliminar pedido?</div><div style={{color:"#888",fontSize:13,marginBottom:20}}>Esta acción no se puede deshacer.</div><div style={{display:"flex",gap:10}}><button style={{...s.btn("secondary"),flex:1}} onClick={()=>setConfirmDelete(null)}>Cancelar</button><button style={{...s.btn("danger"),flex:1}} onClick={()=>deleteOrderPermanent(confirmDelete)}>🗑️ Eliminar</button></div></div></div>}
 
         <div style={s.content}>
           {tab==="dashboard"  && <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} />}
-          {tab==="mesas"      && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} MESAS={MESAS} />}
+          {tab==="mesas"      && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} MESAS={MESAS} />}
           {tab==="nuevo"      && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} />}
-          {tab==="pedidos"    && <PedidosComponent orders={orders} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
+          {tab==="pedidos"    && <PedidosComponent orders={orders} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
           {tab==="cocina"     && <CocinaComponent orders={orders} kitchenChecks={kitchenChecks} setKitchenChecks={setKitchenChecks} markKitchenListo={markKitchenListo} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} />}
           {tab==="historial"  && <HistorialComponent history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} />}
           {tab==="inventario" && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/>}
