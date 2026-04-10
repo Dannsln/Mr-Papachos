@@ -17,7 +17,7 @@ const db = getFirestore();
 
 // 🚨 AQUÍ PEGA TU RUTA Y TU TOKEN DE NUBEFACT 🚨
 const RUTA_NUBEFACT = "https://api.nubefact.com/api/v1/086e83b2-99c0-4158-9eb7-4f6cd4df1315";
-const TOKEN_NUBEFACT = "https://api.nubefact.com/api/v1/086e83b2-99c0-4158-9eb7-4f6cd4df1315";
+const TOKEN_NUBEFACT = "6190df51b80647fabd7d4ca8c81324a702e671297b734faa90320c8957c5c42e";
 
 exports.generarBoleta = onDocumentCreated("mrpapachos_historial/{orderId}", async (event) => {
   const snap = event.data;
@@ -119,12 +119,12 @@ exports.generarBoleta = onDocumentCreated("mrpapachos_historial/{orderId}", asyn
          enlace_pdf: data.enlace_del_pdf,
          comprobante_numero: `${data.serie}-${data.numero}`
        });
-       console.log(`✅ Boleta generada con éxito: ${data.serie}-${data.numero}`);
+       console.log(`Boleta generada con éxito: ${data.serie}-${data.numero}`);
     }
 
   } catch (error) {
     // Si la SUNAT o NubeFact rechazan la boleta, guardamos el error en los logs
-    console.error("❌ Error NubeFact:", error.response ? error.response.data : error.message);
+    console.error(" Error NubeFact:", error.response ? error.response.data : error.message);
   }
 });
 // Create and deploy your first functions
