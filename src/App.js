@@ -962,7 +962,7 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
   return (
     <div>
       <div style={{...s.row, marginBottom:14}}>
-        <div style={s.title}>🪑 MESAS</div>
+        <div style={s.title}>MESAS</div>
         <button style={s.btn()} onClick={() => { setDraft({...newDraft(), orderType:"llevar", payTiming:"ahora"}); setTab("nuevo"); }}>🥡 Para llevar</button>
       </div>
       <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(3, 1fr)", gridAutoRows: isTablet ? "minmax(25vh, auto)" : "auto", gap: isMobile ? 12 : 20, marginBottom:20 }}>
