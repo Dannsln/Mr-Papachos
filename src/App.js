@@ -189,6 +189,27 @@ function useWindowWidth() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+//  ICONO DE MESA VECTORIAL (SVG) - Reemplaza al emoji 🪑
+// ═══════════════════════════════════════════════════════════════════
+const IconoMesa = ({ color, size }) => (
+  <svg width={size} height={size * 0.75} viewBox="0 0 120 90" fill="none" xmlns="http://www.w3.org/2000/svg" 
+       style={{ marginBottom: 10, filter: color !== "#ffffff" ? `drop-shadow(0px 0px 6px ${color}88)` : 'none' }}>
+    {/* Silla Izquierda */}
+    <rect x="5" y="30" width="15" height="30" rx="4" stroke={color} strokeWidth="3" />
+    {/* Silla Derecha */}
+    <rect x="100" y="30" width="15" height="30" rx="4" stroke={color} strokeWidth="3" />
+    {/* Sillas Arriba */}
+    <rect x="35" y="5" width="20" height="15" rx="4" stroke={color} strokeWidth="3" />
+    <rect x="65" y="5" width="20" height="15" rx="4" stroke={color} strokeWidth="3" />
+    {/* Sillas Abajo */}
+    <rect x="35" y="70" width="20" height="15" rx="4" stroke={color} strokeWidth="3" />
+    <rect x="65" y="70" width="20" height="15" rx="4" stroke={color} strokeWidth="3" />
+    {/* Mesa Central (superpuesta) */}
+    <rect x="16" y="16" width="88" height="58" rx="8" fill="#1c1c1c" stroke={color} strokeWidth="4" />
+  </svg>
+);
+
+// ═══════════════════════════════════════════════════════════════════
 //  LOGIN SCREEN
 // ═══════════════════════════════════════════════════════════════════
 function LoginScreen({ onLogin, s, Y }) {
@@ -952,7 +973,7 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
           return (
             <div key={num} onClick={() => setMesaModal(num)} style={{ background:ocupada?`${Y}15`:"#1c1c1c", border:`2px solid ${ocupada?Y:"#2a2a2a"}`, borderRadius:14, padding: "24px 16px", minHeight: isMobile ? 140 : isTablet ? "25vh" : 160, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", cursor:"pointer", textAlign:"center", position:"relative" }}>
               {ocupada && <div style={{position:"absolute", top:10, right:10, width:12, height:12, borderRadius:"50%", background:"#27ae60", boxShadow:"0 0 8px #27ae60"}}/>}
-              <div style={{fontSize:42, marginBottom:8}}>🪑</div>
+              <IconoMesa color={ocupada ? Y : "#ffffff"} size={isMobile ? 80 : 100} />
               <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:24, color:ocupada?Y:"#555", letterSpacing:1}}>MESA {num}</div>
               <div style={{fontSize:12, color:ocupada?"#aaa":"#444", marginTop:6}}>{ocupada?`${mesaOrders.length} pedido${mesaOrders.length>1?"s":""} · ${fmt(total)}`:"Libre"}</div>
             </div>
@@ -1064,29 +1085,25 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
   
   const toggleCheck = (order, itemIdx, maxQty) => { 
     const orderId = order.id;
+    let isFullyDone = false;
 
-    // 1. Obtenemos lo que ya estaba marcado
-    const currentChecks = kitchenChecks[orderId] || {};
-    let valAnterior = currentChecks[itemIdx];
-    if (valAnterior === true) valAnterior = maxQty; // Compatibilidad con tu data anterior
+    setKitchenChecks(prev => { 
+      const oc = prev[orderId] || {}; 
+      const curr = Number(oc[itemIdx]) || (oc[itemIdx] === true ? maxQty : 0);
+      let next = curr + 1; 
+      if (next > maxQty) next = 0;
+      
+      const newOrderChecks = {...oc, [itemIdx]: next};
 
-    let next = (Number(valAnterior) || 0) + 1; 
-    if (next > maxQty) next = 0;
-    
-    // 2. Predecimos el futuro (cómo quedará el estado)
-    const predictedChecks = {...currentChecks, [itemIdx]: next};
+      isFullyDone = order.items.length > 0 && order.items.every((item, i) => { 
+          let val = (i === itemIdx) ? next : newOrderChecks[i];
+          if (val === true) val = item.qty;
+          return Number(val || 0) === item.qty; 
+      });
 
-    // 3. Actualizamos la pantalla (check visual rápido)
-    setKitchenChecks(prev => ({...prev, [orderId]: predictedChecks}));
+      return {...prev, [orderId]: newOrderChecks}; 
+    }); 
 
-    // 4. Comprobamos la predicción
-    const isFullyDone = order.items.length > 0 && order.items.every((item, i) => { 
-        let val = predictedChecks[i];
-        if (val === true) val = item.qty;
-        return Number(val || 0) === item.qty; 
-    });
-    
-    // 5. Si todo está completo, despachamos con un retraso para ver el check
     if (isFullyDone) {
         setTimeout(() => markKitchenListo(orderId), 600); 
     }
@@ -1305,7 +1322,7 @@ function CartaComponent({ menu, cartaCatFilter, setCartaCatFilter, showAdd, setS
         <div style={{...s.cardHL, marginBottom:14}}>
           <div style={{fontWeight:800, color:Y, marginBottom:10}}>Nuevo platillo</div>
           <div style={{display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr 1fr", gap:8, marginBottom:10}}>
-            <input style={s.input} placeholder="Nombre del platillo" value={newItem.name} onChange={e => setNewItem(f => ({...f, name:e.target.value}))}/>
+            <input style={s.input} placeholder="Nombre del platillo" value={newItem.name} onChange={e => setNewItem(f => ({...f, name:e.target.value}))} spellCheck="false" />
             <select style={s.input} value={newItem.cat} onChange={e => setNewItem(f => ({...f, cat:e.target.value}))}>
               {ALL_CATS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -1657,7 +1674,7 @@ export default function App() {
         <div style={s.content}>
           {tab==="dashboard"  && <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} />}
           {tab==="mesas"      && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} MESAS={MESAS} />}
-          {tab==="nuevo"      && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} />}
+          {tab==="nuevo"      && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateItemNotes={updateItemNotes} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} />}
           {tab==="pedidos"    && <PedidosComponent orders={orders} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
           {tab==="cocina"     && <CocinaComponent orders={orders} kitchenChecks={kitchenChecks} setKitchenChecks={setKitchenChecks} markKitchenListo={markKitchenListo} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} />}
           {tab==="historial"  && <HistorialComponent history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} />}
