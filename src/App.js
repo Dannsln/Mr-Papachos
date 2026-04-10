@@ -643,7 +643,8 @@ import { useState, useEffect, useRef } from "react";
     const win = window.open("", "_blank", "width=220,height=600");
     const items = order.items.map(i => {
       const itemNote = i.itemNotes ? `<tr><td colspan="3" style="font-size:9px;color:#666;padding-top:0;padding-bottom:2mm;font-style:italic;">📝 ${i.itemNotes}</td></tr>` : "";
-      return `<tr><td class="qty">${i.qty}x</td><td class="item">${i.name}</td><td class="price">S/.${(i.price*i.qty).toFixed(2)}</td></tr>${itemNote}`;
+      const llevarTag = i.isLlevar ? ` <span style="font-size:8px;font-weight:bold;">[🥡LLEVAR]</span>` : "";
+      return `<tr><td class="qty">${i.qty}x</td><td class="item">${i.name}${llevarTag}</td><td class="price">S/.${(i.price*i.qty).toFixed(2)}</td></tr>${itemNote}`;
     }).join("");
     const taperRow = (order.taperCost && Number(order.taperCost) > 0) ? `<tr><td class="qty">🥡</td><td class="item">Taper/Bolsa</td><td class="price">S/.${Number(order.taperCost).toFixed(2)}</td></tr>` : "";
     const notes = order.notes ? `<div class="notes">📝 ${order.notes}</div>` : "";
@@ -937,7 +938,7 @@ import { useState, useEffect, useRef } from "react";
                 {o.items.map((item,i) => (
                   <div key={i} style={{marginBottom:4}}>
                     <div style={{display:"flex", justifyContent:"space-between", fontSize:13, padding:"3px 0", borderBottom:"1px solid #222"}}>
-                      <span>{item.qty}x {item.name}</span>
+                      <span>{item.qty}x {item.name}{item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:10, fontWeight:700}}>🥡 Llevar</span>}</span>
                       <span style={{color:"#888"}}>{fmt(item.price*item.qty)}</span>
                     </div>
                     {item.itemNotes && <div style={{fontSize:11, color:"#999", fontStyle:"italic", paddingLeft:4, marginTop:2}}>└ {item.itemNotes}</div>}
@@ -989,7 +990,7 @@ import { useState, useEffect, useRef } from "react";
                 {o.items.map((item,i) => (
                   <div key={i} style={{marginBottom:4}}>
                     <div style={{display:"flex", justifyContent:"space-between", fontSize:isMobile?12:13, padding:"3px 0", borderBottom:"1px solid #222"}}>
-                      <span>{item.qty}x {item.name}</span>
+                      <span>{item.qty}x {item.name}{item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:10, fontWeight:700}}>🥡 Llevar</span>}</span>
                       <span style={{color:"#888"}}>{fmt(item.price*item.qty)}</span>
                     </div>
                     {item.itemNotes && <div style={{fontSize:11, color:"#999", fontStyle:"italic", paddingLeft:4, marginTop:2}}>└ {item.itemNotes}</div>}
@@ -1353,10 +1354,10 @@ import { useState, useEffect, useRef } from "react";
       const taperNum = Number(draft.taperCost) || 0;
       const total = draftTotal + taperNum;
 
-      // Detectar si ya hay un pedido activo para esta mesa
-      const existingMesaOrder = draft.orderType === "mesa"
-        ? orders.find(o => o.table === draft.table.trim() && o.orderType === "mesa" && !o.isPaid)
-        : null;
+      // Detectar si ya hay un pedido activo para esta mesa (aplica también a pedidos para llevar asignados a una mesa)
+      const existingMesaOrder = orders.find(o =>
+        o.table === draft.table.trim() && o.orderType === "mesa" && !o.isPaid
+      ) ?? null;
 
       if (existingMesaOrder && forceMerge === null) {
         // Mostrar modal de confirmación
@@ -1367,7 +1368,11 @@ import { useState, useEffect, useRef } from "react";
       if (forceMerge === "merge" && mergeModal) {
         // Fusionar ítems con el pedido existente
         const existing = mergeModal.existingOrder;
-        const newItems = [...mergeModal.newDraftData.items];
+        const isLlevarDraft = mergeModal.newDraftData.orderType === "llevar";
+        const newItems = mergeModal.newDraftData.items.map(i => ({
+          ...i,
+          ...(isLlevarDraft ? { isLlevar: true } : {})
+        }));
         const mergedItems = [...existing.items];
 
         newItems.forEach(newItem => {
@@ -1591,7 +1596,9 @@ import { useState, useEffect, useRef } from "react";
                   MESA {mergeModal.existingOrder.table} YA TIENE PEDIDO
                 </div>
                 <div style={{color:"#aaa", fontSize:13, textAlign:"center", marginBottom:16}}>
-                  ¿Qué quieres hacer con los nuevos ítems?
+                  {mergeModal.newDraftData.orderType === "llevar"
+                    ? <>¿Deseas <b style={{color:"#3498db"}}>acoplar este pedido 🥡 Para Llevar</b> a la mesa?</>
+                    : "¿Qué quieres hacer con los nuevos ítems?"}
                 </div>
 
                 {/* Resumen del pedido existente */}
@@ -1610,7 +1617,9 @@ import { useState, useEffect, useRef } from "react";
 
                 {/* Resumen de los nuevos ítems */}
                 <div style={{background:"#0a1f0a", borderRadius:8, padding:10, marginBottom:16, border:"1px solid #27ae6044"}}>
-                  <div style={{fontSize:11, color:"#27ae60", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>Nuevos ítems a agregar</div>
+                  <div style={{fontSize:11, color:"#27ae60", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>
+                    {mergeModal.newDraftData.orderType === "llevar" ? "🥡 Ítems Para Llevar a agregar" : "Nuevos ítems a agregar"}
+                  </div>
                   {mergeModal.newDraftData.items.map((item,i) => (
                     <div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:12, color:"#aaa", padding:"2px 0"}}>
                       <span>{item.qty}x {item.name}</span>
