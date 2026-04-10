@@ -1,12 +1,3 @@
-/**
- * Import function triggers from their respective submodules:
- *
- * const {onCall} = require("firebase-functions/v2/https");
- * const {onDocumentWritten} = require("firebase-functions/v2/firestore");
- *
- * See a full list of supported triggers at https://firebase.google.com/docs/functions
- */
-
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { getFirestore } = require("firebase-admin/firestore");
 const admin = require("firebase-admin");
@@ -24,22 +15,18 @@ exports.generarBoleta = onDocumentCreated("mrpapachos_historial/{orderId}", asyn
   if (!snap) return;
   const order = snap.data();
 
-  // Solo facturamos si el pedido está pagado y no se ha generado una boleta antes
   if (order.status !== "pagado" || order.enlace_pdf) {
     return;
   }
 
   try {
-    // 1. Calcular totales matemáticos (Desglosando el 18% de IGV)
     const total = Number(order.total);
     const gravada = total / 1.18;
     const igv = total - gravada;
     
-    // 2. Formatear la fecha
     const fecha = new Date(order.paidAt || order.createdAt);
     const fechaEmision = fecha.toISOString().split('T')[0];
 
-    // 3. Preparar los ítems del pedido
     const items = order.items.map(item => {
       const precioUnitario = Number(item.price);
       const subtotalItem = (precioUnitario * item.qty) / 1.18;
@@ -50,39 +37,16 @@ exports.generarBoleta = onDocumentCreated("mrpapachos_historial/{orderId}", asyn
         "codigo": item.id,
         "descripcion": item.name,
         "cantidad": item.qty,
-        "valor_unitario": (precioUnitario / 1.18).toFixed(2), // Precio sin IGV
-        "precio_unitario": precioUnitario.toFixed(2),         // Precio con IGV
+        "valor_unitario": (precioUnitario / 1.18).toFixed(2), 
+        "precio_unitario": precioUnitario.toFixed(2),         
         "subtotal": subtotalItem.toFixed(2),
-        "tipo_de_igv": "1", // Gravado - Operación Onerosa
+        "tipo_de_igv": "1", 
         "igv": igvItem.toFixed(2),
         "total": (precioUnitario * item.qty).toFixed(2),
         "anticipo_regularizacion": "false"
-      };// 5. Estructurar el JSON exacto para NubeFact
-    const payload = {
-      "operacion": "generar_comprobante",
-      "tipo_de_comprobante": "2", // 2 = Boleta de Venta Electrónica
-      "serie": "BBB1",            // Serie de Boletas que tienes en NubeFact
-      "numero": "",               // Vacío para que NubeFact ponga el número automático
-      "sunat_transaction": "1",   // 1 = Venta Interna
-      "cliente_tipo_de_documento": "-", 
-      "cliente_numero_de_documento": "-",
-      "cliente_denominacion": "CLIENTE VARIOS",
-      "cliente_direccion": "",
-      "cliente_email": "",
-      "fecha_de_emision": fechaEmision,
-      "moneda": "1",              // 1 = Soles
-      "porcentaje_de_igv": "18.00",
-      "total_gravada": gravada.toFixed(2),
-      "total_igv": igv.toFixed(2),
-      "total": total.toFixed(2),
-      "enviar_automaticamente_a_la_sunat": "true",
-      "enviar_automaticamente_al_cliente": "false",
-      "codigo_unico": order.id,   // <--- 🚨 ESTA ES LA LÍNEA NUEVA QUE EXIGE NUBEFACT 🚨
-      "items": items
-    };
+      };
     });
 
-    // 4. Si cobraron taper, lo añadimos como un ítem extra en la boleta
     if (order.taperCost && Number(order.taperCost) > 0) {
         const taperTotal = Number(order.taperCost);
         const taperGravada = taperTotal / 1.18;
@@ -102,32 +66,53 @@ exports.generarBoleta = onDocumentCreated("mrpapachos_historial/{orderId}", asyn
         });
     }
 
-    // 5. Estructurar el JSON exacto para NubeFact
-   // 5. Estructurar el JSON exacto para NubeFact
+    // Lógica dinámica para Boleta o Factura
+    let tipoComprobante = "2"; // 2 = Boleta por defecto
+    let serieComprobante = "BBB1";
+    let tipoDocCliente = "-";
+    let numDocCliente = "-";
+    let nombreCliente = "CLIENTE VARIOS";
+    let direccionCliente = "";
+
+    if (order.sunatDocType === "RUC") {
+        tipoComprobante = "1"; // 1 = Factura
+        serieComprobante = "FFF1";
+        tipoDocCliente = "6"; // 6 = RUC
+        numDocCliente = order.sunatDocNum || "00000000000";
+        nombreCliente = order.sunatCustomerName || "SIN RAZON SOCIAL";
+        direccionCliente = order.sunatCustomerAddress || "-";
+    } else if (order.sunatDocType === "DNI") {
+        tipoComprobante = "2"; // 2 = Boleta
+        serieComprobante = "BBB1";
+        tipoDocCliente = "1"; // 1 = DNI
+        numDocCliente = order.sunatDocNum || "00000000";
+        nombreCliente = order.sunatCustomerName || "SIN NOMBRE";
+        direccionCliente = order.sunatCustomerAddress || "";
+    }
+
     const payload = {
       "operacion": "generar_comprobante",
-      "tipo_de_comprobante": "2", // 2 = Boleta de Venta Electrónica
-      "serie": "BBB1",            // Serie de Boletas que tienes en NubeFact
-      "numero": "",               // Vacío para que NubeFact ponga el número automático
-      "sunat_transaction": "1",   // 1 = Venta Interna
-      "cliente_tipo_de_documento": "-", 
-      "cliente_numero_de_documento": "-",
-      "cliente_denominacion": "CLIENTE VARIOS",
-      "cliente_direccion": "",
+      "tipo_de_comprobante": tipoComprobante, 
+      "serie": serieComprobante,            
+      "numero": "",               
+      "sunat_transaction": "1",   
+      "cliente_tipo_de_documento": tipoDocCliente, 
+      "cliente_numero_de_documento": numDocCliente,
+      "cliente_denominacion": nombreCliente,
+      "cliente_direccion": direccionCliente,
       "cliente_email": "",
       "fecha_de_emision": fechaEmision,
-      "moneda": "1",              // 1 = Soles
+      "moneda": "1",              
       "porcentaje_de_igv": "18.00",
       "total_gravada": gravada.toFixed(2),
       "total_igv": igv.toFixed(2),
       "total": total.toFixed(2),
       "enviar_automaticamente_a_la_sunat": "true",
       "enviar_automaticamente_al_cliente": "false",
-      "codigo_unico": order.id,   // <--- 🚨 ESTA ES LA LÍNEA NUEVA QUE EXIGE NUBEFACT 🚨
+      "codigo_unico": order.id,
       "items": items
     };
 
-    // 6. Disparar la información a NubeFact
     const response = await axios.post(RUTA_NUBEFACT, payload, {
       headers: {
         "Authorization": `Bearer ${TOKEN_NUBEFACT}`,
@@ -137,24 +122,15 @@ exports.generarBoleta = onDocumentCreated("mrpapachos_historial/{orderId}", asyn
 
     const data = response.data;
     
-    // 7. Si fue un éxito, guardar el PDF de la boleta en el pedido de Firestore
     if (data.enlace_del_pdf) {
        await snap.ref.update({
          enlace_pdf: data.enlace_del_pdf,
          comprobante_numero: `${data.serie}-${data.numero}`
        });
-       console.log(`Boleta generada con éxito: ${data.serie}-${data.numero}`);
+       console.log(`✅ ${order.sunatDocType === "RUC" ? "Factura" : "Boleta"} generada con éxito: ${data.serie}-${data.numero}`);
     }
 
   } catch (error) {
-    // Si la SUNAT o NubeFact rechazan la boleta, guardamos el error en los logs
-    console.error(" Error NubeFact:", error.response ? error.response.data : error.message);
+    console.error("❌ Error NubeFact:", error.response ? error.response.data : error.message);
   }
 });
-// Create and deploy your first functions
-// https://firebase.google.com/docs/functions/get-started
-
-// exports.helloWorld = onRequest((request, response) => {
-//   logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });

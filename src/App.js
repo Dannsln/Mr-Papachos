@@ -174,7 +174,7 @@ const MENU_BASE = [
 
 const ALL_CATS = [...new Set(MENU_BASE.map(i => i.cat))];
 const fmt      = (n) => `S/.${Number(n).toFixed(2)}`;
-const newDraft = () => ({ table:"", items:[], payTiming:"despues", notes:"", phone:"", orderType:"mesa", taperCost:0 });
+const newDraft = () => ({ table:"", items:[], payTiming:"despues", notes:"", phone:"", orderType:"mesa", taperCost:0, sunatDocType:"Varios", sunatDocNum:"", sunatCustomerName:"", sunatCustomerAddress:"" });
 const MESAS    = [1, 2, 3, 4, 5, 6];
 
 const getPay = (o, type) => o.payments ? (Number(o.payments[type]) || 0) : (o.payment === type ? o.total : 0);
@@ -202,6 +202,12 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
   const [ePhone,     setEPhone]     = useState(order.phone || "");
   const [eOrderType, setEOrderType] = useState(order.orderType || "mesa");
   const [eTaperCost, setETaperCost] = useState(order.taperCost || 0);
+  
+  const [eSunatDocType, setESunatDocType] = useState(order.sunatDocType || "Varios");
+  const [eSunatDocNum, setESunatDocNum] = useState(order.sunatDocNum || "");
+  const [eSunatCustomerName, setESunatCustomerName] = useState(order.sunatCustomerName || "");
+  const [eSunatCustomerAddress, setESunatCustomerAddress] = useState(order.sunatCustomerAddress || "");
+
   const [eCat,       setECat]       = useState("Todos");
   const [eSearch,    setESearch]    = useState("");
 
@@ -225,7 +231,7 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
   );
   const handleSave = () => {
     if (!eTable.trim() || !eItems.length) return;
-    onSave({ ...order, table: eTable, items: eItems, notes: eNotes, phone: ePhone, total: eTotal, orderType: eOrderType, taperCost: eTaperCost });
+    onSave({ ...order, table: eTable, items: eItems, notes: eNotes, phone: ePhone, total: eTotal, orderType: eOrderType, taperCost: eTaperCost, sunatDocType: eSunatDocType, sunatDocNum: eSunatDocNum, sunatCustomerName: eSunatCustomerName, sunatCustomerAddress: eSunatCustomerAddress });
   };
 
   return (
@@ -262,6 +268,29 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
         </label>
         <input style={{ ...s.input, marginTop:4 }} type="number" min="0" step="0.50" placeholder="Ej: 1.00"
           value={eTaperCost || ""} onChange={e => setETaperCost(e.target.value)} />
+      </div>
+
+      <div style={{ marginBottom:10, padding:10, border:`1px solid ${Y}55`, borderRadius:8 }}>
+        <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Comprobante (SUNAT)</label>
+        <div style={{ display:"flex", gap:6, marginTop:4 }}>
+          {["Varios","Boleta","Factura"].map(t => {
+              const val = t === "Varios" ? "Varios" : t === "Boleta" ? "DNI" : "RUC";
+              return (
+            <button key={t} style={{ ...s.btn(eSunatDocType===val?"primary":"secondary"), flex:1, padding:"6px 0" }}
+              onClick={() => setESunatDocType(val)}>
+              {t}
+            </button>
+          )})}
+        </div>
+        {eSunatDocType !== "Varios" && (
+          <div style={{marginTop:8, display:"flex", flexDirection:"column", gap:6}}>
+             <input style={s.input} placeholder={eSunatDocType==="DNI" ? "Número de DNI" : "Número de RUC"} value={eSunatDocNum} onChange={e=>setESunatDocNum(e.target.value)} />
+             <input style={s.input} placeholder={eSunatDocType==="DNI" ? "Nombre completo" : "Razón Social"} value={eSunatCustomerName} onChange={e=>setESunatCustomerName(e.target.value)} />
+             {eSunatDocType === "RUC" && (
+               <input style={s.input} placeholder="Dirección Fiscal (Obligatorio para RUC)" value={eSunatCustomerAddress} onChange={e=>setESunatCustomerAddress(e.target.value)} />
+             )}
+          </div>
+        )}
       </div>
 
       <div style={{ marginBottom:10 }}>
@@ -461,6 +490,29 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
         </div>
       </div>
 
+      <div style={{ marginBottom:10, padding:10, border:`1px solid ${Y}55`, borderRadius:8 }}>
+        <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Comprobante (SUNAT)</label>
+        <div style={{ display:"flex", gap:6, marginTop:4 }}>
+          {["Varios","Boleta","Factura"].map(t => {
+              const val = t === "Varios" ? "Varios" : t === "Boleta" ? "DNI" : "RUC";
+              return (
+            <button key={t} style={{ ...s.btn(draft.sunatDocType===val?"primary":"secondary"), flex:1, padding:"6px 0" }}
+              onClick={() => setDraft(d => ({...d, sunatDocType:val}))}>
+              {t}
+            </button>
+          )})}
+        </div>
+        {draft.sunatDocType !== "Varios" && (
+          <div style={{marginTop:8, display:"flex", flexDirection:"column", gap:6}}>
+             <input style={s.input} placeholder={draft.sunatDocType==="DNI" ? "Número de DNI" : "Número de RUC"} value={draft.sunatDocNum} onChange={e=>setDraft(d=>({...d, sunatDocNum:e.target.value}))} />
+             <input style={s.input} placeholder={draft.sunatDocType==="DNI" ? "Nombre completo" : "Razón Social"} value={draft.sunatCustomerName} onChange={e=>setDraft(d=>({...d, sunatCustomerName:e.target.value}))} />
+             {draft.sunatDocType === "RUC" && (
+               <input style={s.input} placeholder="Dirección Fiscal (Obligatorio para RUC)" value={draft.sunatCustomerAddress} onChange={e=>setDraft(d=>({...d, sunatCustomerAddress:e.target.value}))} />
+             )}
+          </div>
+        )}
+      </div>
+
       <div style={{ marginBottom:12 }}>
         <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas Generales</label>
         <input style={{ ...s.input, marginTop:4 }} value={draft.notes}
@@ -558,6 +610,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
         </div>
       </div>
 
+      {/* Columna Derecha o Modal flotante en celular */}
       {isDesktop ? (
         <div>{CartContent()}</div>
       ) : (
