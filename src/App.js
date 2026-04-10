@@ -169,7 +169,7 @@ const MENU_BASE = [
   { id:"EX01", cat:"Extras",            icon:"🍟", name:"Porción de Papas",          price:6,    desc:"Porción extra de papas fritas" },
   { id:"EX02", cat:"Extras",            icon:"🥗", name:"Porción de Ensalada",       price:4,    desc:"Porción extra de ensalada" },
   { id:"EX03", cat:"Extras",            icon:"🍚", name:"Porción de Chaufa",         price:6,    desc:"Porción extra de arroz chaufa" },
-  { id:"EX04", cat:"Extras",            icon:"🍚", name:"Porción de Arroz Blanco",     price:3,    desc:"Porción de arroz blanco" },
+  { id:"EX04", cat:"Extras",            icon:"🍚", name:"Arroz Blanco en Molde",     price:3,    desc:"Porción de arroz blanco" },
 ];
 
 const ALL_CATS = [...new Set(MENU_BASE.map(i => i.cat))];
@@ -410,7 +410,6 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
   const taperNum = Number(draft.taperCost) || 0;
   const itemCount = draft.items.reduce((sum, i) => sum + i.qty, 0);
 
-  // Este es el bloque del carrito, que se muestra a la derecha en PC, o en Modal en celular
   const CartContent = () => (
     <div style={{ ...s.cardHL, position: isDesktop ? "sticky" : "static", top:8, background: isMobile ? "#1a1a1a" : "#1c1c1c", border: isMobile ? "none" : `1px solid ${Y}44`, padding: isMobile ? 0 : 14 }}>
       <div style={{ ...s.title, fontSize:22, marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
@@ -559,12 +558,10 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
         </div>
       </div>
 
-      {/* Columna Derecha o Modal flotante en celular */}
       {isDesktop ? (
         <div>{CartContent()}</div>
       ) : (
         <>
-          {/* Modal Carrito (Celular) */}
           {showCartModal && (
             <div style={{...s.overlay, zIndex:9999}} onClick={() => setShowCartModal(false)}>
               <div style={s.modal} onClick={e => e.stopPropagation()}>
@@ -572,8 +569,6 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
               </div>
             </div>
           )}
-
-          {/* FAB - Botón Flotante (Celular) */}
           <button 
             onClick={() => setShowCartModal(true)}
             style={{ position: "fixed", bottom: 20, right: 20, width: 66, height: 66, borderRadius: 33, background: Y, border: "none", boxShadow: "0 6px 16px rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, zIndex: 999, cursor: "pointer", paddingLeft: 4 }}>
@@ -858,6 +853,7 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
                 )}
                 <button style={{...s.btn("warn"), flex:1}} onClick={() => setEditingOrder(o)}>✏️ Editar</button>
                 <button style={s.btn("secondary")} onClick={() => printOrder(o)}>🖨️</button>
+                {o.enlace_pdf && <button style={{...s.btn("blue"), padding:"7px 10px"}} onClick={() => window.open(o.enlace_pdf, "_blank")}>🧾 SUNAT</button>}
                 <button style={{...s.btn("danger"), padding:"7px 10px"}} onClick={() => cancelOrder(o.id)}>❌</button>
               </div>
             </div>
@@ -904,6 +900,7 @@ function MesaModalComponent({ num, orders, setDraft, newDraft, onClose, setTab, 
               )}
               <button style={{...s.btn("warn"), flex:1}} onClick={() => { setEditingOrder(o); onClose(); }}>✏️ Editar</button>
               <button style={s.btn("secondary")} onClick={() => printOrder(o)}>🖨️</button>
+              {o.enlace_pdf && <button style={{...s.btn("blue"), flex:1}} onClick={() => window.open(o.enlace_pdf, "_blank")}>🧾 SUNAT</button>}
             </div>
           </div>
         ))
@@ -955,6 +952,7 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
               )}
               <button style={{...s.btn("warn"), flex:1, minWidth:isMobile?0:80}} onClick={() => setEditingOrder(o)}>✏️ Editar</button>
               <button style={s.btn("secondary")} onClick={() => printOrder(o)}>🖨️</button>
+              {o.enlace_pdf && <button style={{...s.btn("blue"), padding:isMobile?"7px 10px":"8px 12px"}} onClick={() => window.open(o.enlace_pdf, "_blank")}>🧾 SUNAT</button>}
               <button style={{...s.btn("danger"), padding:isMobile?"7px 10px":"8px 12px"}} onClick={() => cancelOrder(o.id)}>❌</button>
               <button style={{...s.btn("secondary"), padding:isMobile?"7px 10px":"8px 12px"}} onClick={() => setConfirmDelete(o.id)}>🗑️</button>
             </div>
@@ -965,7 +963,7 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
   );
 }
 
-function HistorialComponent({ history, isMobile, s, Y, fmt, getPay }) {
+function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder }) {
   const [expandedDays, setExpandedDays] = useState([new Date().toLocaleDateString("es-PE")]);
   const [histDate, setHistDate] = useState("");
 
@@ -1061,10 +1059,16 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay }) {
                           </div>
                           <span style={{color:Y, fontWeight:900, fontSize:14}}>{fmt(o.total)}</span>
                         </div>
-                        <div style={{display:"flex", justifyContent:"space-between", marginBottom:6}}>
+                        <div style={{display:"flex", justifyContent:"space-between", marginBottom:6, alignItems:"flex-start"}}>
                           <div style={{color:"#666", fontSize:11}}>
                             {timeStr(o.paidAt || o.cancelledAt || o.createdAt)} 
                             {o.status === "pagado" && ` · ${[pe>0&&`Efe: ${fmt(pe)}`, py>0&&`Yap: ${fmt(py)}`, pt>0&&`Tar: ${fmt(pt)}`].filter(Boolean).join(" | ")}`}
+                          </div>
+                          <div style={{display:"flex", gap:6}}>
+                            <button style={{...s.btn("secondary"), padding:"4px 8px", fontSize:10}} onClick={(e) => { e.stopPropagation(); printOrder(o); }}>🖨️ Ticket</button>
+                            {o.enlace_pdf && (
+                              <button style={{...s.btn("blue"), padding:"4px 8px", fontSize:10}} onClick={(e) => { e.stopPropagation(); window.open(o.enlace_pdf, "_blank"); }}>🧾 SUNAT</button>
+                            )}
                           </div>
                         </div>
                         <div style={{marginTop:6}}>
@@ -1500,7 +1504,7 @@ export default function App() {
           {tab==="nuevo"      && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateItemNotes={updateItemNotes} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} />}
           {tab==="pedidos"    && <PedidosComponent orders={orders} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
           {tab==="cocina"     && <CocinaComponent orders={orders} kitchenChecks={kitchenChecks} setKitchenChecks={setKitchenChecks} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} />}
-          {tab==="historial"  && <HistorialComponent history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} />}
+          {tab==="historial"  && <HistorialComponent history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} />}
           {tab==="inventario" && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/>}
           {tab==="carta"      && <CartaComponent menu={menu} cartaCatFilter={cartaCatFilter} setCartaCatFilter={setCartaCatFilter} showAdd={showAdd} setShowAdd={setShowAdd} newItem={newItem} setNewItem={setNewItem} addMenuItem={addMenuItem} deleteMenuItem={deleteMenuItem} isMobile={isMobile} s={s} Y={Y} fmt={fmt} ALL_CATS={ALL_CATS} />}
         </div>
