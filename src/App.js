@@ -189,7 +189,7 @@ function useWindowWidth() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  LOGIN SCREEN (Preparando Base para Rol/Auth)
+//  LOGIN SCREEN
 // ═══════════════════════════════════════════════════════════════════
 function LoginScreen({ onLogin, s, Y }) {
   const roles = [
@@ -227,7 +227,12 @@ function SalsasModalComponent({ initialSalsas = [], onSave, onClose, s, Y }) {
       setSelected(selected.filter(x => x.name !== salsa));
     } else {
       if (selected.length >= 4) return;
-      setSelected([...selected, { name: salsa, style: salsa === "Clásica" ? "Sin crema" : "Bañadas" }]);
+      if (salsa === "Clásica") {
+        setSelected([{ name: "Clásica", style: "Sin crema" }]);
+      } else {
+        const noClasica = selected.filter(x => x.name !== "Clásica");
+        setSelected([...noClasica, { name: salsa, style: "Bañadas" }]);
+      }
     }
   };
 
@@ -410,13 +415,26 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
     onSave({ ...order, table: eTable, items: finalItems, notes: eNotes, phone: ePhone, total: eTotal, orderType: eOrderType, taperCost: 0 });
   };
 
+  const handleCartaClick = (item) => {
+    if (["Alitas", "Alichaufa", "Rondas"].includes(item.cat)) {
+      setSalsasModal({ itemToAdd: item, salsas: [] });
+    } else {
+      eAddItem(item);
+    }
+  };
+
   return (
     <div style={s.modal} onClick={e => e.stopPropagation()}>
       {salsasModal && (
         <SalsasModalComponent 
           initialSalsas={salsasModal.salsas} 
           onSave={(salsas) => {
-            setEItems(prev => prev.map(i => i.cartId === salsasModal.cartId ? {...i, salsas} : i));
+            if (salsasModal.itemToAdd) {
+              const customizedItem = { ...salsasModal.itemToAdd, cartId: `${salsasModal.itemToAdd.id}-${Date.now()}`, salsas };
+              eAddItem(customizedItem);
+            } else {
+              setEItems(prev => prev.map(i => i.cartId === salsasModal.cartId ? {...i, salsas} : i));
+            }
             setSalsasModal(null);
           }} 
           onClose={() => setSalsasModal(null)} 
@@ -531,7 +549,7 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
           {filtE.map(item => {
             const inE = eItems.find(i => i.id === item.id);
             return (
-              <div key={item.id} onClick={() => eAddItem(item)} style={{ ...s.card, cursor:"pointer", marginBottom:4, padding:"7px 10px", border: inE ? `1px solid ${Y}55` : "1px solid #2a2a2a" }}>
+              <div key={item.id} onClick={() => handleCartaClick(item)} style={{ ...s.card, cursor:"pointer", marginBottom:4, padding:"7px 10px", border: inE ? `1px solid ${Y}55` : "1px solid #2a2a2a" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                   <span style={{ fontSize:13 }}>{item.icon} {item.name}</span>
                   <div style={{ display:"flex", alignItems:"center", gap:6 }}>
@@ -664,9 +682,17 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
   const taperNum = Number(draft.taperCost) || 0;
   const itemCount = draft.items.reduce((sum, i) => sum + i.qty, 0);
 
+  const handleCartaClick = (item) => {
+    if (["Alitas", "Alichaufa", "Rondas"].includes(item.cat)) {
+      setSalsasModal({ itemToAdd: item, salsas: [] });
+    } else {
+      addItem(item);
+    }
+  };
+
   const CartContent = () => (
     <div style={{ ...s.cardHL, position: isDesktop ? "sticky" : "static", top:8, background: isMobile ? "#1a1a1a" : "#1c1c1c", border: isMobile ? "none" : `1px solid ${Y}44`, padding: isMobile ? 0 : 14 }}>
-      {salsasModal && (
+      {salsasModal && !salsasModal.itemToAdd && (
         <SalsasModalComponent 
           initialSalsas={salsasModal.salsas} 
           onSave={(salsas) => {
@@ -768,6 +794,17 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
 
   return (
     <div style={{ display:"grid", gridTemplateColumns: isDesktop ? "1fr 320px" : "1fr", gap: isMobile ? 12 : 14 }}>
+      {salsasModal && salsasModal.itemToAdd && (
+        <SalsasModalComponent 
+          initialSalsas={[]} 
+          onSave={(salsas) => {
+            const customizedItem = { ...salsasModal.itemToAdd, cartId: `${salsasModal.itemToAdd.id}-${Date.now()}`, salsas };
+            addItem(customizedItem);
+            setSalsasModal(null);
+          }} 
+          onClose={() => setSalsasModal(null)} s={s} Y={Y} 
+        />
+      )}
       <div>
         <div style={s.title}>🍔 CARTA</div>
         <input style={{ ...s.input, marginBottom:8 }} placeholder="Buscar platillo..." value={search} onChange={e => setSearch(e.target.value)} />
@@ -779,7 +816,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
           {filteredMenu.map(item => {
             const inDraftQty = draft.items.filter(i => i.id === item.id).reduce((s,i) => s + i.qty, 0);
             return (
-              <div key={item.id} onClick={() => addItem(item)} style={{ ...s.card, cursor:"pointer", border: inDraftQty > 0 ? `1px solid ${Y}66`:"1px solid #2a2a2a", marginBottom:5, padding: isMobile?"8px 10px":"10px 12px" }}>
+              <div key={item.id} onClick={() => handleCartaClick(item)} style={{ ...s.card, cursor:"pointer", border: inDraftQty > 0 ? `1px solid ${Y}66`:"1px solid #2a2a2a", marginBottom:5, padding: isMobile?"8px 10px":"10px 12px" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                   <div style={{ flex:1 }}><span style={{ marginRight:6 }}>{item.icon}</span><span style={{ fontWeight:700, fontSize: isMobile?13:14 }}>{item.name}</span></div>
                   <div style={{ display:"flex", alignItems:"center", gap:6 }}>
@@ -861,7 +898,7 @@ function printOrder(order) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  COMPONENTES SECUNDARIOS (Mesas, Cocina, Historial)
+//  COMPONENTES SECUNDARIOS (Mesas, Cocina, Historial, Inventario)
 // ═══════════════════════════════════════════════════════════════════
 function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, setCobrarTarget, isMobile, s, Y }) {
   const today = new Date().toDateString();
@@ -1036,7 +1073,7 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
       isFullyDone = order.items.length > 0 && order.items.every((item, i) => { const val = (i === itemIdx) ? next : (Number(oc[i]) || 0); return val === item.qty; });
       return {...prev, [orderId]: newOrderChecks}; 
     }); 
-    if (isFullyDone) setTimeout(() => markKitchenListo(orderId), 500); // 1/2 segundo para ver el check antes de desaparecer
+    if (isFullyDone) setTimeout(() => markKitchenListo(orderId), 500); 
   };
 
   const activeOrders = sorted.filter(order => order.kitchenStatus !== 'listo');
@@ -1081,17 +1118,212 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
   );
 }
 
+function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder }) {
+  const [expandedDays, setExpandedDays] = useState([new Date().toLocaleDateString("es-PE")]);
+  const [histDate, setHistDate] = useState("");
+
+  const historyByDay = {};
+  history.forEach(o => {
+    const dateObj = new Date(o.createdAt);
+    const dateStr = dateObj.toLocaleDateString("es-PE");
+    const sortKey = dateObj.getFullYear() + "-" + String(dateObj.getMonth()+1).padStart(2,'0') + "-" + String(dateObj.getDate()).padStart(2,'0');
+    if (!historyByDay[dateStr]) historyByDay[dateStr] = { date: dateStr, sortKey, orders: [], total: 0, ef: 0, ya: 0, ta: 0, cancelados: 0 };
+    historyByDay[dateStr].orders.push(o);
+    if (o.status === "pagado") {
+      historyByDay[dateStr].total += o.total; historyByDay[dateStr].ef += getPay(o, "efectivo"); historyByDay[dateStr].ya += getPay(o, "yape"); historyByDay[dateStr].ta += getPay(o, "tarjeta");
+    } else if (o.status === "cancelado") { historyByDay[dateStr].cancelados += 1; }
+  });
+
+  let daysList = Object.values(historyByDay).sort((a,b) => b.sortKey.localeCompare(a.sortKey));
+  if (histDate) daysList = daysList.filter(d => d.sortKey === histDate);
+
+  const toggleDay = (dateStr) => setExpandedDays(prev => prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]);
+
+  return (
+    <div>
+      <div style={{...s.row, marginBottom:14}}>
+        <div style={{...s.title, marginBottom:0}}>📋 HISTORIAL POR DÍAS</div>
+        <div style={{display:"flex", gap:6}}>
+          <input type="date" style={{...s.input, padding:"6px 10px", width:"auto"}} value={histDate} onChange={e => { const val = e.target.value; setHistDate(val); const match = Object.values(historyByDay).find(x => x.sortKey === val); if (match && !expandedDays.includes(match.date)) setExpandedDays(prev => [...prev, match.date]); }} />
+          {histDate && <button style={s.btn("secondary")} onClick={()=>{setHistDate("");}}>✕</button>}
+        </div>
+      </div>
+      {daysList.length === 0 ? <div style={{textAlign:"center", padding:60, color:"#444"}}><div style={{fontSize:48}}>📋</div><div>Sin registros</div></div> : daysList.map(d => {
+          const isExpanded = expandedDays.includes(d.date); 
+          return (
+            <div key={d.date} style={{...s.card, marginBottom:12, padding:0, overflow:"hidden"}}>
+              <div style={{padding:"14px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", background: isExpanded ? "#222" : "transparent"}} onClick={() => toggleDay(d.date)}>
+                <div>
+                  <div style={{fontWeight:900, fontSize:16, color:Y}}>📅 {d.date}</div>
+                  <div style={{fontSize:11, color:"#888", marginTop:4}}>{d.orders.filter(x => x.status==="pagado").length} cobrados {d.cancelados > 0 && `· ${d.cancelados} anulados`}</div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontWeight:900, fontSize:18, color:"#27ae60"}}>{fmt(d.total)}</div>
+                  <div style={{fontSize:10, color:"#aaa", marginTop:2}}>{isExpanded ? "▲ Ocultar" : "▼ Detalles"}</div>
+                </div>
+              </div>
+              {isExpanded && (
+                <div style={{padding:"14px", borderTop:"1px solid #333"}}>
+                  <div style={{display:"flex", gap:8, marginBottom:16, background:"#0a0a0a", padding:12, borderRadius:8, flexWrap:"wrap", border:"1px solid #222"}}>
+                    <div style={{flex:1, minWidth:70}}><span style={{color:"#888", fontSize:10, display:"block"}}>EFECTIVO</span><span style={{color:"#27ae60", fontWeight:900}}>💵 {fmt(d.ef)}</span></div>
+                    <div style={{flex:1, minWidth:70}}><span style={{color:"#888", fontSize:10, display:"block"}}>YAPE</span><span style={{color:"#8e44ad", fontWeight:900}}>💜 {fmt(d.ya)}</span></div>
+                    <div style={{flex:1, minWidth:70}}><span style={{color:"#888", fontSize:10, display:"block"}}>TARJETA</span><span style={{color:"#2980b9", fontWeight:900}}>💳 {fmt(d.ta)}</span></div>
+                  </div>
+                  {d.orders.map((o,idx) => {
+                    const pe = getPay(o, "efectivo"); const py = getPay(o, "yape"); const pt = getPay(o, "tarjeta");
+                    return (
+                      <div key={o._fid||o.id||idx} style={{marginBottom:10, paddingBottom:10, borderBottom:"1px solid #2a2a2a", opacity:o.status==="cancelado"?0.5:1}}>
+                        <div style={{...s.row, marginBottom:4}}>
+                          <div>
+                            <span style={{fontWeight:800, fontSize:13}}>{o.orderType==="llevar" ? `🥡 ${o.table}` : `Mesa ${o.table}`}</span>
+                            <span style={{...s.tag(o.status==="pagado" ? "#1e5c2e" : "#5c1e1e"), marginLeft:8}}>{o.status==="pagado" ? "✅ Pagado" : "❌ Anulado"}</span>
+                          </div>
+                          <span style={{color:Y, fontWeight:900, fontSize:14}}>{fmt(o.total)}</span>
+                        </div>
+                        <div style={{display:"flex", justifyContent:"space-between", marginBottom:6, alignItems:"flex-start"}}>
+                          <div style={{color:"#666", fontSize:11}}>{timeStr(o.paidAt || o.cancelledAt || o.createdAt)} {o.status === "pagado" && ` · ${[pe>0&&`Efe: ${fmt(pe)}`, py>0&&`Yap: ${fmt(py)}`, pt>0&&`Tar: ${fmt(pt)}`].filter(Boolean).join(" | ")}`}</div>
+                          <div style={{display:"flex", gap:6}}>
+                            <button style={{...s.btn("secondary"), padding:"4px 8px", fontSize:10}} onClick={(e) => { e.stopPropagation(); printOrder(o); }}>🖨️ Ticket</button>
+                            {o.enlace_pdf && <button style={{...s.btn("blue"), padding:"4px 8px", fontSize:10}} onClick={(e) => { e.stopPropagation(); window.open(o.enlace_pdf, "_blank"); }}>🧾 SUNAT</button>}
+                          </div>
+                        </div>
+                        <div style={{marginTop:6}}>
+                          {o.items.map((item,i) => (
+                            <div key={i} style={{fontSize:11, color:"#ccc", paddingLeft:4, borderLeft:`2px solid ${Y}44`, marginBottom:4}}>
+                              {item.qty}x {item.name} {item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:10, fontWeight:700}}>🥡 Llevar</span>}
+                              {item.salsas?.length > 0 && <div style={{color:Y, fontStyle:"italic", marginTop:1}}>🥫 {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })
+      }
+    </div>
+  );
+}
+
+function Inventario({ menu, orders, history, isMobile, s, Y, fmt }) {
+  const localNow = new Date();
+  const todayIso = localNow.getFullYear() + "-" + String(localNow.getMonth()+1).padStart(2,'0') + "-" + String(localNow.getDate()).padStart(2,'0');
+
+  const [invCat,    setInvCat]    = useState("Todos");
+  const [invPeriod, setInvPeriod] = useState("hoy");
+  const [invDate,   setInvDate]   = useState(todayIso);
+  const [invSortBy, setInvSortBy] = useState("cantidad");
+  const [search,    setSearch]    = useState("");
+
+  const now      = new Date(); const todayStr = now.toDateString(); const weekAgo  = new Date(now - 7*24*60*60*1000);
+
+  const inPeriod = (iso) => {
+    if (!iso) return false;
+    const d = new Date(iso);
+    if (invPeriod === "hoy") return d.toDateString() === todayStr;
+    if (invPeriod === "semana") return d >= weekAgo;
+    if (invPeriod === "fecha") {
+      if (!invDate) return false;
+      const dStr = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,'0') + "-" + String(d.getDate()).padStart(2,'0');
+      return dStr === invDate;
+    }
+    return true;
+  };
+
+  const counts={}, revenue={};
+  history.filter(o=>o.status==="pagado"&&inPeriod(o.createdAt)).forEach(order=>{ order.items?.forEach(item=>{counts[item.id]=(counts[item.id]||0)+item.qty;revenue[item.id]=(revenue[item.id]||0)+item.price*item.qty;}); });
+  if (invPeriod==="hoy"||invPeriod==="semana"||invPeriod==="fecha") { orders.filter(o=>o.isPaid&&inPeriod(o.createdAt)).forEach(order=>{ order.items?.forEach(item=>{counts[item.id]=(counts[item.id]||0)+item.qty;revenue[item.id]=(revenue[item.id]||0)+item.price*item.qty;}); }); }
+
+  let items = menu.map(item=>({...item,qty:counts[item.id]||0,revenue:revenue[item.id]||0})).filter(item=>(invCat==="Todos"||item.cat===invCat)&&item.name.toLowerCase().includes(search.toLowerCase()));
+  if (invSortBy==="cantidad") items=items.sort((a,b)=>b.qty-a.qty); else items=items.sort((a,b)=>a.name.localeCompare(b.name));
+
+  const totalQty=items.reduce((s,i)=>s+i.qty,0); const totalRev=items.reduce((s,i)=>s+i.revenue,0); const maxQty=Math.max(...items.map(i=>i.qty),1);
+  const periodLabel = invPeriod==="hoy" ? "hoy" : invPeriod==="semana" ? "esta semana" : invPeriod==="fecha" ? "esa fecha" : "histórico";
+
+  return (
+    <div>
+      <div style={s.title}>📦 INVENTARIO DE VENTAS</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10, alignItems:"center"}}>
+        {[["hoy","📅 Hoy"],["semana","📆 Semana"],["fecha","🔍 Fecha"],["total","🗂️ Total"]].map(([v,l])=>(<button key={v} style={{...s.btn(invPeriod===v?"primary":"secondary"),fontSize:11}} onClick={()=>setInvPeriod(v)}>{l}</button>))}
+        {invPeriod === "fecha" && <input type="date" style={{...s.input, width:"auto", padding:"4px 8px"}} value={invDate} onChange={e => setInvDate(e.target.value)} />}
+        <div style={{width:1,background:"#333", height:20, margin:"0 4px"}}/>
+        {[["cantidad","# Cantidad"],["nombre","A-Z Nombre"]].map(([v,l])=>(<button key={v} style={{...s.btn(invSortBy===v?"primary":"secondary"),fontSize:11}} onClick={()=>setInvSortBy(v)}>{l}</button>))}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
+        <div style={s.statCard}><div style={{...s.statNum,fontSize:isMobile?18:24}}>{totalQty}</div><div style={s.statLbl}>Items {periodLabel}</div></div>
+        <div style={{...s.statCard,border:`1px solid ${Y}55`}}><div style={{...s.statNum,fontSize:isMobile?14:18}}>{fmt(totalRev)}</div><div style={s.statLbl}>Ingresos {periodLabel}</div></div>
+        <div style={s.statCard}><div style={{...s.statNum,fontSize:isMobile?18:24}}>{items.filter(i=>i.qty>0).length}</div><div style={s.statLbl}>Platos distintos</div></div>
+      </div>
+      <input style={{...s.input,marginBottom:8}} placeholder="Buscar platillo..." value={search} onChange={e=>setSearch(e.target.value)}/>
+      <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:12}}>
+        {["Todos",...ALL_CATS].map(c=>(<button key={c} style={{...s.btn(invCat===c?"primary":"secondary"),fontSize:isMobile?9:10,padding:isMobile?"3px 6px":"4px 9px"}} onClick={()=>setInvCat(c)}>{c}</button>))}
+      </div>
+      {items.length===0 ? <div style={{textAlign:"center",padding:40,color:"#444"}}>Sin resultados</div> : items.map(item=>(
+          <div key={item.id} style={{...s.card,marginBottom:6,padding:"10px 12px",opacity:item.qty===0?0.4:1}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:item.qty>0?6:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0}}><span style={{fontSize:18}}>{item.icon}</span><div style={{minWidth:0}}><div style={{fontWeight:800,fontSize:isMobile?12:14,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.name}</div><div style={{fontSize:10,color:"#555"}}>{item.cat} · {fmt(item.price)}</div></div></div>
+              <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}><div style={{fontWeight:900,fontSize:isMobile?16:20,color:item.qty>0?Y:"#444"}}>{item.qty>0?`×${item.qty}`:"—"}</div>{item.qty>0&&<div style={{fontSize:10,color:"#27ae60"}}>{fmt(item.revenue)}</div>}</div>
+            </div>
+            {item.qty>0&&(<div style={{background:"#222",borderRadius:4,height:5,overflow:"hidden"}}><div style={{background:`linear-gradient(90deg,${Y},#e6b800)`,height:"100%",width:`${(item.qty/maxQty)*100}%`,borderRadius:4,transition:"width .3s"}}/></div>)}
+          </div>
+        ))
+      }
+    </div>
+  );
+}
+
+function CartaComponent({ menu, cartaCatFilter, setCartaCatFilter, showAdd, setShowAdd, newItem, setNewItem, addMenuItem, deleteMenuItem, isMobile, s, Y, fmt, ALL_CATS }) {
+  return (
+    <div>
+      <div style={{...s.row, marginBottom:14}}>
+        <div style={s.title}>🍔 CARTA ({menu.length})</div>
+        <button style={s.btn()} onClick={() => setShowAdd(!showAdd)}>{showAdd ? "✕ Cancelar" : "+ Agregar"}</button>
+      </div>
+      {showAdd && (
+        <div style={{...s.cardHL, marginBottom:14}}>
+          <div style={{fontWeight:800, color:Y, marginBottom:10}}>Nuevo platillo</div>
+          <div style={{display:"grid", gridTemplateColumns:isMobile?"1fr":"2fr 1fr 1fr", gap:8, marginBottom:10}}>
+            <input style={s.input} placeholder="Nombre del platillo" value={newItem.name} onChange={e => setNewItem(f => ({...f, name:e.target.value}))}/>
+            <select style={s.input} value={newItem.cat} onChange={e => setNewItem(f => ({...f, cat:e.target.value}))}>
+              {ALL_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <input style={s.input} type="number" placeholder="Precio S/." value={newItem.price} onChange={e => setNewItem(f => ({...f, price:e.target.value}))}/>
+          </div>
+          <button style={s.btn()} onClick={addMenuItem}>Guardar Platillo</button>
+        </div>
+      )}
+      <div style={{display:"flex", gap:4, flexWrap:"wrap", marginBottom:10}}>
+        {["Todos",...ALL_CATS].map(c => <button key={c} style={{...s.btn(cartaCatFilter===c ? "primary" : "secondary"), fontSize:isMobile?9:10, padding:isMobile?"3px 6px":"4px 9px"}} onClick={() => setCartaCatFilter(c)}>{c}</button>)}
+      </div>
+      {menu.filter(i => cartaCatFilter==="Todos" || i.cat===cartaCatFilter).map(item => (
+        <div key={item.id} style={{...s.card, marginBottom:5, padding:isMobile?"8px 10px":"9px 12px"}}>
+          <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+            <div><span style={{marginRight:6}}>{item.icon}</span><span style={{fontWeight:700, fontSize:isMobile?13:14}}>{item.name}</span></div>
+            <div style={{display:"flex", alignItems:"center", gap:10}}>
+              <span style={{color:Y, fontWeight:900}}>{fmt(item.price)}</span>
+              {item.id.startsWith("CUSTOM_") && <button style={{...s.btn("danger"), padding:"2px 7px", fontSize:11}} onClick={() => deleteMenuItem(item.id)}>✕</button>}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════
-//  APP PRINCIPAL
+//  APP COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════
 export default function App() {
   const width     = useWindowWidth();
   const isMobile  = width < 480;
-  const isTablet  = width >= 480 && width < 1024; // Ajuste para captar tablets (ej. iPad)
+  const isTablet  = width >= 480 && width < 1024;
   const isDesktop = width >= 768;
   const isWide    = width >= 1024;
 
-  const [currentUser,    setCurrentUser]    = useState(null); // Sistema de Roles Base
+  const [currentUser,    setCurrentUser]    = useState(null); 
 
   const [tab,            setTab]            = useState("mesas");
   const [orders,         setOrders]         = useState([]);
@@ -1110,7 +1342,7 @@ export default function App() {
   const [mesaModal,     setMesaModal]     = useState(null);
   const [kitchenChecks, setKitchenChecks] = useState({});
   const [cobrarTarget,  setCobrarTarget]  = useState(null);
-  const [splitTarget,   setSplitTarget]   = useState(null); // Modal de Dividir
+  const [splitTarget,   setSplitTarget]   = useState(null); 
   const [mergeModal,    setMergeModal]    = useState(null);
   const [mergeName,     setMergeName]     = useState("");
 
@@ -1371,7 +1603,7 @@ export default function App() {
 
         <nav style={s.nav}>{tabs.map(t=>(<button key={t.id} style={{...s.navBtn(tab===t.id),flex:isMobile?1:"none"}} onClick={()=>setTab(t.id)}>{t.label}</button>))}</nav>
 
-        {toast&&(<div style={{position:"fixed",bottom:isMobile ? 90 : 20,left:"50%",transform:"translateX(-50%)",background:toast.color,color:"#fff",padding:"10px 20px",borderRadius:12,fontWeight:800,zIndex:9999,fontSize:14,boxShadow:"0 4px 20px rgba(0,0,0,.5)"}}>{toast.msg}</div>)}
+        {toast&&(<div style={{position:"fixed",bottom:isMobile ? 90 : 20,left:"50%",transform:"translateX(-50%)",background:toast.color,color:"#fff",padding:"10px 20px",borderRadius:12,fontWeight:800,zIndex:9999,fontSize:14,boxShadow:"0 4px 20px rgba(0,0,0,.5)",whiteSpace:"nowrap"}}>{toast.msg}</div>)}
 
         {cobrarTarget && <div style={s.overlay} onClick={()=>setCobrarTarget(null)}><CobrarModal orderContext={cobrarTarget.data} total={cobrarTarget.data.total} onConfirm={handleConfirmCobro} onClose={()=>setCobrarTarget(null)} s={s} Y={Y} /></div>}
         {splitTarget && <SplitBillModal order={splitTarget} onProceed={(items, total) => { setCobrarTarget({ type: 'split', data: { originalOrder: splitTarget, splitItems: items, total }}); setSplitTarget(null); }} onClose={() => setSplitTarget(null)} s={s} Y={Y} fmt={fmt} />}
