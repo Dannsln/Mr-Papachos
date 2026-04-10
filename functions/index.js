@@ -57,7 +57,29 @@ exports.generarBoleta = onDocumentCreated("mrpapachos_historial/{orderId}", asyn
         "igv": igvItem.toFixed(2),
         "total": (precioUnitario * item.qty).toFixed(2),
         "anticipo_regularizacion": "false"
-      };
+      };// 5. Estructurar el JSON exacto para NubeFact
+    const payload = {
+      "operacion": "generar_comprobante",
+      "tipo_de_comprobante": "2", // 2 = Boleta de Venta Electrónica
+      "serie": "BBB1",            // Serie de Boletas que tienes en NubeFact
+      "numero": "",               // Vacío para que NubeFact ponga el número automático
+      "sunat_transaction": "1",   // 1 = Venta Interna
+      "cliente_tipo_de_documento": "-", 
+      "cliente_numero_de_documento": "-",
+      "cliente_denominacion": "CLIENTE VARIOS",
+      "cliente_direccion": "",
+      "cliente_email": "",
+      "fecha_de_emision": fechaEmision,
+      "moneda": "1",              // 1 = Soles
+      "porcentaje_de_igv": "18.00",
+      "total_gravada": gravada.toFixed(2),
+      "total_igv": igv.toFixed(2),
+      "total": total.toFixed(2),
+      "enviar_automaticamente_a_la_sunat": "true",
+      "enviar_automaticamente_al_cliente": "false",
+      "codigo_unico": order.id,   // <--- 🚨 ESTA ES LA LÍNEA NUEVA QUE EXIGE NUBEFACT 🚨
+      "items": items
+    };
     });
 
     // 4. Si cobraron taper, lo añadimos como un ítem extra en la boleta
@@ -81,13 +103,14 @@ exports.generarBoleta = onDocumentCreated("mrpapachos_historial/{orderId}", asyn
     }
 
     // 5. Estructurar el JSON exacto para NubeFact
+   // 5. Estructurar el JSON exacto para NubeFact
     const payload = {
       "operacion": "generar_comprobante",
       "tipo_de_comprobante": "2", // 2 = Boleta de Venta Electrónica
       "serie": "BBB1",            // Serie de Boletas que tienes en NubeFact
-      "numero": "",               // Vacío para que NubeFact ponga el número correlativo automático
+      "numero": "",               // Vacío para que NubeFact ponga el número automático
       "sunat_transaction": "1",   // 1 = Venta Interna
-      "cliente_tipo_de_documento": "-", // "-" = Boletas menores a S/ 700 (Cliente Varios)
+      "cliente_tipo_de_documento": "-", 
       "cliente_numero_de_documento": "-",
       "cliente_denominacion": "CLIENTE VARIOS",
       "cliente_direccion": "",
@@ -100,6 +123,7 @@ exports.generarBoleta = onDocumentCreated("mrpapachos_historial/{orderId}", asyn
       "total": total.toFixed(2),
       "enviar_automaticamente_a_la_sunat": "true",
       "enviar_automaticamente_al_cliente": "false",
+      "codigo_unico": order.id,   // <--- 🚨 ESTA ES LA LÍNEA NUEVA QUE EXIGE NUBEFACT 🚨
       "items": items
     };
 
