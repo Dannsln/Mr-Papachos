@@ -1064,16 +1064,32 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
   
   const toggleCheck = (order, itemIdx, maxQty) => { 
     const orderId = order.id;
-    let isFullyDone = false;
-    setKitchenChecks(prev => { 
-      const oc = prev[orderId] || {}; 
-      const curr = Number(oc[itemIdx]) || (oc[itemIdx] === true ? maxQty : 0);
-      let next = curr + 1; if (next > maxQty) next = 0;
-      const newOrderChecks = {...oc, [itemIdx]: next};
-      isFullyDone = order.items.length > 0 && order.items.every((item, i) => { const val = (i === itemIdx) ? next : (Number(oc[i]) || 0); return val === item.qty; });
-      return {...prev, [orderId]: newOrderChecks}; 
-    }); 
-    if (isFullyDone) setTimeout(() => markKitchenListo(orderId), 500); 
+
+    // 1. Obtenemos lo que ya estaba marcado
+    const currentChecks = kitchenChecks[orderId] || {};
+    let valAnterior = currentChecks[itemIdx];
+    if (valAnterior === true) valAnterior = maxQty; // Compatibilidad con tu data anterior
+
+    let next = (Number(valAnterior) || 0) + 1; 
+    if (next > maxQty) next = 0;
+    
+    // 2. Predecimos el futuro (cómo quedará el estado)
+    const predictedChecks = {...currentChecks, [itemIdx]: next};
+
+    // 3. Actualizamos la pantalla (check visual rápido)
+    setKitchenChecks(prev => ({...prev, [orderId]: predictedChecks}));
+
+    // 4. Comprobamos la predicción
+    const isFullyDone = order.items.length > 0 && order.items.every((item, i) => { 
+        let val = predictedChecks[i];
+        if (val === true) val = item.qty;
+        return Number(val || 0) === item.qty; 
+    });
+    
+    // 5. Si todo está completo, despachamos con un retraso para ver el check
+    if (isFullyDone) {
+        setTimeout(() => markKitchenListo(orderId), 600); 
+    }
   };
 
   const activeOrders = sorted.filter(order => order.kitchenStatus !== 'listo');
@@ -1086,7 +1102,7 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
         {activeOrders.map((order,priority) => {
           const checks = kitchenChecks[order.id] || {};
           const totalPortions = order.items.reduce((sum, item) => sum + item.qty, 0);
-          const donePortions = order.items.reduce((sum, item, i) => sum + (Number(checks[i]) || 0), 0);
+          const donePortions = order.items.reduce((sum, item, i) => sum + (Number(checks[i]===true?item.qty:checks[i]) || 0), 0);
           const mins = Math.floor((Date.now() - new Date(order.createdAt))/60000);
           
           return (
@@ -1095,7 +1111,10 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
               <div style={{...s.row, marginBottom:10, marginTop:6}}><span style={{fontFamily:"'Bebas Neue',cursive", fontSize:22, color:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y}}>{order.orderType==="llevar"?`🥡 ${order.table}`:`Mesa ${order.table}`}</span></div>
               <div style={{background:"#2a2a2a", borderRadius:4, height:5, marginBottom:12, overflow:"hidden"}}><div style={{background:Y, height:"100%", width:`${totalPortions > 0 ? (donePortions/totalPortions)*100 : 0}%`, transition:"width .3s"}}/></div>
               {order.items.map((item,i) => {
-                const doneQty = Number(checks[i]) || 0;
+                let doneQty = checks[i];
+                if (doneQty === true) doneQty = item.qty;
+                doneQty = Number(doneQty) || 0;
+                
                 const isDone = doneQty === item.qty;
                 const validNotes = (item.individualNotes || []).filter(n => n.trim() !== "");
                 return (
@@ -1314,7 +1333,7 @@ function CartaComponent({ menu, cartaCatFilter, setCartaCatFilter, showAdd, setS
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  APP PRINCIPAL
+//  APP COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════
 export default function App() {
   const width     = useWindowWidth();
@@ -1612,7 +1631,7 @@ export default function App() {
 
         <nav style={s.nav}>{tabs.map(t=>(<button key={t.id} style={{...s.navBtn(tab===t.id),flex:isMobile?1:"none"}} onClick={()=>setTab(t.id)}>{t.label}</button>))}</nav>
 
-        {toast&&(<div style={{position:"fixed",bottom:isMobile ? 90 : 20,left:"50%",transform:"translateX(-50%)",background:toast.color,color:"#fff",padding:"10px 20px",borderRadius:12,fontWeight:800,zIndex:9999,fontSize:14,boxShadow:"0 4px 20px rgba(0,0,0,.5)"}}>{toast.msg}</div>)}
+        {toast&&(<div style={{position:"fixed",bottom:isMobile ? 90 : 20,left:"50%",transform:"translateX(-50%)",background:toast.color,color:"#fff",padding:"10px 20px",borderRadius:12,fontWeight:800,zIndex:9999,fontSize:14,boxShadow:"0 4px 20px rgba(0,0,0,.5)",whiteSpace:"nowrap"}}>{toast.msg}</div>)}
 
         {cobrarTarget && <div style={s.overlay} onClick={()=>setCobrarTarget(null)}><CobrarModal orderContext={cobrarTarget.data} total={cobrarTarget.data.total} onConfirm={handleConfirmCobro} onClose={()=>setCobrarTarget(null)} s={s} Y={Y} /></div>}
         {splitTarget && <SplitBillModal order={splitTarget} onProceed={(items, total) => { setCobrarTarget({ type: 'split', data: { originalOrder: splitTarget, splitItems: items, total }}); setSplitTarget(null); }} onClose={() => setSplitTarget(null)} s={s} Y={Y} fmt={fmt} />}
