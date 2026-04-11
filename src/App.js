@@ -1189,83 +1189,161 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder }
     const dateObj = new Date(o.createdAt);
     const dateStr = dateObj.toLocaleDateString("es-PE");
     const sortKey = dateObj.getFullYear() + "-" + String(dateObj.getMonth()+1).padStart(2,'0') + "-" + String(dateObj.getDate()).padStart(2,'0');
+    
     if (!historyByDay[dateStr]) historyByDay[dateStr] = { date: dateStr, sortKey, orders: [], total: 0, ef: 0, ya: 0, ta: 0, cancelados: 0 };
     historyByDay[dateStr].orders.push(o);
+    
     if (o.status === "pagado") {
-      historyByDay[dateStr].total += o.total; historyByDay[dateStr].ef += getPay(o, "efectivo"); historyByDay[dateStr].ya += getPay(o, "yape"); historyByDay[dateStr].ta += getPay(o, "tarjeta");
-    } else if (o.status === "cancelado") { historyByDay[dateStr].cancelados += 1; }
+      historyByDay[dateStr].total += o.total; 
+      historyByDay[dateStr].ef += getPay(o, "efectivo"); 
+      historyByDay[dateStr].ya += getPay(o, "yape"); 
+      historyByDay[dateStr].ta += getPay(o, "tarjeta");
+    } else if (o.status === "cancelado") { 
+      historyByDay[dateStr].cancelados += 1; 
+    }
   });
 
   let daysList = Object.values(historyByDay).sort((a,b) => b.sortKey.localeCompare(a.sortKey));
   if (histDate) daysList = daysList.filter(d => d.sortKey === histDate);
 
-  const toggleDay = (dateStr) => setExpandedDays(prev => prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]);
+  const toggleDay = (dateStr) => {
+    setExpandedDays(prev => prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]);
+  };
 
   return (
     <div>
-      <div style={{...s.row, marginBottom:14}}>
-        <div style={{...s.title, marginBottom:0}}>📋 HISTORIAL POR DÍAS</div>
-        <div style={{display:"flex", gap:6}}>
-          <input type="date" style={{...s.input, padding:"6px 10px", width:"auto"}} value={histDate} onChange={e => { const val = e.target.value; setHistDate(val); const match = Object.values(historyByDay).find(x => x.sortKey === val); if (match && !expandedDays.includes(match.date)) setExpandedDays(prev => [...prev, match.date]); }} />
-          {histDate && <button style={s.btn("secondary")} onClick={()=>{setHistDate("");}}>✕</button>}
+      <div style={{...s.row, marginBottom:16}}>
+        <div style={{...s.title, marginBottom:0}}>📋 HISTORIAL DE VENTAS</div>
+        <div style={{display:"flex", gap:8}}>
+          <input 
+            type="date" 
+            style={{...s.input, padding:"8px 12px", width:"auto", cursor:"pointer"}} 
+            value={histDate} 
+            onChange={e => { 
+              const val = e.target.value; 
+              setHistDate(val); 
+              const match = Object.values(historyByDay).find(x => x.sortKey === val); 
+              if (match && !expandedDays.includes(match.date)) setExpandedDays(prev => [...prev, match.date]); 
+            }} 
+          />
+          {histDate && <button style={{...s.btn("secondary"), padding:"8px 12px"}} onClick={()=>{setHistDate("");}}>Ver Todos</button>}
         </div>
       </div>
-      {daysList.length === 0 ? <div style={{textAlign:"center", padding:60, color:"#444"}}><div style={{fontSize:48}}>📋</div><div>Sin registros</div></div> : daysList.map(d => {
+
+      {daysList.length === 0 ? (
+        <div style={{textAlign:"center", padding:60, color:"#444", background:"#1a1a1a", borderRadius:12}}>
+          <div style={{fontSize:48, marginBottom:10}}>📭</div>
+          <div style={{fontSize:16, fontWeight:700}}>No hay registros para mostrar</div>
+        </div>
+      ) : (
+        daysList.map(d => {
           const isExpanded = expandedDays.includes(d.date); 
           return (
-            <div key={d.date} style={{...s.card, marginBottom:12, padding:0, overflow:"hidden"}}>
-              <div style={{padding:"14px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", background: isExpanded ? "#222" : "transparent"}} onClick={() => toggleDay(d.date)}>
-                <div>
-                  <div style={{fontWeight:900, fontSize:16, color:Y}}>📅 {d.date}</div>
-                  <div style={{fontSize:11, color:"#888", marginTop:4}}>{d.orders.filter(x => x.status==="pagado").length} cobrados {d.cancelados > 0 && `· ${d.cancelados} anulados`}</div>
+            <div key={d.date} style={{background:"#1c1c1c", borderRadius:12, marginBottom:16, border:"1px solid #2a2a2a", overflow:"hidden", boxShadow:"0 4px 6px rgba(0,0,0,0.3)"}}>
+              
+              {/* CABECERA DEL ACORDEÓN (Click para mostrar/ocultar) */}
+              <div 
+                style={{
+                  padding:"16px 20px", display:"flex", justifyContent:"space-between", alignItems:"center", 
+                  cursor:"pointer", background: isExpanded ? `linear-gradient(90deg, #1f1a00 0%, #1c1c1c 100%)` : "#1c1c1c", 
+                  borderBottom: isExpanded ? `2px solid ${Y}55` : "none", transition:"all 0.2s"
+                }} 
+                onClick={() => toggleDay(d.date)}
+              >
+                <div style={{display:"flex", alignItems:"center", gap:12}}>
+                  <div style={{fontSize:24}}>📅</div>
+                  <div>
+                    <div style={{fontWeight:900, fontSize:18, color: isExpanded ? Y : "#eee", letterSpacing:0.5}}>{d.date}</div>
+                    <div style={{fontSize:12, color:"#888", marginTop:2}}>
+                      {d.orders.filter(x => x.status==="pagado").length} pedidos cobrados {d.cancelados > 0 && <span style={{color:"#e74c3c"}}> • {d.cancelados} anulados</span>}
+                    </div>
+                  </div>
                 </div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontWeight:900, fontSize:18, color:"#27ae60"}}>{fmt(d.total)}</div>
-                  <div style={{fontSize:10, color:"#aaa", marginTop:2}}>{isExpanded ? "▲ Ocultar" : "▼ Detalles"}</div>
+                <div style={{textAlign:"right", display:"flex", alignItems:"center", gap:16}}>
+                  <div style={{fontWeight:900, fontSize:22, color:"#27ae60"}}>{fmt(d.total)}</div>
+                  <div style={{background:"#2a2a2a", borderRadius:"50%", width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", color:Y, transition:"transform 0.3s", transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)"}}>
+                    ▼
+                  </div>
                 </div>
               </div>
+
+              {/* CUERPO DEL ACORDEÓN (Detalles de los pedidos) */}
               {isExpanded && (
-                <div style={{padding:"14px", borderTop:"1px solid #333"}}>
-                  <div style={{display:"flex", gap:8, marginBottom:16, background:"#0a0a0a", padding:12, borderRadius:8, flexWrap:"wrap", border:"1px solid #222"}}>
-                    <div style={{flex:1, minWidth:70}}><span style={{color:"#888", fontSize:10, display:"block"}}>EFECTIVO</span><span style={{color:"#27ae60", fontWeight:900}}>💵 {fmt(d.ef)}</span></div>
-                    <div style={{flex:1, minWidth:70}}><span style={{color:"#888", fontSize:10, display:"block"}}>YAPE</span><span style={{color:"#8e44ad", fontWeight:900}}>💜 {fmt(d.ya)}</span></div>
-                    <div style={{flex:1, minWidth:70}}><span style={{color:"#888", fontSize:10, display:"block"}}>TARJETA</span><span style={{color:"#2980b9", fontWeight:900}}>💳 {fmt(d.ta)}</span></div>
+                <div style={{padding:"20px", background:"#111"}}>
+                  
+                  {/* Cajas de Métodos de Pago */}
+                  <div style={{display:"flex", gap:12, marginBottom:20, flexWrap:"wrap"}}>
+                    <div style={{flex:1, minWidth:100, background:"#1a2e1a", border:"1px solid #27ae6055", borderRadius:8, padding:"12px", textAlign:"center"}}>
+                      <div style={{color:"#27ae60", fontSize:11, fontWeight:800, marginBottom:4, letterSpacing:1}}>💵 EFECTIVO</div>
+                      <div style={{color:"#fff", fontWeight:900, fontSize:18}}>{fmt(d.ef)}</div>
+                    </div>
+                    <div style={{flex:1, minWidth:100, background:"#2a1a3a", border:"1px solid #8e44ad55", borderRadius:8, padding:"12px", textAlign:"center"}}>
+                      <div style={{color:"#c39bd3", fontSize:11, fontWeight:800, marginBottom:4, letterSpacing:1}}>💜 YAPE</div>
+                      <div style={{color:"#fff", fontWeight:900, fontSize:18}}>{fmt(d.ya)}</div>
+                    </div>
+                    <div style={{flex:1, minWidth:100, background:"#1a253a", border:"1px solid #2980b955", borderRadius:8, padding:"12px", textAlign:"center"}}>
+                      <div style={{color:"#5dade2", fontSize:11, fontWeight:800, marginBottom:4, letterSpacing:1}}>💳 TARJETA</div>
+                      <div style={{color:"#fff", fontWeight:900, fontSize:18}}>{fmt(d.ta)}</div>
+                    </div>
                   </div>
-                  {d.orders.map((o,idx) => {
-                    const pe = getPay(o, "efectivo"); const py = getPay(o, "yape"); const pt = getPay(o, "tarjeta");
-                    return (
-                      <div key={o._fid||o.id||idx} style={{marginBottom:10, paddingBottom:10, borderBottom:"1px solid #2a2a2a", opacity:o.status==="cancelado"?0.5:1}}>
-                        <div style={{...s.row, marginBottom:4}}>
-                          <div>
-                            <span style={{fontWeight:800, fontSize:13}}>{o.orderType==="llevar" ? `🥡 ${o.table}` : `Mesa ${o.table}`}</span>
-                            <span style={{...s.tag(o.status==="pagado" ? "#1e5c2e" : "#5c1e1e"), marginLeft:8}}>{o.status==="pagado" ? "✅ Pagado" : "❌ Anulado"}</span>
-                          </div>
-                          <span style={{color:Y, fontWeight:900, fontSize:14}}>{fmt(o.total)}</span>
-                        </div>
-                        <div style={{display:"flex", justifyContent:"space-between", marginBottom:6, alignItems:"flex-start"}}>
-                          <div style={{color:"#666", fontSize:11}}>{timeStr(o.paidAt || o.cancelledAt || o.createdAt)} {o.status === "pagado" && ` · ${[pe>0&&`Efe: ${fmt(pe)}`, py>0&&`Yap: ${fmt(py)}`, pt>0&&`Tar: ${fmt(pt)}`].filter(Boolean).join(" | ")}`}</div>
-                          <div style={{display:"flex", gap:6}}>
-                            <button style={{...s.btn("secondary"), padding:"4px 8px", fontSize:10}} onClick={(e) => { e.stopPropagation(); printOrder(o); }}>🖨️ Ticket</button>
-                            {o.enlace_pdf && <button style={{...s.btn("blue"), padding:"4px 8px", fontSize:10}} onClick={(e) => { e.stopPropagation(); window.open(o.enlace_pdf, "_blank"); }}>🧾 SUNAT</button>}
-                          </div>
-                        </div>
-                        <div style={{marginTop:6}}>
-                          {o.items.map((item,i) => (
-                            <div key={i} style={{fontSize:11, color:"#ccc", paddingLeft:4, borderLeft:`2px solid ${Y}44`, marginBottom:4}}>
-                              {item.qty}x {item.name} {item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:10, fontWeight:700}}>🥡 Llevar</span>}
-                              {item.salsas?.length > 0 && <div style={{color:Y, fontStyle:"italic", marginTop:1}}>🥫 {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>}
+
+                  {/* Lista de Tickets del Día */}
+                  <div style={{display:"flex", flexDirection:"column", gap:12}}>
+                    {d.orders.map((o,idx) => {
+                      const pe = getPay(o, "efectivo"); 
+                      const py = getPay(o, "yape"); 
+                      const pt = getPay(o, "tarjeta");
+                      const isCanceled = o.status === "cancelado";
+
+                      return (
+                        <div key={o._fid||o.id||idx} style={{background:"#1c1c1c", border:`1px solid ${isCanceled ? '#e74c3c44' : '#333'}`, borderRadius:10, padding:"14px", opacity: isCanceled ? 0.6 : 1}}>
+                          
+                          {/* Cabecera del Ticket */}
+                          <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", borderBottom:"1px solid #2a2a2a", paddingBottom:10, marginBottom:10, flexWrap:"wrap", gap:10}}>
+                            <div style={{display:"flex", alignItems:"center", gap:10}}>
+                              <span style={{fontWeight:900, fontSize:16, color: isCanceled ? "#e74c3c" : "#eee"}}>{o.orderType==="llevar" ? `🥡 ${o.table}` : `🪑 Mesa ${o.table}`}</span>
+                              <span style={{...s.tag(isCanceled ? "#c0392b" : "#1e5c2e"), fontSize:10}}>{isCanceled ? "❌ Anulado" : "✅ Pagado"}</span>
+                              <span style={{color:"#666", fontSize:12}}>⏱ {timeStr(o.paidAt || o.cancelledAt || o.createdAt)}</span>
                             </div>
-                          ))}
+                            <div style={{display:"flex", alignItems:"center", gap:12}}>
+                              <span style={{color: isCanceled ? "#888" : Y, fontWeight:900, fontSize:18}}>{isCanceled ? <del>{fmt(o.total)}</del> : fmt(o.total)}</span>
+                              <div style={{display:"flex", gap:6}}>
+                                <button style={{...s.btn("secondary"), padding:"6px 10px", fontSize:11}} onClick={(e) => { e.stopPropagation(); printOrder(o); }}>🖨️ Ticket</button>
+                                {o.enlace_pdf && <button style={{...s.btn("blue"), padding:"6px 10px", fontSize:11}} onClick={(e) => { e.stopPropagation(); window.open(o.enlace_pdf, "_blank"); }}>🧾 SUNAT</button>}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Detalle de Pagos */}
+                          {!isCanceled && (
+                            <div style={{fontSize:11, color:"#aaa", display:"flex", gap:12, marginBottom:10, background:"#0a0a0a", padding:"8px 12px", borderRadius:6}}>
+                              <span style={{fontWeight:800, color:"#777"}}>MEDIO DE PAGO:</span>
+                              {[pe>0&&`💵 Efectivo: ${fmt(pe)}`, py>0&&`💜 Yape: ${fmt(py)}`, pt>0&&`💳 Tarjeta: ${fmt(pt)}`].filter(Boolean).join("  |  ")}
+                            </div>
+                          )}
+
+                          {/* Platos del Ticket */}
+                          <div style={{display:"grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap:8}}>
+                            {o.items.map((item,i) => (
+                              <div key={i} style={{fontSize:12, color:"#ccc", padding:"8px 12px", background:"#222", borderRadius:6, borderLeft:`3px solid ${isCanceled ? '#e74c3c' : Y}`}}>
+                                <div style={{display:"flex", justifyContent:"space-between", fontWeight:700}}>
+                                  <span>{item.qty}x {item.name} {item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:9}}>🥡 Llevar</span>}</span>
+                                  <span style={{color:"#888"}}>{fmt(item.price * item.qty)}</span>
+                                </div>
+                                {item.salsas?.length > 0 && <div style={{color:Y, fontSize:10, fontStyle:"italic", marginTop:4}}>🥫 {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>}
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
+                  </div>
                 </div>
               )}
             </div>
           );
         })
-      }
+      )}
     </div>
   );
 }
