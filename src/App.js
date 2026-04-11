@@ -267,10 +267,10 @@ function LoginScreen({ onLogin, s, Y }) {
   const [selectedLocal, setSelectedLocal] = useState("amazonas");
 
   const roles = [
-    { id: 'admin', icon: '👑', label: 'Administrador' },
-    { id: 'cajero', icon: '💰', label: 'Cajero' },
-    { id: 'mesero', icon: '📝', label: 'Mesero' },
-    { id: 'cocinero', icon: '👨‍🍳', label: 'Cocina' }
+    { id: 'admin', label: 'Administrador', color: '#ffffff' },
+    { id: 'cajero', label: 'Cajero', color: '#ffffff' },
+    { id: 'mesero', label: 'Mesero', color: '#ffffff' },
+    { id: 'cocinero', label: 'Cocina', color: '#f6f5f4' }
   ];
 
   const locales = [
@@ -303,9 +303,8 @@ function LoginScreen({ onLogin, s, Y }) {
           <button key={r.id} onClick={() => {
             const locName = locales.find(l => l.id === selectedLocal)?.nombre || selectedLocal;
             onLogin({ ...r, localId: selectedLocal, localName: locName });
-          }} style={{...s.card, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", padding:20, border:`1px solid #333`}}>
-            <div style={{fontSize:32, marginBottom:10}}>{r.icon}</div>
-            <div style={{fontWeight:800, fontSize:14}}>{r.label}</div>
+          }} style={{...s.card, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", padding:20, border:`2px solid ${r.color}`, backgroundColor:`${r.color}15`}}>
+            <div style={{fontWeight:800, fontSize:16, color:r.color}}>{r.label}</div>
           </button>
         ))}
       </div>
