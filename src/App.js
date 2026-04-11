@@ -196,6 +196,9 @@ function useWindowWidth() {
 // ═══════════════════════════════════════════════════════════════════
 //  PANTALLA DE INICIO NEÓN (NUEVO)
 // ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+//  PANTALLA DE INICIO CON TU LOGO (NEÓN)
+// ═══════════════════════════════════════════════════════════════════
 function LandingScreen({ onEnter, Y, isMobile }) {
   return (
     <div 
@@ -207,15 +210,10 @@ function LandingScreen({ onEnter, Y, isMobile }) {
       }}
     >
       <style>{`
-        @keyframes neonFlicker {
-          0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% {
-            text-shadow: -0.1rem -0.1rem 1rem #fff, 0.1rem 0.1rem 1rem #fff, 0 0 2rem ${Y}, 0 0 4rem ${Y}, 0 0 6rem ${Y}, 0 0 8rem ${Y}, 0 0 10rem ${Y};
-            color: #fff;
-          }
-          20%, 24%, 55% {
-            text-shadow: none;
-            color: #222;
-          }
+        /* Efecto de resplandor neón que sigue la silueta del PNG */
+        @keyframes neonGlow {
+          0%, 100% { filter: drop-shadow(0 0 5px ${Y}) drop-shadow(0 0 15px ${Y}) drop-shadow(0 0 30px ${Y}); transform: scale(1); }
+          50% { filter: drop-shadow(0 0 2px ${Y}) drop-shadow(0 0 5px ${Y}) drop-shadow(0 0 10px ${Y}); transform: scale(0.98); }
         }
         @keyframes pulseText {
           0% { opacity: 0.3; }
@@ -223,30 +221,16 @@ function LandingScreen({ onEnter, Y, isMobile }) {
         }
       `}</style>
       
-      <div style={{
-        fontFamily: "'Bebas Neue', cursive", 
-        fontSize: isMobile ? "20vw" : "12vw", 
-        color: "#fff",
-        animation: "neonFlicker 3s infinite alternate",
-        textAlign: "center",
-        lineHeight: "1",
-        zIndex: 10
-      }}>
-        MR. PAPACHO'S
-      </div>
-      
-      <div style={{
-        fontFamily: "'Nunito', sans-serif",
-        color: Y,
-        fontSize: isMobile ? "5vw" : "2vw",
-        letterSpacing: "6px",
-        marginTop: "10px",
-        textTransform: "uppercase",
-        zIndex: 10,
-        opacity: 0.8
-      }}>
-        1-3 • Cajamarca
-      </div>
+      <img 
+        src="/logo.png" 
+        alt="MR Papachos Logo" 
+        style={{
+          width: isMobile ? "70vw" : "25vw",
+          maxWidth: "400px",
+          animation: "neonGlow 2.5s infinite alternate",
+          zIndex: 10
+        }} 
+      />
 
       <div style={{
         position: "absolute", bottom: "15%",
