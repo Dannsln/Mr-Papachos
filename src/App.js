@@ -20,7 +20,7 @@ const db     = getFirestore(_fbApp);
 const FS = (localId) => ({
   ordersRef:  () => doc(db, `mrpapachos_${localId}`, "orders"),
   menuRef:    () => doc(db, `mrpapachos_${localId}`, "customMenu"),
-  configRef:  () => doc(db, `mrpapachos_${localId}`, "config"), // NUEVO
+  configRef:  () => doc(db, `mrpapachos_${localId}`, "config"),
   historyCol: () => collection(db, `mrpapachos_${localId}_historial`),
   
   async getOrders() {
@@ -35,7 +35,7 @@ const FS = (localId) => ({
   async saveMenu(list) {
     try { await setDoc(this.menuRef(), { list, ts: new Date().toISOString() }); } catch (e) { console.error(e); }
   },
-  async saveConfig(data) { // NUEVO
+  async saveConfig(data) {
     try { await setDoc(this.configRef(), data, { merge: true }); } catch (e) { console.error(e); }
   },
   async addHistory(order) {
@@ -178,7 +178,6 @@ const SALSAS_ALITAS = ["Clásica", "Maracuyá", "BBQ", "Picante", "Huancaina", "
 
 const fmt      = (n) => `S/.${Number(n).toFixed(2)}`;
 const newDraft = () => ({ table:"", items:[], payTiming:"despues", notes:"", phone:"", orderType:"mesa", taperCost:0 });
-const MESAS    = [1, 2, 3, 4, 5, 6];
 
 const getPay = (o, type) => o.payments ? (Number(o.payments[type]) || 0) : (o.payment === type ? o.total : 0);
 const timeStr    = (iso) => { if(!iso)return""; const d=new Date(iso); return d.toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"}); };
@@ -200,17 +199,12 @@ function useWindowWidth() {
 const IconoMesa = ({ color, size }) => (
   <svg width={size} height={size * 0.75} viewBox="0 0 120 90" fill="none" xmlns="http://www.w3.org/2000/svg" 
        style={{ marginBottom: 10, filter: color !== "#ffffff" ? `drop-shadow(0px 0px 6px ${color}88)` : 'none' }}>
-    {/* Silla Izquierda */}
     <rect x="5" y="30" width="15" height="30" rx="4" stroke={color} strokeWidth="3" />
-    {/* Silla Derecha */}
     <rect x="100" y="30" width="15" height="30" rx="4" stroke={color} strokeWidth="3" />
-    {/* Sillas Arriba */}
     <rect x="35" y="5" width="20" height="15" rx="4" stroke={color} strokeWidth="3" />
     <rect x="65" y="5" width="20" height="15" rx="4" stroke={color} strokeWidth="3" />
-    {/* Sillas Abajo */}
     <rect x="35" y="70" width="20" height="15" rx="4" stroke={color} strokeWidth="3" />
     <rect x="65" y="70" width="20" height="15" rx="4" stroke={color} strokeWidth="3" />
-    {/* Mesa Central */}
     <rect x="16" y="16" width="88" height="58" rx="8" fill="#1c1c1c" stroke={color} strokeWidth="4" />
   </svg>
 );
@@ -239,7 +233,6 @@ function LoginScreen({ onLogin, s, Y }) {
       <div style={{fontSize:60, marginBottom:10}}>🍔</div>
       <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:32, color:Y, letterSpacing:2, marginBottom:20}}>MR. PAPACHOS</div>
       
-      {/* Selector de Sucursal */}
       <div style={{marginBottom:30, textAlign:"center"}}>
         <label style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, display:"block", marginBottom:8}}>Selecciona tu sucursal</label>
         <select 
@@ -990,6 +983,7 @@ function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, set
 }
 
 function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, finishPaidOrder, setCobrarTarget, setSplitTarget, setEditingOrder, printOrder, cancelOrder, isMobile, isTablet, s, Y, fmt, mesasArr, addMesa, removeMesa, currentUser }) {
+  const llevarOrders = orders.filter(o => o.orderType==="llevar");
   
   return (
     <div>
@@ -1022,7 +1016,7 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
           );
         })}
       </div>
-      {/* ... (El código de Para Llevar sigue exactamente igual debajo de esto) */}
+      
       {llevarOrders.length > 0 && (
         <div>
           <div style={{...s.title, fontSize:16}}>🥡 PARA LLEVAR ({llevarOrders.length})</div>
@@ -1524,7 +1518,7 @@ export default function App() {
   const [splitTarget,   setSplitTarget]   = useState(null); 
   const [mergeModal,    setMergeModal]    = useState(null);
   const [mergeName,     setMergeName]     = useState("");
-  const [mesasArr,       setMesasArr]       = useState([]); // NUEVO
+  const [mesasArr,       setMesasArr]       = useState([]); 
 
   useEffect(() => { const t=setTimeout(()=>setSplash(false),2200); return()=>clearTimeout(t); }, []);
 
@@ -1533,7 +1527,7 @@ export default function App() {
     setLoaded(false);
     const localFS = FS(currentUser.localId);
     
-   let unsubOrders, unsubHistory, unsubMenu, unsubConfig; // Agregamos unsubConfig
+   let unsubOrders, unsubHistory, unsubMenu, unsubConfig; 
 
     const setupListeners = () => {
       unsubOrders = onSnapshot(localFS.ordersRef(), (docSnap) => {
@@ -1546,10 +1540,9 @@ export default function App() {
         setHistory(snapshot.docs.map(d => ({ _fid: d.id, ...d.data() })));
       });
       
-      // NUEVO: Escuchar la cantidad de mesas de la sucursal actual
       unsubConfig = onSnapshot(localFS.configRef(), (docSnap) => {
         if (docSnap.exists() && docSnap.data().mesas) setMesasArr(docSnap.data().mesas);
-        else setMesasArr([1, 2, 3, 4, 5, 6]); // Mesas por defecto si es local nuevo
+        else setMesasArr([1, 2, 3, 4, 5, 6]); 
       });
 
       setLoaded(true);
@@ -1575,7 +1568,6 @@ export default function App() {
     if (mesasArr.length === 0) return;
     const lastMesa = mesasArr[mesasArr.length - 1];
     
-    // Validación brutal: No borrar la mesa si hay un cliente tragando ahí
     const hasOrders = orders.some(o => o.table === String(lastMesa) && o.orderType !== "llevar");
     if (hasOrders) {
       showToast(`❌ La Mesa ${lastMesa} tiene pedidos activos. Cóbrelos primero.`, "#e74c3c");
