@@ -1164,51 +1164,174 @@ function MesaModalComponent({ num, orders, setDraft, newDraft, onClose, setTab, 
  );
 }
 
+function InlineSplit({ order, onProceed, onClose, s, Y, fmt }) {
+ const [splitItems, setSplitItems] = useState(
+ (order.items||[]).map(i => ({ ...i, splitQty: 0 }))
+ );
+ const splitTotal = splitItems.reduce((acc, i) => acc + i.price * i.splitQty, 0);
+
+ const handleQty = (cartId, delta, maxQty) => {
+ setSplitItems(prev => prev.map(i => {
+ if (i.cartId !== cartId) return i;
+ const next = Math.min(Math.max(i.splitQty + delta, 0), maxQty);
+ return { ...i, splitQty: next };
+ }));
+ };
+
+ return (
+ <div style={{
+ marginTop:0, overflow:"hidden",
+ animation:"slideDown 0.22s ease-out",
+ background:"#111", borderTop:`2px dashed ${Y}44`,
+ borderRadius:"0 0 12px 12px", padding:"14px 12px 12px"
+ }}>
+ <style>{`@keyframes slideDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}`}</style>
+ <div style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, marginBottom:10}}>
+ Dividir — elige cuánto paga este cliente
+ </div>
+ {splitItems.map(item => {
+ const filled = item.splitQty > 0;
+ return (
+ <div key={item.cartId} style={{
+ display:"flex", alignItems:"center", justifyContent:"space-between",
+ background: filled ? `${Y}12` : "#1a1a1a",
+ border: `1px solid ${filled ? Y+"55" : "#2a2a2a"}`,
+ borderRadius:8, padding:"8px 10px", marginBottom:6,
+ transition:"all .15s"
+ }}>
+ <div style={{flex:1, minWidth:0}}>
+ <div style={{fontWeight:700, fontSize:13, color: filled ? "#fff" : "#aaa"}}>
+ {item.name}
+ {item.isLlevar && <span style={{marginLeft:6,background:"#154360",color:"#3498db",borderRadius:4,padding:"1px 5px",fontSize:9,fontWeight:700}}>Llevar</span>}
+ </div>
+ <div style={{fontSize:11, color:"#555"}}>{item.qty} disp. · {fmt(item.price)} c/u</div>
+ </div>
+ <div style={{display:"flex", alignItems:"center", gap:8, flexShrink:0}}>
+ <button style={{...s.btn("danger"), padding:"3px 10px", fontSize:15, lineHeight:1}} onClick={() => handleQty(item.cartId,-1,item.qty)}>−</button>
+ <span style={{fontWeight:900, fontSize:15, minWidth:22, textAlign:"center", color: filled ? Y : "#555"}}>{item.splitQty}</span>
+ <button style={{...s.btn(), padding:"3px 10px", fontSize:15, lineHeight:1}} onClick={() => handleQty(item.cartId,1,item.qty)}>+</button>
+ <span style={{color:"#888", fontSize:12, minWidth:52, textAlign:"right"}}>{fmt(item.price*item.splitQty)}</span>
+ </div>
+ </div>
+ );
+ })}
+ <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 4px 4px", borderTop:`1px solid #2a2a2a`, marginTop:6}}>
+ <span style={{fontWeight:900, fontSize:14}}>SUBTOTAL</span>
+ <span style={{fontWeight:900, fontSize:16, color:Y}}>{fmt(splitTotal)}</span>
+ </div>
+ <div style={{display:"flex", gap:8, marginTop:10}}>
+ <button style={{...s.btn("secondary"), flex:1, padding:10}} onClick={onClose}>Cancelar división</button>
+ <button
+ style={{...s.btn("success"), flex:2, padding:10, fontSize:14, opacity: splitTotal===0?0.4:1}}
+ disabled={splitTotal===0}
+ onClick={() => onProceed(splitItems.filter(i=>i.splitQty>0), splitTotal)}>
+ Cobrar {fmt(splitTotal)}
+ </button>
+ </div>
+ </div>
+ );
+}
+
 function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, setSplitTarget, setEditingOrder, printOrder, cancelOrder, setConfirmDelete, isMobile, s, Y, fmt }) {
+ const [splitOpenId, setSplitOpenId] = useState(null);
+
+ const handleInlineProceed = (order, items, total) => {
+ setSplitOpenId(null);
+ setCobrarTarget({ type:'split', data: { originalOrder: order, splitItems: items, total } });
+ };
+
  return (
  <div>
+ <style>{`.pedido-card{transition:box-shadow .15s}.pedido-card:hover{box-shadow:0 4px 20px rgba(255,215,0,.08)}`}</style>
  <div style={{...s.row, marginBottom:14}}>
- <div style={s.title}> PEDIDOS ACTIVOS</div>
+ <div style={s.title}>PEDIDOS ACTIVOS</div>
  <button style={s.btn()} onClick={() => setTab("nuevo")}>+ Nuevo</button>
  </div>
- {orders.length === 0 ? <div style={{textAlign:"center", padding:60, color:"#444"}}><div style={{fontSize:48}}></div><div>Sin pedidos activos</div></div> : orders.map(o => (
- <div key={o.id} style={{...s.card, borderLeft:`4px solid ${Y}`}}>
- <div style={{...s.row, marginBottom:8}}>
- <div>
- <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:isMobile?18:22}}>{o.orderType==="llevar" ? `Llevar ${o.table}` : `Mesa ${o.table}`}</span>
- {o.isPaid && <span style={{...s.tag("#1e5c2e"), marginLeft:8}}> Pagado</span>}
- {o.kitchenStatus === 'listo' && <span style={{...s.tag("#2980b9"), marginLeft:8}}> Despachado</span>}
+ {orders.length === 0
+ ? <div style={{textAlign:"center", padding:60, color:"#444"}}>
+ <div style={{fontSize:40, marginBottom:8}}>🍽</div>
+ <div style={{fontSize:15}}>Sin pedidos activos</div>
  </div>
- <span style={{color:Y, fontWeight:900, fontSize:isMobile?16:19}}>{fmt(o.total)}</span>
- </div>
- <div style={{color:"#666", fontSize:11, marginBottom:8}}> {timeStr(o.createdAt)} · {minutesAgo(o.createdAt)}</div>
- <div style={{marginBottom:8}}>
- {(o.items||[]).map((item,i) => {
- const validNotes = (item.individualNotes || []).filter(n => n.trim() !== "");
+ : orders.map(o => {
+ const splitOpen = splitOpenId === o.id;
+ const mins = Math.floor((Date.now()-new Date(o.createdAt))/60000);
+ const urgentColor = mins>=20?"#e74c3c":mins>=10?"#e67e22":Y;
  return (
- <div key={i} style={{marginBottom:6}}>
- <div style={{display:"flex", justifyContent:"space-between", fontSize:isMobile?12:13, padding:"3px 0", borderBottom:"1px solid #222"}}>
- <span>{item.qty}x {item.name}{item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:10, fontWeight:700}}> Llevar</span>}</span>
+ <div key={o.id} className="pedido-card" style={{
+ ...s.card,
+ borderLeft:`4px solid ${urgentColor}`,
+ marginBottom: splitOpen ? 0 : 10,
+ borderRadius: splitOpen ? "12px 12px 0 0" : 12,
+ padding: isMobile ? "12px 10px" : "14px 16px"
+ }}>
+ {/* Cabecera */}
+ <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6}}>
+ <div style={{display:"flex", alignItems:"center", gap:8, flexWrap:"wrap"}}>
+ <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:isMobile?20:24, color: urgentColor, letterSpacing:1}}>
+ {o.orderType==="llevar" ? `Llevar · ${o.table}` : `Mesa ${o.table}`}
+ </span>
+ {o.isPaid && <span style={{...s.tag("#1e5c2e"), fontSize:10}}>Pagado</span>}
+ {o.kitchenStatus==='listo' && <span style={{...s.tag("#2980b9"), fontSize:10}}>Listo</span>}
  </div>
- {item.salsas?.length > 0 && <div style={{fontSize:11, color:Y, paddingLeft:4, marginTop:2}}> {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>}
- {validNotes.map((n, idx) => <div key={idx} style={{fontSize:11, color:"#999", fontStyle:"italic", paddingLeft:4, marginTop:2, whiteSpace:"pre-wrap"}}>└ Plato {idx+1}: {n}</div>)}
- </div>
- )})}
- </div>
- {o.notes && <div style={{fontSize:11, color:"#888", fontStyle:"italic", marginBottom:8, whiteSpace:"pre-wrap"}}> {o.notes}</div>}
- <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
- {o.isPaid ? <button style={{...s.btn("blue"), flex:1}} onClick={() => finishPaidOrder(o.id)}> Entregado</button> 
- : <><button style={{...s.btn("success"), flex:1}} onClick={() => setCobrarTarget({type:'existing', data:o})}> Cobrar Todo</button>
- <button style={{...s.btn("secondary"), flex:1}} onClick={() => setSplitTarget(o)}> Dividir</button></>}
- <button style={{...s.btn("warn"), flex:1}} onClick={() => setEditingOrder(o)}> Editar</button>
- <button style={s.btn("secondary")} onClick={() => printOrder(o)}> Ticket</button>
- {o.enlace_pdf && <button style={{...s.btn("blue"), padding:isMobile?"7px 10px":"8px 12px"}} onClick={() => window.open(o.enlace_pdf, "_blank")}> SUNAT</button>}
- <button style={{...s.btn("danger"), padding:isMobile?"7px 10px":"8px 12px"}} onClick={() => cancelOrder(o.id)}></button>
- <button style={{...s.btn("secondary"), padding:isMobile?"7px 10px":"8px 12px"}} onClick={() => setConfirmDelete(o.id)}></button>
+ <div style={{textAlign:"right", flexShrink:0}}>
+ <div style={{fontWeight:900, fontSize:isMobile?18:22, color:Y}}>{fmt(o.total)}</div>
+ <div style={{fontSize:10, color: mins>=20?"#e74c3c":mins>=10?"#e67e22":"#555", marginTop:1}}>
+ {timeStr(o.createdAt)} · {minutesAgo(o.createdAt)}
  </div>
  </div>
- ))
- }
+ </div>
+
+ {/* Items */}
+ <div style={{marginBottom:8, paddingLeft:2}}>
+ {(o.items||[]).map((item,i) => {
+ const notes = (item.individualNotes||[]).filter(n=>n.trim());
+ return (
+ <div key={i} style={{marginBottom:4}}>
+ <div style={{display:"flex", justifyContent:"space-between", fontSize:isMobile?12:13, padding:"3px 0", borderBottom:"1px solid #1e1e1e"}}>
+ <span style={{color:"#ccc"}}>
+ <span style={{color:"#888", marginRight:4}}>{item.qty}×</span>
+ {item.name}
+ {item.isLlevar && <span style={{marginLeft:6,background:"#154360",color:"#3498db",borderRadius:4,padding:"1px 5px",fontSize:9,fontWeight:700}}>Llevar</span>}
+ </span>
+ </div>
+ {item.salsas?.length>0 && <div style={{fontSize:10,color:Y,paddingLeft:8,marginTop:1,fontStyle:"italic"}}>↳ {item.salsas.map(sa=>`${sa.name} (${sa.style})`).join(', ')}</div>}
+ {notes.map((n,idx)=><div key={idx} style={{fontSize:10,color:"#777",fontStyle:"italic",paddingLeft:8,marginTop:1}}>└ Plato {idx+1}: {n}</div>)}
+ </div>
+ );
+ })}
+ </div>
+ {o.notes && <div style={{fontSize:11,color:"#888",fontStyle:"italic",marginBottom:8,padding:"4px 8px",background:"#1a1a1a",borderRadius:4}}>"{o.notes}"</div>}
+
+ {/* Botones */}
+ <div style={{display:"flex", gap:5, flexWrap:"wrap", marginTop:4}}>
+ {o.isPaid
+ ? <button style={{...s.btn("blue"),flex:1}} onClick={()=>finishPaidOrder(o.id)}>Entregado</button>
+ : <>
+ <button style={{...s.btn("success"),flex:2,fontWeight:900}} onClick={()=>setCobrarTarget({type:'existing',data:o})}>Cobrar Todo</button>
+ <button
+ style={{...s.btn(splitOpen?"primary":"secondary"), flex:1}}
+ onClick={()=>setSplitOpenId(splitOpen?null:o.id)}>
+ {splitOpen ? "▲ Cerrar" : "Dividir ▼"}
+ </button>
+ </>}
+ <button style={{...s.btn("warn"),flex:1}} onClick={()=>setEditingOrder(o)}>Editar</button>
+ <button style={{...s.btn("secondary"), padding:"7px 10px", fontSize:11}} onClick={()=>printOrder(o)}>Ticket</button>
+ {o.enlace_pdf && <button style={{...s.btn("blue"),padding:"7px 10px",fontSize:11}} onClick={()=>window.open(o.enlace_pdf,"_blank")}>SUNAT</button>}
+ <button style={{...s.btn("danger"), padding:"7px 12px", fontSize:11, fontWeight:800}} onClick={()=>cancelOrder(o.id)}>Cancelar</button>
+ <button style={{...s.btn("secondary"), padding:"7px 12px", fontSize:11, fontWeight:800, color:"#e74c3c", border:"1px solid #e74c3c44"}} onClick={()=>setConfirmDelete(o.id)}>Borrar</button>
+ </div>
+ </div>
+ {splitOpen && (
+ <InlineSplit
+ order={o}
+ onProceed={(items, total) => handleInlineProceed(o, items, total)}
+ onClose={() => setSplitOpenId(null)}
+ s={s} Y={Y} fmt={fmt}
+ />
+ )}
+ </div>
+ );
+ })}
  </div>
  );
 }
