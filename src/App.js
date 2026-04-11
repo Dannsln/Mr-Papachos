@@ -1557,6 +1557,7 @@ export default function App() {
     };
     setupListeners();
     return () => { if (unsubOrders) unsubOrders(); if (unsubHistory) unsubHistory(); if (unsubMenu) unsubMenu(); if (unsubConfig) unsubConfig(); };
+  }, [currentUser]);
 
   const showToast = (msg,color="#27ae60") => { setToast({msg,color}); setTimeout(()=>setToast(null),2800); };
   
