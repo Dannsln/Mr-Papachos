@@ -1211,49 +1211,157 @@ function InlineSplit({ order, onProceed, onClose, s, Y, fmt }) {
  );
 }
 
-function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, setSplitTarget, setEditingOrder, printOrder, cancelOrder, setConfirmDelete, isMobile, s, Y, fmt }) {
+// ═══════════════════════════════════════════════════════════════════
+// MODAL DE ANULACIÓN CON REEMPLAZO (solo Admin)
+// ═══════════════════════════════════════════════════════════════════
+function AnulacionModal({ order, onConfirm, onClose, s, Y, fmt }) {
+ const [motivo, setMotivo] = useState("");
+ const [crearReemplazo, setCrearReemplazo] = useState(true);
+ const [repItems, setRepItems] = useState(
+ (order.items || []).map(i => ({ ...i, qty: i.qty, individualNotes: i.individualNotes || [] }))
+ );
+
+ const repTotal = repItems.reduce((s, i) => s + i.price * i.qty, 0);
+
+ const changeRepQty = (cartId, delta) => {
+ setRepItems(prev => prev.map(i => {
+ if (i.cartId !== cartId) return i;
+ const newQty = Math.max(0, i.qty + delta);
+ return { ...i, qty: newQty };
+ }).filter(i => i.qty > 0));
+ };
+
+ return (
+ <div style={s.modal} onClick={e => e.stopPropagation()}>
+ <div style={{...s.row, marginBottom:14}}>
+ <h2 style={{color:"#e74c3c", fontFamily:"'Bebas Neue',cursive", margin:0, fontSize:24, letterSpacing:1}}>🚫 ANULAR PEDIDO</h2>
+ <button style={{background:"#333", border:"none", borderRadius:8, color:"#eee", width:34, height:34, fontSize:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900}} onClick={onClose}>✕</button>
+ </div>
+
+ {/* Info del pedido original */}
+ <div style={{background:"#1a0a0a", border:"1px solid #e74c3c44", borderRadius:8, padding:"10px 14px", marginBottom:14}}>
+ <div style={{fontSize:11, color:"#e74c3c", textTransform:"uppercase", letterSpacing:1, marginBottom:6, fontWeight:800}}>Pedido original a anular</div>
+ <div style={{fontWeight:900, fontSize:16, marginBottom:6, color:"#eee"}}>
+ {order.orderType==="llevar" ? `🥡 ${order.table||"Sin nombre"}` : `🍽 Mesa ${order.table}`}
+ <span style={{color:Y, marginLeft:10}}>{fmt(order.total)}</span>
+ </div>
+ {(order.items||[]).map((item,i) => (
+ <div key={i} style={{fontSize:12, color:"#888", display:"flex", justifyContent:"space-between"}}>
+ <span>{item.qty}× {item.name}</span><span>{fmt(item.price*item.qty)}</span>
+ </div>
+ ))}
+ </div>
+
+ {/* Motivo */}
+ <div style={{marginBottom:14}}>
+ <label style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1}}>Motivo de anulación (opcional)</label>
+ <input style={{...s.input, marginTop:4}} placeholder="Ej: Error en el pedido, cambio de cliente..." value={motivo} onChange={e => setMotivo(e.target.value)} spellCheck="false" />
+ </div>
+
+ {/* Toggle reemplazo */}
+ <div style={{display:"flex", alignItems:"center", gap:10, marginBottom:14, padding:"10px 14px", background:"#111", borderRadius:8, cursor:"pointer"}} onClick={() => setCrearReemplazo(v => !v)}>
+ <div style={{width:22, height:22, borderRadius:6, border:`2px solid ${crearReemplazo ? Y : "#555"}`, background:crearReemplazo ? Y : "transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, transition:"all .15s"}}>
+ {crearReemplazo && <span style={{color:"#111", fontWeight:900, fontSize:14}}>✓</span>}
+ </div>
+ <div>
+ <div style={{fontWeight:800, fontSize:13}}>Crear pedido de reemplazo</div>
+ <div style={{fontSize:11, color:"#666"}}>Se enviará automáticamente a cocina</div>
+ </div>
+ </div>
+
+ {/* Editar ítems del reemplazo */}
+ {crearReemplazo && (
+ <div style={{background:"#0a1a0a", border:"1px solid #27ae6044", borderRadius:8, padding:"10px 14px", marginBottom:14}}>
+ <div style={{fontSize:11, color:"#27ae60", textTransform:"uppercase", letterSpacing:1, marginBottom:8, fontWeight:800}}>✏️ Ítems del reemplazo</div>
+ {repItems.length === 0
+ ? <div style={{color:"#555", fontSize:12, textAlign:"center", padding:"8px 0"}}>Sin ítems — se creará sin reemplazo</div>
+ : repItems.map(item => (
+ <div key={item.cartId} style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6}}>
+ <span style={{fontSize:13, color:"#ccc", flex:1}}>{item.name}</span>
+ <div style={{display:"flex", alignItems:"center", gap:8}}>
+ <button style={{...s.btn("danger"), padding:"2px 10px", fontSize:14}} onClick={() => changeRepQty(item.cartId, -1)}>−</button>
+ <span style={{fontWeight:900, color:Y, minWidth:20, textAlign:"center"}}>{item.qty}</span>
+ <button style={{...s.btn(), padding:"2px 10px", fontSize:14}} onClick={() => changeRepQty(item.cartId, 1)}>+</button>
+ <span style={{color:"#666", fontSize:12, minWidth:52, textAlign:"right"}}>{fmt(item.price*item.qty)}</span>
+ </div>
+ </div>
+ ))
+ }
+ {repItems.length > 0 && (
+ <div style={{display:"flex", justifyContent:"space-between", borderTop:"1px solid #27ae6033", marginTop:8, paddingTop:8, fontWeight:900}}>
+ <span style={{color:"#27ae60"}}>Total reemplazo</span>
+ <span style={{color:Y}}>{fmt(repTotal)}</span>
+ </div>
+ )}
+ </div>
+ )}
+
+ <button style={{...s.btn("danger"), width:"100%", padding:14, fontSize:15}}
+ onClick={() => onConfirm(crearReemplazo ? repItems : [], motivo)}>
+ 🚫 Confirmar Anulación{crearReemplazo && repItems.length > 0 ? " y Enviar Reemplazo" : ""}
+ </button>
+ </div>
+ );
+}
+
+function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, setSplitTarget, setEditingOrder, printOrder, cancelOrder, setConfirmDelete, setAnulacionModal, currentUser, isMobile, s, Y, fmt }) {
  const [splitOpenId, setSplitOpenId] = useState(null);
+ const isAdmin = currentUser?.id === 'admin';
+ const isCajero = currentUser?.id === 'cajero';
+ const isMesero = currentUser?.id === 'mesero';
+ const canCobrar = isAdmin || isCajero;
+ const canDelete = isAdmin;
+ const canAnular = isAdmin;
+ const [showAnulados, setShowAnulados] = useState(false);
 
  const handleInlineProceed = (order, items, total) => {
  setSplitOpenId(null);
  setCobrarTarget({ type:'split', data: { originalOrder: order, splitItems: items, total } });
  };
 
+ const activeOrders = orders.filter(o => !o.anulado);
+ const anuladosOrders = orders.filter(o => o.anulado);
+
  return (
  <div>
  <style>{`.pedido-card{transition:box-shadow .15s}.pedido-card:hover{box-shadow:0 4px 20px rgba(255,215,0,.08)}`}</style>
  <div style={{...s.row, marginBottom:14}}>
  <div style={s.title}>PEDIDOS ACTIVOS</div>
- <button style={s.btn()} onClick={() => setTab("nuevo")}>+ Nuevo</button>
+ {(isAdmin || isMesero) && <button style={s.btn()} onClick={() => setTab("nuevo")}>+ Nuevo</button>}
  </div>
- {orders.length === 0
+ {activeOrders.length === 0
  ? <div style={{textAlign:"center", padding:60, color:"#444"}}>
  <div style={{fontSize:40, marginBottom:8}}>🍽</div>
  <div style={{fontSize:15}}>Sin pedidos activos</div>
  </div>
- : orders.map(o => {
+ : activeOrders.map(o => {
  const splitOpen = splitOpenId === o.id;
  const mins = Math.floor((Date.now()-new Date(o.createdAt))/60000);
  const urgentColor = mins>=20?"#e74c3c":mins>=10?"#e67e22":Y;
+ const isReplacement = !!o.replacesId;
  return (
  <div key={o.id}>
  <div className="pedido-card" style={{
  ...s.card,
- borderLeft:`4px solid ${urgentColor}`,
+ borderLeft:`4px solid ${isReplacement ? "#27ae60" : urgentColor}`,
  marginBottom: splitOpen ? 0 : 10,
  borderRadius: splitOpen ? "12px 12px 0 0" : 12,
  padding: isMobile ? "12px 10px" : "14px 16px"
  }}>
+ {/* Badge de reemplazo */}
+ {isReplacement && (
+ <div style={{background:"#0a2a0a", border:"1px solid #27ae6055", borderRadius:6, padding:"4px 10px", marginBottom:8, fontSize:11, color:"#27ae60", fontWeight:800}}>
+ 🔄 REEMPLAZO — sustituye al pedido anulado
+ </div>
+ )}
  {/* Cabecera */}
  <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6}}>
  <div style={{display:"flex", alignItems:"center", gap:8, flexWrap:"wrap"}}>
- <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:isMobile?20:24, color: urgentColor, letterSpacing:1}}>
+ <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:isMobile?20:24, color: isReplacement?"#27ae60":urgentColor, letterSpacing:1}}>
  {o.orderType==="llevar" ? `🥡 ${o.table||"Sin nombre"}` : `Mesa ${o.table}`}
  </span>
  {o.orderType==="llevar" && (o.phone||o.deliveryAddress) && (
- <span style={{fontSize:11, color:"#888"}}>
- {[o.phone, o.deliveryAddress].filter(Boolean).join(" · ")}
- </span>
+ <span style={{fontSize:11, color:"#888"}}>{[o.phone, o.deliveryAddress].filter(Boolean).join(" · ")}</span>
  )}
  {o.isPaid && <span style={{...s.tag("#1e5c2e"), fontSize:10}}>Pagado</span>}
  {o.kitchenStatus==='listo' && <span style={{...s.tag("#2980b9"), fontSize:10}}>Listo</span>}
@@ -1265,7 +1373,6 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  </div>
  </div>
  </div>
-
  {/* Items */}
  <div style={{marginBottom:8, paddingLeft:2}}>
  {(o.items||[]).map((item,i) => {
@@ -1286,26 +1393,30 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  })}
  </div>
  {o.notes && <div style={{fontSize:11,color:"#888",fontStyle:"italic",marginBottom:8,padding:"4px 8px",background:"#1a1a1a",borderRadius:4}}>"{o.notes}"</div>}
-
- {/* Botones */}
+ {/* Botones según rol */}
  <div style={{display:"flex", gap:5, flexWrap:"wrap", marginTop:4}}>
- {o.isPaid
+ {canCobrar && (o.isPaid
  ? <button style={{...s.btn("blue"),flex:1}} onClick={()=>finishPaidOrder(o.id)}>Entregado</button>
  : <>
- <button style={{...s.btn("success"),flex:2,fontWeight:900}} onClick={()=>setCobrarTarget({type:'existing',data:o})}>Cobrar Todo</button>
- <button
- style={{...s.btn(splitOpen?"primary":"secondary"), flex:1}}
- onClick={()=>setSplitOpenId(splitOpen?null:o.id)}>
- {splitOpen ? "▲ Cerrar" : "Dividir ▼"}
+ <button style={{...s.btn("success"),flex:2,fontWeight:900}} onClick={()=>setCobrarTarget({type:'existing',data:o})}>💰 Cobrar</button>
+ <button style={{...s.btn(splitOpen?"primary":"secondary"), flex:1}} onClick={()=>setSplitOpenId(splitOpen?null:o.id)}>
+ {splitOpen ? "▲" : "✂️ Dividir"}
  </button>
- </>}
- <button style={{...s.btn("warn"),flex:1}} onClick={()=>setEditingOrder(o)}>Editar</button>
- <button style={{...s.btn("secondary"), padding:"7px 10px", fontSize:11}} onClick={()=>printOrder(o)}>🖨 Ticket</button>
- <button style={{...s.btn("danger"), padding:"7px 12px", fontSize:11, fontWeight:800}} onClick={()=>cancelOrder(o.id)}>Cancelar</button>
- <button style={{...s.btn("secondary"), padding:"7px 12px", fontSize:11, fontWeight:800, color:"#e74c3c", border:"1px solid #e74c3c44"}} onClick={()=>setConfirmDelete(o.id)}>Borrar</button>
+ </>
+ )}
+ {(isAdmin || isMesero) && !o.isPaid && (
+ <button style={{...s.btn("warn"),flex:1}} onClick={()=>setEditingOrder(o)}>✏️ Editar</button>
+ )}
+ <button style={{...s.btn("secondary"), padding:"7px 10px", fontSize:11}} onClick={()=>printOrder(o)}>🖨</button>
+ {canAnular && !o.isPaid && (
+ <button style={{...s.btn("danger"), padding:"7px 10px", fontSize:11, fontWeight:800}} onClick={()=>setAnulacionModal(o)}>🚫 Anular</button>
+ )}
+ {canDelete && (
+ <button style={{...s.btn("secondary"), padding:"7px 10px", fontSize:11, fontWeight:800, color:"#e74c3c", border:"1px solid #e74c3c44"}} onClick={()=>setConfirmDelete(o.id)}>🗑</button>
+ )}
  </div>
  </div>
- {splitOpen && (
+ {splitOpen && canCobrar && (
  <InlineSplit
  order={o}
  onProceed={(items, total) => handleInlineProceed(o, items, total)}
@@ -1316,6 +1427,46 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  </div>
  );
  })}
+
+ {/* ── Pedidos Anulados (colapsable, no entorpece) ── */}
+ {anuladosOrders.length > 0 && (
+ <div style={{marginTop:16}}>
+ <button
+ onClick={() => setShowAnulados(v => !v)}
+ style={{display:"flex", alignItems:"center", gap:8, background:"none", border:"1px solid #2a2a2a", borderRadius:8, padding:"8px 14px", cursor:"pointer", color:"#555", fontSize:12, fontWeight:700, width:"100%", marginBottom: showAnulados ? 0 : 0}}>
+ <span style={{color:"#e74c3c"}}>🚫</span>
+ Pedidos anulados ({anuladosOrders.length})
+ <span style={{marginLeft:"auto", fontSize:10}}>{showAnulados ? "▲ ocultar" : "▼ ver"}</span>
+ </button>
+ {showAnulados && (
+ <div style={{marginTop:6, opacity:0.75}}>
+ {anuladosOrders.map(o => (
+ <div key={o.id} style={{
+ background:"#111", border:"1px solid #2a2a2a", borderLeft:"4px solid #e74c3c44",
+ borderRadius:10, padding:"10px 14px", marginBottom:8
+ }}>
+ <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4}}>
+ <div style={{display:"flex", alignItems:"center", gap:8}}>
+ <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:18, color:"#555", textDecoration:"line-through"}}>
+ {o.orderType==="llevar" ? `🥡 ${o.table||"Sin nombre"}` : `Mesa ${o.table}`}
+ </span>
+ <span style={{...s.tag("#3a0a0a"), color:"#e74c3c", fontSize:10, border:"1px solid #e74c3c33"}}>ANULADO</span>
+ </div>
+ <span style={{color:"#555", fontWeight:900, fontSize:15, textDecoration:"line-through"}}>{fmt(o.total)}</span>
+ </div>
+ {o.motivoAnulacion && <div style={{fontSize:11, color:"#666", fontStyle:"italic", marginBottom:4}}>Motivo: {o.motivoAnulacion}</div>}
+ {o.replacedById && <div style={{fontSize:11, color:"#27ae60"}}>🔄 Reemplazado por nuevo pedido</div>}
+ <div style={{fontSize:10, color:"#444", marginTop:4}}>Anulado: {timeStr(o.anuladoAt)}</div>
+ <div style={{display:"flex", gap:6, marginTop:6, flexWrap:"wrap"}}>
+ <button style={{...s.btn("secondary"), padding:"4px 10px", fontSize:11}} onClick={()=>printOrder(o)}>🖨 Ticket</button>
+ {canDelete && <button style={{...s.btn("secondary"), padding:"4px 8px", fontSize:11, color:"#e74c3c", border:"1px solid #e74c3c33"}} onClick={()=>setConfirmDelete(o.id)}>🗑 Borrar</button>}
+ </div>
+ </div>
+ ))}
+ </div>
+ )}
+ </div>
+ )}
  </div>
  );
 }
@@ -1347,7 +1498,7 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
  }); 
  };
 
- const activeOrders = sorted.filter(order => order.kitchenStatus !== 'listo');
+ const activeOrders = sorted.filter(order => order.kitchenStatus !== 'listo' && !order.anulado);
  if(activeOrders.length === 0) return <div style={{textAlign:"center", padding:60, color:"#444"}}><div style={{fontSize:56}}></div><div style={{marginTop:12, fontSize:16}}>Sin pedidos pendientes en cocina</div></div>;
  
  return (
@@ -1361,8 +1512,13 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
  const mins = Math.floor((Date.now() - new Date(order.createdAt))/60000);
  
  return (
- <div key={order.id} style={{background:mins>=15?"#1f0d0d":mins>=8?"#1f180d":"#1c1c1c", borderRadius:14, border:`2px solid ${mins>=15?"#e74c3c":mins>=8?"#e67e22":Y}`, padding:14, position:"relative", transition:"all .3s"}}>
+ <div key={order.id} style={{background:mins>=15?"#1f0d0d":mins>=8?"#1f180d":"#1c1c1c", borderRadius:14, border:`2px solid ${mins>=15?"#e74c3c":mins>=8?"#e67e22":order.replacesId?"#27ae60":Y}`, padding:14, position:"relative", transition:"all .3s"}}>
  <div style={{position:"absolute", top:-10, left:14, background:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y, color:mins>=8?"#fff":"#111", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:900}}>{`#${priority+1} · ${mins<1?"ahora":`${mins}m`}`}</div>
+ {order.replacesId && (
+ <div style={{background:"#0a1f0a", border:"1px solid #27ae6044", borderRadius:6, padding:"3px 10px", marginBottom:8, marginTop:6, fontSize:10, color:"#27ae60", fontWeight:800}}>
+ 🔄 REEMPLAZO de pedido anulado
+ </div>
+ )}
  <div style={{...s.row, marginBottom:10, marginTop:6}}><span style={{fontFamily:"'Bebas Neue',cursive", fontSize:22, color:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y}}>{order.orderType==="llevar"?`🥡 ${order.table||"Sin nombre"}`:`Mesa ${order.table}`}</span>{order.orderType==="llevar"&&(order.phone||order.deliveryAddress)&&<span style={{fontSize:10,color:"#888"}}>{[order.phone,order.deliveryAddress].filter(Boolean).join(" · ")}</span>}</div>
  <div style={{background:"#2a2a2a", borderRadius:4, height:5, marginBottom:12, overflow:"hidden"}}><div style={{background:Y, height:"100%", width:`${totalPortions > 0 ? (donePortions/totalPortions)*100 : 0}%`, transition:"width .3s"}}/></div>
  {(order.items||[]).map((item,i) => {
@@ -1713,6 +1869,7 @@ export default function App() {
  
  const [editingOrder, setEditingOrder] = useState(null);
  const [confirmDelete, setConfirmDelete] = useState(null);
+ const [anulacionModal, setAnulacionModal] = useState(null); // order to annul
  const [mesaModal, setMesaModal] = useState(null);
  const [kitchenChecks, setKitchenChecks] = useState({});
  const [cobrarTarget, setCobrarTarget] = useState(null);
@@ -1968,6 +2125,51 @@ export default function App() {
  setConfirmDelete(null); showToast(" Pedido eliminado","#888");
  };
 
+ // Anulación con reemplazo (solo admin)
+ const anularPedido = async (originalOrder, replacementItems, motivo) => {
+ const now = new Date().toISOString();
+ const newId = Date.now().toString();
+ const hasReplacement = replacementItems && replacementItems.length > 0;
+
+ const anuladoOrder = {
+ ...originalOrder,
+ anulado: true,
+ status: "anulado",
+ anuladoAt: now,
+ motivoAnulacion: motivo || "",
+ replacedById: hasReplacement ? newId : null,
+ };
+
+ let updatedOrders = orders.map(o => o.id === originalOrder.id ? anuladoOrder : o);
+
+ let replacementOrder = null;
+ if (hasReplacement) {
+ const repTotal = replacementItems.reduce((s, i) => s + i.price * i.qty, 0);
+ replacementOrder = {
+ id: newId,
+ table: originalOrder.table,
+ orderType: originalOrder.orderType,
+ phone: originalOrder.phone || "",
+ deliveryAddress: originalOrder.deliveryAddress || "",
+ notes: originalOrder.notes || "",
+ items: replacementItems,
+ total: repTotal,
+ isPaid: false,
+ status: "pendiente",
+ kitchenStatus: "pendiente",
+ createdAt: now,
+ replacesId: originalOrder.id,
+ taperCost: 0,
+ };
+ updatedOrders = [...updatedOrders, replacementOrder];
+ }
+
+ setOrders(updatedOrders);
+ await saveOrders(updatedOrders);
+ setAnulacionModal(null);
+ showToast("🚫 Pedido anulado" + (hasReplacement ? " · Reemplazo enviado a cocina" : ""), "#e74c3c");
+ };
+
  const saveEditedOrder = async (updated) => {
  setOrders(prev => prev.map(o=>o.id===updated.id?updated:o)); await saveOrders(orders.map(o=>o.id===updated.id?updated:o));
  setEditingOrder(null); showToast(` Pedido actualizado`,"#f39c12");
@@ -2019,15 +2221,15 @@ export default function App() {
 
  const allTabs = [
  {id:"dashboard", label:"Inicio"}, {id:"mesas", label:"Mesas"}, {id:"nuevo", label:"Nuevo"},
- {id:"pedidos", label:`Pedidos${orders.length>0?" ("+orders.length+")":""}` },
- {id:"cocina", label:`Cocina${orders.filter(o=>o.kitchenStatus!=='listo').length>0?" ("+orders.filter(o=>o.kitchenStatus!=='listo').length+")":""}` },
+ {id:"pedidos", label:`Pedidos${orders.filter(o=>!o.anulado).length>0?" ("+orders.filter(o=>!o.anulado).length+")":""}` },
+ {id:"cocina", label:`Cocina${orders.filter(o=>o.kitchenStatus!=='listo'&&!o.anulado).length>0?" ("+orders.filter(o=>o.kitchenStatus!=='listo'&&!o.anulado).length+")":""}` },
  {id:"historial", label:"Historial"}, {id:"inventario", label:"Inventario"}, {id:"carta", label:"Carta"},
  ];
 
  const tabs = allTabs.filter(t => {
  if (currentUser.id === 'admin') return true;
  if (currentUser.id === 'cajero') return ['dashboard', 'pedidos', 'historial'].includes(t.id);
- if (currentUser.id === 'mesero') return ['mesas', 'nuevo'].includes(t.id);
+ if (currentUser.id === 'mesero') return ['mesas', 'nuevo', 'pedidos'].includes(t.id);
  if (currentUser.id === 'cocinero') return ['cocina'].includes(t.id);
  return false;
  });
@@ -2071,13 +2273,19 @@ export default function App() {
  </div>
  )}
 
+ {anulacionModal && (
+ <div style={s.overlay} onClick={() => setAnulacionModal(null)}>
+ <AnulacionModal order={anulacionModal} onConfirm={(items, motivo) => anularPedido(anulacionModal, items, motivo)} onClose={() => setAnulacionModal(null)} s={s} Y={Y} fmt={fmt} />
+ </div>
+ )}
+
  {confirmDelete&&<div style={s.overlay} onClick={()=>setConfirmDelete(null)}><div style={{...s.modal,maxWidth:340,textAlign:"center"}} onClick={e=>e.stopPropagation()}><div style={{fontSize:42,marginBottom:12}}></div><div style={{fontWeight:900,fontSize:17,marginBottom:8,color:"#eee"}}>¿Eliminar pedido?</div><div style={{color:"#888",fontSize:13,marginBottom:20}}>Esta acción no se puede deshacer.</div><div style={{display:"flex",gap:10}}><button style={{...s.btn("secondary"),flex:1}} onClick={()=>setConfirmDelete(null)}>Cancelar</button><button style={{...s.btn("danger"),flex:1}} onClick={()=>deleteOrderPermanent(confirmDelete)}> Eliminar</button></div></div></div>}
 
  <div style={s.content}>
  {tab==="dashboard" && <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} />}
  {tab==="mesas" && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} mesasArr={mesasArr} addMesa={addMesa} removeMesa={removeMesa} currentUser={currentUser} />}
  {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} mesasArr={mesasArr} />}
- {tab==="pedidos" && <PedidosComponent orders={orders} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
+ {tab==="pedidos" && <PedidosComponent orders={orders} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
  {tab==="cocina" && <CocinaComponent orders={orders} kitchenChecks={kitchenChecks} setKitchenChecks={setKitchenChecks} markKitchenListo={markKitchenListo} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} />}
  {tab==="historial" && <HistorialComponent history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} />}
  {tab==="inventario" && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/>}
