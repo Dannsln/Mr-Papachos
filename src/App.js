@@ -2014,7 +2014,7 @@ export default function App() {
  modal: {background:"#1a1a1a",border:`1px solid ${Y}44`,borderRadius:isMobile?"16px 16px 0 0":14,padding:isMobile?"16px 12px":20,width:"100%",maxWidth:isMobile?"100%":600,maxHeight:isMobile?"92vh":"88vh",overflowY:"auto"},
  };
 
- if (!currentUser) return <ErrorBoundary><LoginScreen onLogin={(user) => { setCurrentUser(user); setTab(user.id === 'cocinero' ? 'cocina' : 'mesas'); }} s={s} Y={Y} /></ErrorBoundary>;
+ if (!currentUser) return <ErrorBoundary><LoginScreen onLogin={(user) => { setCurrentUser(user); const startTab = user.id === 'cocinero' ? 'cocina' : user.id === 'cajero' ? 'pedidos' : user.id === 'mesero' ? 'mesas' : 'dashboard'; setTab(startTab); }} s={s} Y={Y} /></ErrorBoundary>;
  if (!loaded) return <ErrorBoundary><div style={{background:"#111",color:"#FFD700",height:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{textAlign:"center"}}><div style={{marginTop:12,fontWeight:700,letterSpacing:2}}>Cargando Sucursal...</div></div></div></ErrorBoundary>;
 
  const allTabs = [
@@ -2026,8 +2026,8 @@ export default function App() {
 
  const tabs = allTabs.filter(t => {
  if (currentUser.id === 'admin') return true;
- if (currentUser.id === 'cajero') return ['dashboard', 'mesas', 'pedidos', 'historial', 'nuevo'].includes(t.id);
- if (currentUser.id === 'mesero') return ['mesas', 'nuevo', 'pedidos', 'carta'].includes(t.id);
+ if (currentUser.id === 'cajero') return ['dashboard', 'pedidos', 'historial'].includes(t.id);
+ if (currentUser.id === 'mesero') return ['mesas', 'nuevo'].includes(t.id);
  if (currentUser.id === 'cocinero') return ['cocina'].includes(t.id);
  return false;
  });
