@@ -1198,13 +1198,17 @@ function InlineSplit({ order, onProceed, onClose, s, Y, fmt }) {
 // ═══════════════════════════════════════════════════════════════════
 // MODAL DE ANULACIÓN CON REEMPLAZO (solo Admin)
 // ═══════════════════════════════════════════════════════════════════
-function AnulacionModal({ order, onConfirm, onClose, s, Y, fmt }) {
+function AnulacionModal({ order, onConfirm, onClose, menu, s, Y, fmt }) {
  const [step, setStep] = useState("confirm"); // "confirm" | "details"
  const [motivo, setMotivo] = useState("");
- const [crearReemplazo, setCrearReemplazo] = useState(null); // null = not chosen yet
+ const [crearReemplazo, setCrearReemplazo] = useState(null);
  const [repItems, setRepItems] = useState(
- (order.items || []).map(i => ({ ...i, qty: i.qty, individualNotes: i.individualNotes || [] }))
+ (order.items || [])
+ .filter(i => i.cat !== "Tapers" && i.id !== "TAPER")
+ .map(i => ({ ...i, qty: i.qty, individualNotes: i.individualNotes || [] }))
  );
+ const [menuSearch, setMenuSearch] = useState("");
+ const [menuCat, setMenuCat] = useState("Todos");
 
  const repTotal = repItems.reduce((s, i) => s + i.price * i.qty, 0);
 
@@ -1215,6 +1219,23 @@ function AnulacionModal({ order, onConfirm, onClose, s, Y, fmt }) {
  return { ...i, qty: newQty };
  }).filter(i => i.qty > 0));
  };
+
+ const addRepItem = (item) => {
+ setRepItems(prev => {
+ const cartId = item.cartId || item.id;
+ const ex = prev.find(i => i.cartId === cartId);
+ if (ex) return prev.map(i => i.cartId === cartId ? { ...i, qty: i.qty + 1 } : i);
+ return [...prev, { ...item, cartId, qty: 1, individualNotes: [""] }];
+ });
+ };
+
+ // Filtrar tapers de la carta del reemplazo
+ const menuParaReemplazo = (menu || []).filter(i => i.cat !== "Tapers");
+ const filteredRepMenu = menuParaReemplazo.filter(i =>
+ (menuCat === "Todos" || i.cat === menuCat) &&
+ i.name.toLowerCase().includes(menuSearch.toLowerCase())
+ );
+ const repCats = [...new Set(menuParaReemplazo.map(i => i.cat))];
 
  // PASO 1: Confirmación explícita
  if (step === "confirm") {
@@ -1270,43 +1291,78 @@ function AnulacionModal({ order, onConfirm, onClose, s, Y, fmt }) {
  <div style={{marginBottom:14}}>
  <div style={{fontSize:12, color:"#aaa", marginBottom:10, fontWeight:700, textTransform:"uppercase", letterSpacing:1}}>¿Desea agregar un pedido de reemplazo?</div>
  <div style={{display:"flex", gap:8}}>
- <button
- style={{...s.btn(crearReemplazo===true?"success":"secondary"), flex:1, padding:12, fontSize:13}}
- onClick={() => setCrearReemplazo(true)}>
+ <button style={{...s.btn(crearReemplazo===true?"success":"secondary"), flex:1, padding:12, fontSize:13}} onClick={() => setCrearReemplazo(true)}>
  ✅ Sí, crear reemplazo
  </button>
- <button
- style={{...s.btn(crearReemplazo===false?"danger":"secondary"), flex:1, padding:12, fontSize:13}}
- onClick={() => setCrearReemplazo(false)}>
+ <button style={{...s.btn(crearReemplazo===false?"danger":"secondary"), flex:1, padding:12, fontSize:13}} onClick={() => setCrearReemplazo(false)}>
  ❌ No, solo anular
  </button>
  </div>
  </div>
 
- {/* Editar ítems del reemplazo */}
+ {/* Sección de reemplazo con carta completa */}
  {crearReemplazo === true && (
  <div style={{background:"#0a1a0a", border:"1px solid #27ae6044", borderRadius:8, padding:"10px 14px", marginBottom:14}}>
- <div style={{fontSize:11, color:"#27ae60", textTransform:"uppercase", letterSpacing:1, marginBottom:8, fontWeight:800}}>✏️ Ítems del reemplazo (ajusta si es necesario)</div>
+ <div style={{fontSize:11, color:"#27ae60", textTransform:"uppercase", letterSpacing:1, marginBottom:10, fontWeight:800}}>
+ ✏️ Ítems del reemplazo
+ </div>
+
+ {/* Carrito de reemplazo */}
  {repItems.length === 0
- ? <div style={{color:"#555", fontSize:12, textAlign:"center", padding:"8px 0"}}>Sin ítems — se anulará sin reemplazo</div>
- : repItems.map(item => (
- <div key={item.cartId} style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6}}>
+ ? <div style={{color:"#555", fontSize:12, textAlign:"center", padding:"6px 0", marginBottom:10}}>Sin ítems — agrega desde la carta abajo</div>
+ : <>
+ {repItems.map(item => (
+ <div key={item.cartId} style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6, background:"#0f2a0f", borderRadius:6, padding:"6px 10px"}}>
  <span style={{fontSize:13, color:"#ccc", flex:1}}>{item.name}</span>
- <div style={{display:"flex", alignItems:"center", gap:8}}>
- <button style={{...s.btn("danger"), padding:"2px 10px", fontSize:14}} onClick={() => changeRepQty(item.cartId, -1)}>−</button>
+ <div style={{display:"flex", alignItems:"center", gap:6}}>
+ <button style={{...s.btn("danger"), padding:"2px 8px", fontSize:13}} onClick={() => changeRepQty(item.cartId, -1)}>−</button>
  <span style={{fontWeight:900, color:Y, minWidth:20, textAlign:"center"}}>{item.qty}</span>
- <button style={{...s.btn(), padding:"2px 10px", fontSize:14}} onClick={() => changeRepQty(item.cartId, 1)}>+</button>
- <span style={{color:"#666", fontSize:12, minWidth:52, textAlign:"right"}}>{fmt(item.price*item.qty)}</span>
+ <button style={{...s.btn(), padding:"2px 8px", fontSize:13}} onClick={() => changeRepQty(item.cartId, 1)}>+</button>
+ <span style={{color:"#666", fontSize:11, minWidth:48, textAlign:"right"}}>{fmt(item.price*item.qty)}</span>
  </div>
  </div>
- ))
- }
- {repItems.length > 0 && (
- <div style={{display:"flex", justifyContent:"space-between", borderTop:"1px solid #27ae6033", marginTop:8, paddingTop:8, fontWeight:900}}>
+ ))}
+ <div style={{display:"flex", justifyContent:"space-between", borderTop:"1px solid #27ae6033", marginTop:6, paddingTop:6, fontWeight:900}}>
  <span style={{color:"#27ae60"}}>Total reemplazo</span>
  <span style={{color:Y}}>{fmt(repTotal)}</span>
  </div>
- )}
+ </>
+ }
+
+ {/* Buscador de carta */}
+ <div style={{marginTop:10, borderTop:"1px solid #1a3a1a", paddingTop:10}}>
+ <div style={{fontSize:11, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>+ Agregar desde la carta</div>
+ <input
+ style={{...s.input, marginBottom:6, fontSize:12, padding:"6px 10px"}}
+ placeholder="Buscar platillo..."
+ value={menuSearch}
+ onChange={e => setMenuSearch(e.target.value)}
+ />
+ <div style={{display:"flex", gap:4, flexWrap:"wrap", marginBottom:6}}>
+ {["Todos", ...repCats].map(c => (
+ <button key={c} style={{...s.btn(menuCat===c?"primary":"secondary"), fontSize:9, padding:"2px 6px"}} onClick={() => setMenuCat(c)}>{c}</button>
+ ))}
+ </div>
+ <div style={{maxHeight:160, overflowY:"auto"}}>
+ {filteredRepMenu.map(item => {
+ const inCart = repItems.find(i => i.cartId === item.id || i.id === item.id);
+ return (
+ <div key={item.id}
+ onClick={() => addRepItem(item)}
+ style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 8px", borderRadius:6, marginBottom:4, background: inCart ? `${Y}15` : "#111", border:`1px solid ${inCart ? Y+"44" : "#1a2a1a"}`, cursor:"pointer"}}>
+ <span style={{fontSize:12, color:"#ccc", flex:1}}>{item.name}</span>
+ <div style={{display:"flex", alignItems:"center", gap:6}}>
+ <span style={{color:Y, fontWeight:900, fontSize:12}}>{fmt(item.price)}</span>
+ {inCart
+ ? <span style={{background:Y, color:"#111", borderRadius:10, padding:"1px 7px", fontSize:11, fontWeight:900}}>×{inCart.qty}</span>
+ : <span style={{background:"#2a3a2a", borderRadius:"50%", width:20, height:20, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, color:"#aaa"}}>+</span>
+ }
+ </div>
+ </div>
+ );
+ })}
+ </div>
+ </div>
  </div>
  )}
 
@@ -1517,7 +1573,7 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
  if (isFullyDone) {
  setTimeout(() => markKitchenListo(orderId), 500); 
  }
- return {...prev, [orderId]: newOrderChecks}; 
+ return {...prev, [orderId]: newOrderChecks};
  }); 
  };
 
@@ -1939,7 +1995,7 @@ export default function App() {
  const showToast = (msg,color="#27ae60") => { setToast({msg,color}); setTimeout(()=>setToast(null),2800); };
  
  const saveOrders = async (v) => { await FS(currentUser.localId).saveOrders(v); };
- const saveMenu = async (v) => { setMenu(v); await FS(currentUser.localId).saveMenu(v.filter(i=>i.id.startsWith("CUSTOM_"))); };
+ const saveMenu = async (v) => { setMenu(v); await FS(currentUser.localId).saveMenu(v.filter(i=>i.id.startsWith("CUSTOM_")||i.id.startsWith("TP")&&!["TP01","TP02","TP03","TP04","TP05"].includes(i.id))); };
  const addHistory = async (o) => { await FS(currentUser.localId).addHistory(o); };
 
  const addMesa = async () => {
@@ -2301,7 +2357,7 @@ export default function App() {
 
  {anulacionModal && (
  <div style={s.overlay} onClick={() => setAnulacionModal(null)}>
- <AnulacionModal order={anulacionModal} onConfirm={(items, motivo) => anularPedido(anulacionModal, items, motivo)} onClose={() => setAnulacionModal(null)} s={s} Y={Y} fmt={fmt} />
+ <AnulacionModal order={anulacionModal} onConfirm={(items, motivo) => anularPedido(anulacionModal, items, motivo)} onClose={() => setAnulacionModal(null)} menu={menu} s={s} Y={Y} fmt={fmt} />
  </div>
  )}
 
