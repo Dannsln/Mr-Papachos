@@ -421,7 +421,7 @@ function SplitBillModal({ order, onProceed, onClose, s, Y, fmt }) {
           {splitItems.map(item => (
             <div key={item.cartId} style={{display:"flex", alignItems:"center", justifyContent:"space-between", background:"#1a1a1a", padding:10, borderRadius:8, marginBottom:8, border:"1px solid #333"}}>
               <div style={{flex:1}}>
-                <div style={{fontWeight:800, fontSize:13}}>{item.name} {item.isLlevar && "🥡"}</div>
+                <div style={{fontWeight:800, fontSize:13}}>{item.name} {item.isLlevar && "(Llevar)"}</div>
                 <div style={{fontSize:11, color:"#888"}}>{item.qty} disponible(s) · {fmt(item.price)} c/u</div>
               </div>
               <div style={{display:"flex", alignItems:"center", gap:10}}>
@@ -549,7 +549,7 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
           {["mesa","llevar"].map(t => (
             <button key={t} style={{ ...s.btn(eOrderType===t?"primary":"secondary"), flex:1 }}
               onClick={() => { setEOrderType(t); }}>
-              {t==="mesa"?"🪑 Mesa":"🥡 Para llevar"}
+              {t==="mesa"?"Mesa":"Para llevar"}
             </button>
           ))}
         </div>
@@ -587,7 +587,7 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
             <div key={item.cartId} style={{ marginBottom:10, padding:"10px", background:"#0a0a0a", borderRadius:8, border:"1px solid #222" }}>
               <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8, paddingBottom:8, borderBottom:"1px solid #252525" }}>
                 <div style={{ flex:1, fontSize:14, fontWeight:700 }}>
-                  {item.name} {item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"2px 6px", fontSize:10, fontWeight:700}}>🥡 Llevar</span>}
+                  {item.name} {item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"2px 6px", fontSize:10, fontWeight:700}}>(Llevar)</span>}
                   {["Alitas", "Alichaufa", "Rondas"].includes(item.cat) && (
                     <button style={{...s.btn("secondary"), padding:"2px 6px", fontSize:10, marginLeft:6}} onClick={() => setSalsasModal({cartId: item.cartId, salsas: item.salsas || []})}>
                       🥫 Salsas
@@ -810,7 +810,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
           {["mesa","llevar"].map(t => (
             <button key={t} style={{ ...s.btn(draft.orderType===t?"primary":"secondary"), flex:1 }}
               onClick={() => setDraft(d => ({...d, orderType:t, taperCost:0, payTiming: t==="llevar"?"ahora":"despues"}))}>
-              {t==="mesa"?"🪑 Mesa":"🥡 Para llevar"}
+              {t==="mesa"?"Mesa":"Para llevar"}
             </button>
           ))}
         </div>
@@ -946,13 +946,13 @@ function printOrder(order) {
     if (validNotes.length > 0) {
       notesHtml = validNotes.map((n, idx) => `<tr><td colspan="3" style="font-size:9px;color:#666;padding-top:0;padding-bottom:1mm;font-style:italic;">📝 [Plato ${idx+1}]: ${n}</td></tr>`).join("");
     }
-    const salsasHtml = i.salsas?.length > 0 ? `<tr><td colspan="3" style="font-size:9px;color:#333;padding-top:0;padding-bottom:1mm;">🥫 Salsas: ${i.salsas.map(s=>`${s.name} (${s.style})`).join(', ')}</td></tr>` : "";
-    const llevarTag = i.isLlevar ? ` <span style="font-size:8px;font-weight:bold;">[🥡LLEVAR]</span>` : "";
+    const salsasHtml = i.salsas?.length > 0 ? `<tr><td colspan="3" style="font-size:9px;color:#333;padding-top:0;padding-bottom:1mm;">Salsas: ${i.salsas.map(s=>`${s.name} (${s.style})`).join(', ')}</td></tr>` : "";
+    const llevarTag = i.isLlevar ? ` <span style="font-size:8px;font-weight:bold;">[(LLEVAR)]</span>` : "";
     return `<tr><td class="qty">${i.qty}x</td><td class="item">${i.name}${llevarTag}</td><td class="price">S/.${(i.price*i.qty).toFixed(2)}</td></tr>${salsasHtml}${notesHtml}`;
   }).join("");
 
-  const notes = order.notes ? `<div class="notes">📝 ${order.notes}</div>` : "";
-  const tipo  = order.orderType==="llevar" ? `🥡 LLEVAR — ${order.table}${order.phone?` · ${order.phone}`:""}` : `MESA ${order.table}`;
+  const notes = order.notes ? `<div class="notes">${order.notes}</div>` : "";
+  const tipo  = order.orderType==="llevar" ? `LLEVAR — ${order.table}${order.phone?` · ${order.phone}`:""}` : `MESA ${order.table}`;
   const hora  = new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"});
   const fecha = new Date().toLocaleDateString("es-PE",{day:"2-digit",month:"2-digit",year:"2-digit"});
   const paidMarker = order.isPaid ? `<div style="text-align:center;font-weight:bold;margin-top:2mm;border:1px solid #000;padding:2px;">** PAGADO **</div>` : "";
@@ -1010,7 +1010,7 @@ function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, set
 
   return (
     <div>
-      <div style={s.title}>📊 RESUMEN DEL DÍA</div>
+      <div style={s.title}>Estado</div>
       <div style={s.grid(isMobile ? 130 : 140)}>
         <div style={s.statCard}><div style={s.statNum}>{orders.filter(o => o.kitchenStatus !== 'listo').length}</div><div style={s.statLbl}>Activos Cocina</div></div>
         <div style={s.statCard}><div style={s.statNum}>{allPaidToday.length}</div><div style={s.statLbl}>Pagados hoy</div></div>
@@ -1048,7 +1048,7 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
             </div>
           )}
         </div>
-        <button style={s.btn()} onClick={() => { setDraft({...newDraft(), orderType:"llevar", payTiming:"ahora"}); setTab("nuevo"); }}>🥡 Para llevar</button>
+        <button style={s.btn()} onClick={() => { setDraft({...newDraft(), orderType:"llevar", payTiming:"ahora"}); setTab("nuevo"); }}>Para llevar</button>
       </div>
 
       <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(3, 1fr)", gridAutoRows: isTablet ? "minmax(25vh, auto)" : "auto", gap: isMobile ? 12 : 20, marginBottom:20 }}>
@@ -1348,15 +1348,15 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder }
                   {/* Cajas de Métodos de Pago */}
                   <div style={{display:"flex", gap:12, marginBottom:20, flexWrap:"wrap"}}>
                     <div style={{flex:1, minWidth:100, background:"#1a2e1a", border:"1px solid #27ae6055", borderRadius:8, padding:"12px", textAlign:"center"}}>
-                      <div style={{color:"#27ae60", fontSize:11, fontWeight:800, marginBottom:4, letterSpacing:1}}>💵 EFECTIVO</div>
+                      <div style={{color:"#27ae60", fontSize:11, fontWeight:800, marginBottom:4, letterSpacing:1}}> EFECTIVO</div>
                       <div style={{color:"#fff", fontWeight:900, fontSize:18}}>{fmt(d.ef)}</div>
                     </div>
                     <div style={{flex:1, minWidth:100, background:"#2a1a3a", border:"1px solid #8e44ad55", borderRadius:8, padding:"12px", textAlign:"center"}}>
-                      <div style={{color:"#c39bd3", fontSize:11, fontWeight:800, marginBottom:4, letterSpacing:1}}>💜 YAPE</div>
+                      <div style={{color:"#c39bd3", fontSize:11, fontWeight:800, marginBottom:4, letterSpacing:1}}> YAPE</div>
                       <div style={{color:"#fff", fontWeight:900, fontSize:18}}>{fmt(d.ya)}</div>
                     </div>
                     <div style={{flex:1, minWidth:100, background:"#1a253a", border:"1px solid #2980b955", borderRadius:8, padding:"12px", textAlign:"center"}}>
-                      <div style={{color:"#5dade2", fontSize:11, fontWeight:800, marginBottom:4, letterSpacing:1}}>💳 TARJETA</div>
+                      <div style={{color:"#5dade2", fontSize:11, fontWeight:800, marginBottom:4, letterSpacing:1}}> TARJETA</div>
                       <div style={{color:"#fff", fontWeight:900, fontSize:18}}>{fmt(d.ta)}</div>
                     </div>
                   </div>
@@ -1392,7 +1392,7 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder }
                           {!isCanceled && (
                             <div style={{fontSize:11, color:"#aaa", display:"flex", gap:12, marginBottom:10, background:"#0a0a0a", padding:"8px 12px", borderRadius:6}}>
                               <span style={{fontWeight:800, color:"#777"}}>MEDIO DE PAGO:</span>
-                              {[pe>0&&`💵 Efectivo: ${fmt(pe)}`, py>0&&`💜 Yape: ${fmt(py)}`, pt>0&&`💳 Tarjeta: ${fmt(pt)}`].filter(Boolean).join("  |  ")}
+                              {[pe>0&&` Efectivo: ${fmt(pe)}`, py>0&&` Yape: ${fmt(py)}`, pt>0&&` Tarjeta: ${fmt(pt)}`].filter(Boolean).join("  |  ")}
                             </div>
                           )}
 
@@ -1493,7 +1493,7 @@ function CartaComponent({ menu, cartaCatFilter, setCartaCatFilter, showAdd, setS
   return (
     <div>
       <div style={{...s.row, marginBottom:14}}>
-        <div style={s.title}>🍔 CARTA ({menu.length})</div>
+        <div style={s.title}>CARTA ({menu.length})</div>
         <button style={s.btn()} onClick={() => setShowAdd(!showAdd)}>{showAdd ? "✕ Cancelar" : "+ Agregar"}</button>
       </div>
       {showAdd && (
@@ -1850,7 +1850,7 @@ export default function App() {
       <div style={s.app}>
         <header style={s.header}>
           <div>
-            <h1 style={s.logo}>🍔 MR. PAPACHOS · CAJAMARCA</h1>
+            <h1 style={s.logo}>MR. PAPACHOS · CAJAMARCA</h1>
             {!isMobile&&<div style={{fontSize:11,color:"#555",fontWeight:700}}>Modo: {currentUser.label} | SUCURSAL: {currentUser.localName.toUpperCase()}</div>}
           </div>
           <div style={{display:"flex", gap:10, alignItems:"center"}}>
