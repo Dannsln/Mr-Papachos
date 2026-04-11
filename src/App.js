@@ -194,6 +194,73 @@ function useWindowWidth() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+//  PANTALLA DE INICIO NEÓN (NUEVO)
+// ═══════════════════════════════════════════════════════════════════
+function LandingScreen({ onEnter, Y, isMobile }) {
+  return (
+    <div 
+      onClick={onEnter}
+      style={{
+        background: "#050505", height: "100vh", width: "100vw", 
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", 
+        cursor: "pointer", position: "relative", overflow: "hidden"
+      }}
+    >
+      <style>{`
+        @keyframes neonFlicker {
+          0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% {
+            text-shadow: -0.1rem -0.1rem 1rem #fff, 0.1rem 0.1rem 1rem #fff, 0 0 2rem ${Y}, 0 0 4rem ${Y}, 0 0 6rem ${Y}, 0 0 8rem ${Y}, 0 0 10rem ${Y};
+            color: #fff;
+          }
+          20%, 24%, 55% {
+            text-shadow: none;
+            color: #222;
+          }
+        }
+        @keyframes pulseText {
+          0% { opacity: 0.3; }
+          100% { opacity: 1; }
+        }
+      `}</style>
+      
+      <div style={{
+        fontFamily: "'Bebas Neue', cursive", 
+        fontSize: isMobile ? "20vw" : "12vw", 
+        color: "#fff",
+        animation: "neonFlicker 3s infinite alternate",
+        textAlign: "center",
+        lineHeight: "1",
+        zIndex: 10
+      }}>
+        MR. PAPACHO'S
+      </div>
+      
+      <div style={{
+        fontFamily: "'Nunito', sans-serif",
+        color: Y,
+        fontSize: isMobile ? "5vw" : "2vw",
+        letterSpacing: "6px",
+        marginTop: "10px",
+        textTransform: "uppercase",
+        zIndex: 10,
+        opacity: 0.8
+      }}>
+        1-3 • Cajamarca
+      </div>
+
+      <div style={{
+        position: "absolute", bottom: "15%",
+        fontFamily: "'Nunito', sans-serif", fontSize: 14, color: "#888",
+        animation: "pulseText 1.5s infinite alternate", letterSpacing: 2,
+        textTransform: "uppercase"
+      }}>
+        [ Toca la pantalla para entrar ]
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 //  ICONO DE MESA VECTORIAL (SVG) 
 // ═══════════════════════════════════════════════════════════════════
 const IconoMesa = ({ color, size }) => (
@@ -1222,26 +1289,17 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder }
     const dateObj = new Date(o.createdAt);
     const dateStr = dateObj.toLocaleDateString("es-PE");
     const sortKey = dateObj.getFullYear() + "-" + String(dateObj.getMonth()+1).padStart(2,'0') + "-" + String(dateObj.getDate()).padStart(2,'0');
-    
     if (!historyByDay[dateStr]) historyByDay[dateStr] = { date: dateStr, sortKey, orders: [], total: 0, ef: 0, ya: 0, ta: 0, cancelados: 0 };
     historyByDay[dateStr].orders.push(o);
-    
     if (o.status === "pagado") {
-      historyByDay[dateStr].total += o.total; 
-      historyByDay[dateStr].ef += getPay(o, "efectivo"); 
-      historyByDay[dateStr].ya += getPay(o, "yape"); 
-      historyByDay[dateStr].ta += getPay(o, "tarjeta");
-    } else if (o.status === "cancelado") { 
-      historyByDay[dateStr].cancelados += 1; 
-    }
+      historyByDay[dateStr].total += o.total; historyByDay[dateStr].ef += getPay(o, "efectivo"); historyByDay[dateStr].ya += getPay(o, "yape"); historyByDay[dateStr].ta += getPay(o, "tarjeta");
+    } else if (o.status === "cancelado") { historyByDay[dateStr].cancelados += 1; }
   });
 
   let daysList = Object.values(historyByDay).sort((a,b) => b.sortKey.localeCompare(a.sortKey));
   if (histDate) daysList = daysList.filter(d => d.sortKey === histDate);
 
-  const toggleDay = (dateStr) => {
-    setExpandedDays(prev => prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]);
-  };
+  const toggleDay = (dateStr) => setExpandedDays(prev => prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]);
 
   return (
     <div>
@@ -1520,8 +1578,6 @@ export default function App() {
   const [mergeName,     setMergeName]     = useState("");
   const [mesasArr,       setMesasArr]       = useState([]); 
 
-  useEffect(() => { const t=setTimeout(()=>setSplash(false),2200); return()=>clearTimeout(t); }, []);
-
   useEffect(() => {
     if (!currentUser) return;
     setLoaded(false);
@@ -1758,12 +1814,10 @@ export default function App() {
   const deleteMenuItem = async (id) => { await saveMenu(menu.filter(i=>i.id!==id)); showToast("🗑️ Platillo eliminado","#e74c3c"); };
 
   if (splash) return (
-    <div style={{background:"#111",height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20}}>
+    <>
       <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito:wght@400;700;900&display=swap" rel="stylesheet"/>
-      <div style={{fontSize:90}}>🍔</div>
-      <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:36,color:"#FFD700",letterSpacing:4}}>MR. PAPACHOS</div>
-      <div style={{fontFamily:"'Nunito',sans-serif",color:"#555",fontSize:13,letterSpacing:3,textTransform:"uppercase"}}>Cajamarca</div>
-    </div>
+      <LandingScreen onEnter={() => setSplash(false)} Y="#FFD700" isMobile={isMobile} />
+    </>
   );
 
   const Y = "#FFD700";
