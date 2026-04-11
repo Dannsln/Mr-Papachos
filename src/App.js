@@ -20,6 +20,7 @@ const db     = getFirestore(_fbApp);
 const FS = (localId) => ({
   ordersRef:  () => doc(db, `mrpapachos_${localId}`, "orders"),
   menuRef:    () => doc(db, `mrpapachos_${localId}`, "customMenu"),
+  configRef:  () => doc(db, `mrpapachos_${localId}`, "config"), // NUEVO
   historyCol: () => collection(db, `mrpapachos_${localId}_historial`),
   
   async getOrders() {
@@ -33,6 +34,9 @@ const FS = (localId) => ({
   },
   async saveMenu(list) {
     try { await setDoc(this.menuRef(), { list, ts: new Date().toISOString() }); } catch (e) { console.error(e); }
+  },
+  async saveConfig(data) { // NUEVO
+    try { await setDoc(this.configRef(), data, { merge: true }); } catch (e) { console.error(e); }
   },
   async addHistory(order) {
     try { await addDoc(this.historyCol(), order); } catch (e) { console.error(e); }
@@ -985,16 +989,27 @@ function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, set
   );
 }
 
-function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, finishPaidOrder, setCobrarTarget, setSplitTarget, isMobile, isTablet, s, Y, fmt, MESAS }) {
+function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, finishPaidOrder, setCobrarTarget, setSplitTarget, isMobile, isTablet, s, Y, fmt, mesasArr, addMesa, removeMesa, currentUser }) {
   const llevarOrders = orders.filter(o => o.orderType==="llevar");
+  
   return (
     <div>
       <div style={{...s.row, marginBottom:14}}>
-        <div style={s.title}>🪑 MESAS</div>
+        <div style={{display:"flex", alignItems:"center", gap:12}}>
+          <div style={s.title}>🪑 MESAS ({mesasArr.length})</div>
+          {/* Solo el Admin puede agregar o quitar mesas */}
+          {currentUser?.id === 'admin' && (
+            <div style={{display:"flex", gap:4, marginBottom:10}}>
+              <button style={{...s.btn("danger"), padding:"4px 12px", fontSize:18}} onClick={removeMesa}>-</button>
+              <button style={{...s.btn("success"), padding:"4px 12px", fontSize:18}} onClick={addMesa}>+</button>
+            </div>
+          )}
+        </div>
         <button style={s.btn()} onClick={() => { setDraft({...newDraft(), orderType:"llevar", payTiming:"ahora"}); setTab("nuevo"); }}>🥡 Para llevar</button>
       </div>
+
       <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(3, 1fr)", gridAutoRows: isTablet ? "minmax(25vh, auto)" : "auto", gap: isMobile ? 12 : 20, marginBottom:20 }}>
-        {MESAS.map(num => {
+        {mesasArr.map(num => {
           const mesaOrders = orders.filter(o => o.table===String(num) && o.orderType!=="llevar");
           const ocupada = mesaOrders.length > 0;
           const total = mesaOrders.reduce((sum,o) => sum + o.total, 0);
@@ -1008,6 +1023,31 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
           );
         })}
       </div>
+      {/* ... (El código de Para Llevar sigue exactamente igual debajo de esto) */}
+      {llevarOrders.length > 0 && (
+        <div>
+          <div style={{...s.title, fontSize:16}}>🥡 PARA LLEVAR ({llevarOrders.length})</div>
+          {llevarOrders.map(o => (
+            <div key={o.id} style={{...s.card, borderLeft:`4px solid #3498db`}}>
+              <div style={s.row}>
+                <div><span style={{fontWeight:900}}>🥡 {o.table}</span>{o.isPaid&&<span style={{...s.tag("#1e5c2e"), marginLeft:6}}>✅ Pagado</span>}</div>
+                <span style={{color:Y, fontWeight:900}}>{fmt(o.total)}</span>
+              </div>
+              <div style={{display:"flex", gap:6, marginTop:8, flexWrap:"wrap"}}>
+                {o.isPaid ? (
+                  <button style={{...s.btn("blue"), flex:1}} onClick={() => finishPaidOrder(o.id)}>✅ Entregado</button>
+                ) : (
+                  <button style={{...s.btn("success"), flex:1}} onClick={() => setCobrarTarget({type:'existing', data:o})}>💰 Cobrar</button>
+                )}
+                <button style={{...s.btn("warn"), flex:1}} onClick={() => setEditingOrder(o)}>✏️ Editar</button>
+                <button style={s.btn("secondary")} onClick={() => printOrder(o)}>🖨️</button>
+                {o.enlace_pdf && <button style={{...s.btn("blue"), padding:"7px 10px"}} onClick={() => window.open(o.enlace_pdf, "_blank")}>🧾 SUNAT</button>}
+                <button style={{...s.btn("danger"), padding:"7px 10px"}} onClick={() => cancelOrder(o.id)}>❌</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1485,6 +1525,7 @@ export default function App() {
   const [splitTarget,   setSplitTarget]   = useState(null); 
   const [mergeModal,    setMergeModal]    = useState(null);
   const [mergeName,     setMergeName]     = useState("");
+  const [mesasArr,       setMesasArr]       = useState([]); // NUEVO
 
   useEffect(() => { const t=setTimeout(()=>setSplash(false),2200); return()=>clearTimeout(t); }, []);
 
@@ -1493,7 +1534,8 @@ export default function App() {
     setLoaded(false);
     const localFS = FS(currentUser.localId);
     
-    let unsubOrders, unsubHistory, unsubMenu;
+   let unsubOrders, unsubHistory, unsubMenu, unsubConfig; // Agregamos unsubConfig
+
     const setupListeners = () => {
       unsubOrders = onSnapshot(localFS.ordersRef(), (docSnap) => {
         if (docSnap.exists()) setOrders(docSnap.data().list || []); else setOrders([]);
@@ -1504,17 +1546,47 @@ export default function App() {
       unsubHistory = onSnapshot(query(localFS.historyCol(), orderBy("createdAt", "desc"), limit(1000)), (snapshot) => {
         setHistory(snapshot.docs.map(d => ({ _fid: d.id, ...d.data() })));
       });
+      
+      // NUEVO: Escuchar la cantidad de mesas de la sucursal actual
+      unsubConfig = onSnapshot(localFS.configRef(), (docSnap) => {
+        if (docSnap.exists() && docSnap.data().mesas) setMesasArr(docSnap.data().mesas);
+        else setMesasArr([1, 2, 3, 4, 5, 6]); // Mesas por defecto si es local nuevo
+      });
+
       setLoaded(true);
     };
     setupListeners();
-    return () => { if (unsubOrders) unsubOrders(); if (unsubHistory) unsubHistory(); if (unsubMenu) unsubMenu(); };
-  }, [currentUser]);
+    return () => { if (unsubOrders) unsubOrders(); if (unsubHistory) unsubHistory(); if (unsubMenu) unsubMenu(); if (unsubConfig) unsubConfig(); };
 
   const showToast = (msg,color="#27ae60") => { setToast({msg,color}); setTimeout(()=>setToast(null),2800); };
   
   const saveOrders = async (v) => { await FS(currentUser.localId).saveOrders(v); };
   const saveMenu   = async (v) => { setMenu(v); await FS(currentUser.localId).saveMenu(v.filter(i=>i.id.startsWith("CUSTOM_"))); };
   const addHistory = async (o) => { await FS(currentUser.localId).addHistory(o); };
+
+    const addMesa = async () => {
+    const newMesas = [...mesasArr, mesasArr.length > 0 ? Math.max(...mesasArr) + 1 : 1];
+    setMesasArr(newMesas);
+    await FS(currentUser.localId).saveConfig({ mesas: newMesas });
+    showToast("🪑 Mesa agregada con éxito");
+  };
+
+  const removeMesa = async () => {
+    if (mesasArr.length === 0) return;
+    const lastMesa = mesasArr[mesasArr.length - 1];
+    
+    // Validación brutal: No borrar la mesa si hay un cliente tragando ahí
+    const hasOrders = orders.some(o => o.table === String(lastMesa) && o.orderType !== "llevar");
+    if (hasOrders) {
+      showToast(`❌ La Mesa ${lastMesa} tiene pedidos activos. Cóbrelos primero.`, "#e74c3c");
+      return;
+    }
+
+    const newMesas = mesasArr.slice(0, -1);
+    setMesasArr(newMesas);
+    await FS(currentUser.localId).saveConfig({ mesas: newMesas });
+    showToast("🗑️ Mesa quitada", "#888");
+  };
 
   const markKitchenListo = async (orderId) => {
     setOrders(prevOrders => {
@@ -1785,7 +1857,7 @@ export default function App() {
 
         <div style={s.content}>
           {tab==="dashboard"  && <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} />}
-          {tab==="mesas"      && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} MESAS={MESAS} />}
+          {tab==="mesas"      && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} mesasArr={mesasArr} addMesa={addMesa} removeMesa={removeMesa} currentUser={currentUser} />}
           {tab==="nuevo"      && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} />}
           {tab==="pedidos"    && <PedidosComponent orders={orders} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
           {tab==="cocina"     && <CocinaComponent orders={orders} kitchenChecks={kitchenChecks} setKitchenChecks={setKitchenChecks} markKitchenListo={markKitchenListo} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} />}
