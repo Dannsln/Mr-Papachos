@@ -199,6 +199,12 @@ const MENU_BASE = [
  { id:"EX02", cat:"Extras", name:"Porción de Ensalada", price:4, desc:"Porción extra de ensalada" },
  { id:"EX03", cat:"Extras", name:"Porción de Chaufa", price:6, desc:"Porción extra de arroz chaufa" },
  { id:"EX04", cat:"Extras", name:"Arroz Blanco en Molde", price:3, desc:"Porción de arroz blanco" },
+ // ── TAPERS ──────────────────────────────────────────────────────────
+ { id:"TP01", cat:"Tapers", name:"Taper Pequeño", price:1.00, desc:"Taper pequeño para llevar" },
+ { id:"TP02", cat:"Tapers", name:"Taper Mediano", price:1.50, desc:"Taper mediano para llevar" },
+ { id:"TP03", cat:"Tapers", name:"Taper Grande", price:2.00, desc:"Taper grande para llevar" },
+ { id:"TP04", cat:"Tapers", name:"Bolsa Pequeña", price:0.50, desc:"Bolsa pequeña para llevar" },
+ { id:"TP05", cat:"Tapers", name:"Bolsa Grande", price:1.00, desc:"Bolsa grande para llevar" },
 ];
 
 const ALL_CATS = [...new Set(MENU_BASE.map(i => i.cat))];
@@ -480,13 +486,12 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
  const [ePhone, setEPhone] = useState(order.phone || "");
  const [eOrderType, setEOrderType] = useState(order.orderType || "mesa");
  const taperItem = eItems.find(i => i.id === "TAPER");
- const [eTaperCost, setETaperCost] = useState(taperItem ? 0 : (order.taperCost || 0));
 
  const [eCat, setECat] = useState("Todos");
  const [eSearch, setESearch] = useState("");
  const [salsasModal, setSalsasModal] = useState(null);
 
- const eTotal = eItems.reduce((sum, i) => sum + i.price * i.qty, 0) + (Number(eTaperCost) || 0);
+ const eTotal = eItems.reduce((sum, i) => sum + i.price * i.qty, 0);
 
  const eAddItem = (item) => setEItems(prev => {
  const ex = prev.find(i => i.cartId === item.id);
@@ -528,9 +533,6 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
  const handleSave = () => {
  if (!eTable.trim() || !eItems.length) return;
  let finalItems = [...eItems];
- if (eTaperCost > 0 && !taperItem) {
- finalItems.push({ id: "TAPER", cartId: "TAPER", name: "Taper / Bolsa", price: eTaperCost, qty: 1, individualNotes: [""] });
- }
  onSave({ ...order, table: eTable, items: finalItems, notes: eNotes, phone: ePhone, total: eTotal, orderType: eOrderType, taperCost: 0 });
  };
 
@@ -587,16 +589,6 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
  </div>
  )}
 
- {!taperItem && (
- <div style={{ marginBottom:10 }}>
- <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>
- Taper / Bolsa (S/.)
- </label>
- <input style={{ ...s.input, marginTop:4 }} type="number" min="0" step="0.50" placeholder="Ej: 1.00"
- value={eTaperCost || ""} onChange={e => setETaperCost(e.target.value)} />
- </div>
- )}
-
  <div style={{ marginBottom:10 }}>
  <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas Generales</label>
  <textarea style={{ ...s.input, marginTop:4, resize:"vertical", minHeight:60, fontFamily:"inherit" }} value={eNotes} onChange={e => setENotes(e.target.value)} placeholder="Sin cebolla en general..." spellCheck="false" />
@@ -642,12 +634,6 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
  </div>
  ))
  }
- {eTaperCost > 0 && !taperItem && (
- <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid #252525", color:"#aaa", fontSize:12 }}>
- <span> Taper/Bolsa</span>
- <span>{fmt(Number(eTaperCost))}</span>
- </div>
- )}
  {eItems.length > 0 && (
  <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0 2px", borderTop:`2px solid ${Y}44` }}>
  <span style={{ fontWeight:900 }}>TOTAL</span>
@@ -758,7 +744,6 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  const [salsasModal, setSalsasModal] = useState(null);
 
  const filteredMenu = menu.filter(i => (catFilter === "Todos" || i.cat === catFilter) && i.name.toLowerCase().includes(search.toLowerCase()));
- const taperNum = Number(draft.taperCost) || 0;
  const itemCount = draft.items.reduce((sum, i) => sum + i.qty, 0);
 
  const handleCartaClick = (item) => {
@@ -829,11 +814,6 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  </div>
 
  <div style={{ marginBottom:10 }}>
- <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}> Taper / Bolsa (S/.)</label>
- <input style={{ ...s.input, marginTop:4 }} type="number" min="0" step="0.50" placeholder="0.00" value={draft.taperCost || ""} onChange={e => setDraft(d => ({...d, taperCost: e.target.value}))} />
- </div>
-
- <div style={{ marginBottom:10 }}>
  <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Momento del Cobro</label>
  <div style={{ display:"flex", gap:6, marginTop:4 }}>
  <button style={{ ...s.btn(draft.payTiming==="despues"?"primary":"secondary"), flex:1 }} onClick={() => setDraft(d => ({...d,payTiming:"despues"}))}> Pagar después</button>
@@ -878,8 +858,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  </div>
  }
 
- {taperNum > 0 && <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderTop:"1px solid #2a2a2a", color:"#aaa", fontSize:12 }}><span> Taper/Bolsa</span><span>{fmt(taperNum)}</span></div>}
- <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderTop:`2px solid ${Y}55`, marginBottom:12 }}><span style={{ fontWeight:900, fontSize:17 }}>TOTAL</span><span style={{ fontWeight:900, fontSize:17, color:Y }}>{fmt(draftTotal + taperNum)}</span></div>
+ <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderTop:`2px solid ${Y}55`, marginBottom:12 }}><span style={{ fontWeight:900, fontSize:17 }}>TOTAL</span><span style={{ fontWeight:900, fontSize:17, color:Y }}>{fmt(draftTotal)}</span></div>
 
  <button style={{ ...s.btn(), width:"100%", padding:16, fontSize:16, opacity:(draft.orderType==="mesa" && !draft.table || !draft.items.length)?0.4:1 }}
  onClick={() => { submitOrder(); if(isMobile) setShowCartModal(false); }} disabled={draft.orderType==="mesa" && !draft.table || !draft.items.length}>
@@ -1034,8 +1013,8 @@ function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, set
  );
 }
 
-function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, finishPaidOrder, setCobrarTarget, setSplitTarget, setEditingOrder, printOrder, cancelOrder, isMobile, isTablet, s, Y, fmt, mesasArr, addMesa, removeMesa, currentUser }) {
- const llevarOrders = orders.filter(o => o.orderType==="llevar");
+function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, finishPaidOrder, setCobrarTarget, setSplitTarget, setEditingOrder, printOrder, cancelOrder, setAnulacionModal, isMobile, isTablet, s, Y, fmt, mesasArr, addMesa, removeMesa, currentUser }) {
+ const llevarOrders = orders.filter(o => o.orderType==="llevar" && !o.anulado);
  
  return (
  <div>
@@ -1084,9 +1063,13 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
  ) : (
  <button style={{...s.btn("success"), flex:1}} onClick={() => setCobrarTarget({type:'existing', data:o})}>💰 Cobrar</button>
  )}
+ {currentUser?.id === 'admin' && !o.isPaid && (
  <button style={{...s.btn("warn"), flex:1}} onClick={() => setEditingOrder(o)}>✏️ Editar</button>
+ )}
  <button style={s.btn("secondary")} onClick={() => printOrder(o)}>🖨</button>
- <button style={{...s.btn("danger"), padding:"7px 10px"}} onClick={() => cancelOrder(o.id)}>🚫</button>
+ {currentUser?.id === 'admin' && !o.isPaid && (
+ <button style={{...s.btn("danger"), padding:"7px 10px"}} onClick={() => setAnulacionModal(o)}>🚫 Anular</button>
+ )}
  </div>
  </div>
  ))}
@@ -1096,8 +1079,8 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
  );
 }
 
-function MesaModalComponent({ num, orders, setDraft, newDraft, onClose, setTab, setCobrarTarget, setSplitTarget, setEditingOrder, printOrder, isMobile, s, Y, fmt }) {
- const mesaOrders = orders.filter(o => o.table===String(num) && o.orderType!=="llevar");
+function MesaModalComponent({ num, orders, setDraft, newDraft, onClose, setTab, setCobrarTarget, setSplitTarget, setEditingOrder, setAnulacionModal, printOrder, isMobile, s, Y, fmt, currentUser }) {
+ const mesaOrders = orders.filter(o => o.table===String(num) && o.orderType!=="llevar" && !o.anulado);
  return (
  <div style={s.modal} onClick={e => e.stopPropagation()}>
  <div style={{...s.row, marginBottom:14}}>
@@ -1130,8 +1113,9 @@ function MesaModalComponent({ num, orders, setDraft, newDraft, onClose, setTab, 
  <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
  {!o.isPaid && <button style={{...s.btn("success"), flex:1}} onClick={() => { setCobrarTarget({type:'existing', data:o}); onClose(); }}> Cobrar Todo</button>}
  {!o.isPaid && <button style={{...s.btn("secondary"), flex:1}} onClick={() => { setSplitTarget(o); onClose(); }}> Dividir</button>}
- <button style={{...s.btn("warn"), flex:1}} onClick={() => { setEditingOrder(o); onClose(); }}> Editar</button>
+ {currentUser?.id === 'admin' && !o.isPaid && <button style={{...s.btn("warn"), flex:1}} onClick={() => { setEditingOrder(o); onClose(); }}> Editar</button>}
  <button style={s.btn("secondary")} onClick={() => printOrder(o)}> Ticket</button>
+ {currentUser?.id === 'admin' && !o.isPaid && <button style={{...s.btn("danger"), padding:"7px 10px", fontSize:11}} onClick={() => { setAnulacionModal(o); onClose(); }}>🚫 Anular</button>}
  </div>
  </div>
  ))
@@ -1215,8 +1199,9 @@ function InlineSplit({ order, onProceed, onClose, s, Y, fmt }) {
 // MODAL DE ANULACIÓN CON REEMPLAZO (solo Admin)
 // ═══════════════════════════════════════════════════════════════════
 function AnulacionModal({ order, onConfirm, onClose, s, Y, fmt }) {
+ const [step, setStep] = useState("confirm"); // "confirm" | "details"
  const [motivo, setMotivo] = useState("");
- const [crearReemplazo, setCrearReemplazo] = useState(true);
+ const [crearReemplazo, setCrearReemplazo] = useState(null); // null = not chosen yet
  const [repItems, setRepItems] = useState(
  (order.items || []).map(i => ({ ...i, qty: i.qty, individualNotes: i.individualNotes || [] }))
  );
@@ -1231,17 +1216,17 @@ function AnulacionModal({ order, onConfirm, onClose, s, Y, fmt }) {
  }).filter(i => i.qty > 0));
  };
 
+ // PASO 1: Confirmación explícita
+ if (step === "confirm") {
  return (
  <div style={s.modal} onClick={e => e.stopPropagation()}>
- <div style={{...s.row, marginBottom:14}}>
- <h2 style={{color:"#e74c3c", fontFamily:"'Bebas Neue',cursive", margin:0, fontSize:24, letterSpacing:1}}>🚫 ANULAR PEDIDO</h2>
- <button style={{background:"#333", border:"none", borderRadius:8, color:"#eee", width:34, height:34, fontSize:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900}} onClick={onClose}>✕</button>
+ <div style={{textAlign:"center", padding:"10px 0 20px"}}>
+ <div style={{fontSize:52, marginBottom:10}}>🚫</div>
+ <div style={{color:"#e74c3c", fontFamily:"'Bebas Neue',cursive", fontSize:26, letterSpacing:1, marginBottom:8}}>
+ ¿ANULAR ESTE PEDIDO?
  </div>
-
- {/* Info del pedido original */}
- <div style={{background:"#1a0a0a", border:"1px solid #e74c3c44", borderRadius:8, padding:"10px 14px", marginBottom:14}}>
- <div style={{fontSize:11, color:"#e74c3c", textTransform:"uppercase", letterSpacing:1, marginBottom:6, fontWeight:800}}>Pedido original a anular</div>
- <div style={{fontWeight:900, fontSize:16, marginBottom:6, color:"#eee"}}>
+ <div style={{background:"#1a0a0a", border:"1px solid #e74c3c44", borderRadius:8, padding:"10px 14px", marginBottom:16, textAlign:"left"}}>
+ <div style={{fontWeight:900, fontSize:15, color:"#eee", marginBottom:6}}>
  {order.orderType==="llevar" ? `🥡 ${order.table||"Sin nombre"}` : `🍽 Mesa ${order.table}`}
  <span style={{color:Y, marginLeft:10}}>{fmt(order.total)}</span>
  </div>
@@ -1251,30 +1236,59 @@ function AnulacionModal({ order, onConfirm, onClose, s, Y, fmt }) {
  </div>
  ))}
  </div>
+ <div style={{color:"#888", fontSize:13, marginBottom:20}}>
+ Esta acción marcará el pedido como <b style={{color:"#e74c3c"}}>ANULADO</b>.<br/>No se puede deshacer.
+ </div>
+ <div style={{display:"flex", gap:10}}>
+ <button style={{...s.btn("secondary"), flex:1, padding:14, fontSize:14}} onClick={onClose}>
+ No, mantener pedido
+ </button>
+ <button style={{...s.btn("danger"), flex:1, padding:14, fontSize:14, fontWeight:900}} onClick={() => setStep("details")}>
+ Sí, ANULAR
+ </button>
+ </div>
+ </div>
+ </div>
+ );
+ }
+
+ // PASO 2: Motivo + ¿reemplazo?
+ return (
+ <div style={s.modal} onClick={e => e.stopPropagation()}>
+ <div style={{...s.row, marginBottom:14}}>
+ <h2 style={{color:"#e74c3c", fontFamily:"'Bebas Neue',cursive", margin:0, fontSize:22, letterSpacing:1}}>🚫 ANULAR PEDIDO</h2>
+ <button style={{background:"#333", border:"none", borderRadius:8, color:"#eee", width:34, height:34, fontSize:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900}} onClick={onClose}>✕</button>
+ </div>
 
  {/* Motivo */}
- <div style={{marginBottom:14}}>
+ <div style={{marginBottom:16}}>
  <label style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1}}>Motivo de anulación (opcional)</label>
  <input style={{...s.input, marginTop:4}} placeholder="Ej: Error en el pedido, cambio de cliente..." value={motivo} onChange={e => setMotivo(e.target.value)} spellCheck="false" />
  </div>
 
- {/* Toggle reemplazo */}
- <div style={{display:"flex", alignItems:"center", gap:10, marginBottom:14, padding:"10px 14px", background:"#111", borderRadius:8, cursor:"pointer"}} onClick={() => setCrearReemplazo(v => !v)}>
- <div style={{width:22, height:22, borderRadius:6, border:`2px solid ${crearReemplazo ? Y : "#555"}`, background:crearReemplazo ? Y : "transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, transition:"all .15s"}}>
- {crearReemplazo && <span style={{color:"#111", fontWeight:900, fontSize:14}}>✓</span>}
- </div>
- <div>
- <div style={{fontWeight:800, fontSize:13}}>Crear pedido de reemplazo</div>
- <div style={{fontSize:11, color:"#666"}}>Se enviará automáticamente a cocina</div>
+ {/* ¿Agregar reemplazo? */}
+ <div style={{marginBottom:14}}>
+ <div style={{fontSize:12, color:"#aaa", marginBottom:10, fontWeight:700, textTransform:"uppercase", letterSpacing:1}}>¿Desea agregar un pedido de reemplazo?</div>
+ <div style={{display:"flex", gap:8}}>
+ <button
+ style={{...s.btn(crearReemplazo===true?"success":"secondary"), flex:1, padding:12, fontSize:13}}
+ onClick={() => setCrearReemplazo(true)}>
+ ✅ Sí, crear reemplazo
+ </button>
+ <button
+ style={{...s.btn(crearReemplazo===false?"danger":"secondary"), flex:1, padding:12, fontSize:13}}
+ onClick={() => setCrearReemplazo(false)}>
+ ❌ No, solo anular
+ </button>
  </div>
  </div>
 
  {/* Editar ítems del reemplazo */}
- {crearReemplazo && (
+ {crearReemplazo === true && (
  <div style={{background:"#0a1a0a", border:"1px solid #27ae6044", borderRadius:8, padding:"10px 14px", marginBottom:14}}>
- <div style={{fontSize:11, color:"#27ae60", textTransform:"uppercase", letterSpacing:1, marginBottom:8, fontWeight:800}}>✏️ Ítems del reemplazo</div>
+ <div style={{fontSize:11, color:"#27ae60", textTransform:"uppercase", letterSpacing:1, marginBottom:8, fontWeight:800}}>✏️ Ítems del reemplazo (ajusta si es necesario)</div>
  {repItems.length === 0
- ? <div style={{color:"#555", fontSize:12, textAlign:"center", padding:"8px 0"}}>Sin ítems — se creará sin reemplazo</div>
+ ? <div style={{color:"#555", fontSize:12, textAlign:"center", padding:"8px 0"}}>Sin ítems — se anulará sin reemplazo</div>
  : repItems.map(item => (
  <div key={item.cartId} style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6}}>
  <span style={{fontSize:13, color:"#ccc", flex:1}}>{item.name}</span>
@@ -1296,9 +1310,17 @@ function AnulacionModal({ order, onConfirm, onClose, s, Y, fmt }) {
  </div>
  )}
 
- <button style={{...s.btn("danger"), width:"100%", padding:14, fontSize:15}}
+ {crearReemplazo === false && (
+ <div style={{background:"#1a0a0a", border:"1px solid #e74c3c33", borderRadius:8, padding:"10px 14px", marginBottom:14, fontSize:12, color:"#e74c3c"}}>
+ ⚠️ El pedido quedará anulado sin reemplazo. La cocina no recibirá ningún nuevo pedido.
+ </div>
+ )}
+
+ <button
+ style={{...s.btn("danger"), width:"100%", padding:14, fontSize:15, opacity: crearReemplazo === null ? 0.4 : 1}}
+ disabled={crearReemplazo === null}
  onClick={() => onConfirm(crearReemplazo ? repItems : [], motivo)}>
- 🚫 Confirmar Anulación{crearReemplazo && repItems.length > 0 ? " y Enviar Reemplazo" : ""}
+ 🚫 Confirmar Anulación{crearReemplazo && repItems.length > 0 ? " y Enviar Reemplazo a Cocina" : ""}
  </button>
  </div>
  );
@@ -1404,7 +1426,7 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  </button>
  </>
  )}
- {(isAdmin || isMesero) && !o.isPaid && (
+ {isAdmin && !o.isPaid && (
  <button style={{...s.btn("warn"),flex:1}} onClick={()=>setEditingOrder(o)}>✏️ Editar</button>
  )}
  <button style={{...s.btn("secondary"), padding:"7px 10px", fontSize:11}} onClick={()=>printOrder(o)}>🖨</button>
@@ -1484,8 +1506,9 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
  if (next > maxQty) next = 0;
  
  const newOrderChecks = {...oc, [itemIdx]: next};
+ const kitchenItems = (order.items || []).filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
 
- const isFullyDone = order.items.length > 0 && order.items.every((item, i) => { 
+ const isFullyDone = kitchenItems.length > 0 && kitchenItems.every((item, i) => { 
  let val = (i === itemIdx) ? next : newOrderChecks[i];
  if (val === true) val = item.qty;
  return Number(val || 0) === item.qty; 
@@ -1507,8 +1530,6 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
  <div style={{display:"grid", gridTemplateColumns:isDesktop?"1fr 1fr":"1fr", gap:12}}>
  {activeOrders.map((order,priority) => {
  const checks = kitchenChecks[order.id] || {};
- const totalPortions = order.items.reduce((sum, item) => sum + item.qty, 0);
- const donePortions = order.items.reduce((sum, item, i) => sum + (Number(checks[i]===true?item.qty:checks[i]) || 0), 0);
  const mins = Math.floor((Date.now() - new Date(order.createdAt))/60000);
  
  return (
@@ -1520,12 +1541,17 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
  </div>
  )}
  <div style={{...s.row, marginBottom:10, marginTop:6}}><span style={{fontFamily:"'Bebas Neue',cursive", fontSize:22, color:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y}}>{order.orderType==="llevar"?`🥡 ${order.table||"Sin nombre"}`:`Mesa ${order.table}`}</span>{order.orderType==="llevar"&&(order.phone||order.deliveryAddress)&&<span style={{fontSize:10,color:"#888"}}>{[order.phone,order.deliveryAddress].filter(Boolean).join(" · ")}</span>}</div>
+ {(() => {
+ const kitchenItems = (order.items || []).filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
+ const totalPortions = kitchenItems.reduce((sum, item) => sum + item.qty, 0);
+ const donePortions = kitchenItems.reduce((sum, item, i) => sum + (Number(checks[i]===true?item.qty:checks[i]) || 0), 0);
+ return (
+ <>
  <div style={{background:"#2a2a2a", borderRadius:4, height:5, marginBottom:12, overflow:"hidden"}}><div style={{background:Y, height:"100%", width:`${totalPortions > 0 ? (donePortions/totalPortions)*100 : 0}%`, transition:"width .3s"}}/></div>
- {(order.items||[]).map((item,i) => {
+ {kitchenItems.map((item,i) => {
  let doneQty = checks[i];
  if (doneQty === true) doneQty = item.qty;
  doneQty = Number(doneQty) || 0;
- 
  const isDone = doneQty === item.qty;
  const validNotes = (item.individualNotes || []).filter(n => n.trim() !== "");
  return (
@@ -1537,8 +1563,11 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
  {validNotes.map((n, idx) => <div key={idx} style={{fontSize:11, color:"#aaa", marginTop:3, fontStyle:"italic", whiteSpace:"pre-wrap"}}> Plato {idx+1}: {n}</div>)}
  </div>
  </div>
- )
+ );
  })}
+ </>
+ );
+ })()}
  {order.notes && <div style={{marginTop:8, padding:"8px 10px", background:"#1a1500", borderRadius:8, border:"1px solid #3a3000", fontSize:12, color:"#e6c200", whiteSpace:"pre-wrap"}}> General: {order.notes}</div>}
  </div>
  );
@@ -1988,18 +2017,15 @@ export default function App() {
  const submitOrder = async (forceMerge = null) => {
  if (draft.orderType === "mesa" && !draft.table.trim()) return;
  if (!draft.items.length) return;
- const taperNum = Number(draft.taperCost) || 0;
- const total = draftTotal + taperNum;
+ const total = draftTotal;
  const existingMesaOrder = orders.find(o => o.table === draft.table.trim() && o.orderType === "mesa" && !o.isPaid) ?? null;
 
  if (existingMesaOrder && forceMerge === null) {
- setMergeModal({ existingOrder: existingMesaOrder, newDraftData: { ...draft, total, taperNum } });
+ setMergeModal({ existingOrder: existingMesaOrder, newDraftData: { ...draft, total } });
  setMergeName(""); return;
  }
 
  let finalItems = forceMerge === "merge" ? [...mergeModal.newDraftData.items] : [...draft.items];
- const currentTaperNum = forceMerge === "merge" ? mergeModal.newDraftData.taperNum : taperNum;
- if (currentTaperNum > 0) finalItems.push({ id: "TAPER", cartId: "TAPER", name: "Taper / Bolsa", price: currentTaperNum, qty: 1, cat: "Extras", individualNotes: [""] });
 
  if (forceMerge === "merge" && mergeModal) {
  const existing = mergeModal.existingOrder;
@@ -2257,7 +2283,7 @@ export default function App() {
  {cobrarTarget && <div style={s.overlay} onClick={()=>setCobrarTarget(null)}><CobrarModal orderContext={cobrarTarget.data} total={cobrarTarget.data.total} onConfirm={handleConfirmCobro} onClose={()=>setCobrarTarget(null)} s={s} Y={Y} /></div>}
  {splitTarget && <SplitBillModal order={splitTarget} onProceed={(items, total) => { setCobrarTarget({ type: 'split', data: { originalOrder: splitTarget, splitItems: items, total }}); setSplitTarget(null); }} onClose={() => setSplitTarget(null)} s={s} Y={Y} fmt={fmt} />}
  {editingOrder&&<div style={s.overlay} onClick={()=>setEditingOrder(null)}><EditOrderModal order={editingOrder} onSave={saveEditedOrder} onClose={()=>setEditingOrder(null)} menu={menu} isMobile={isMobile} s={s} Y={Y}/></div>}
- {mesaModal&&<div style={s.overlay} onClick={()=>setMesaModal(null)}><MesaModalComponent num={mesaModal} orders={orders} setDraft={setDraft} newDraft={newDraft} onClose={()=>setMesaModal(null)} setTab={setTab} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} isMobile={isMobile} s={s} Y={Y} fmt={fmt} /></div>}
+ {mesaModal&&<div style={s.overlay} onClick={()=>setMesaModal(null)}><MesaModalComponent num={mesaModal} orders={orders} setDraft={setDraft} newDraft={newDraft} onClose={()=>setMesaModal(null)} setTab={setTab} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} setAnulacionModal={setAnulacionModal} printOrder={printOrder} isMobile={isMobile} s={s} Y={Y} fmt={fmt} currentUser={currentUser} /></div>}
  
  {mergeModal && (
  <div style={s.overlay} onClick={() => setMergeModal(null)}>
@@ -2268,7 +2294,7 @@ export default function App() {
  {mergeModal.newDraftData.orderType === "llevar" && <div style={{marginBottom:14}}><input style={{...s.input, borderColor:"#3498db"}} placeholder="Nombre (Ej: Juan)" value={mergeName} onChange={e => setMergeName(e.target.value)} spellCheck="false" /></div>}
  <div style={{background:"#111", borderRadius:8, padding:10, marginBottom:12, border:"1px solid #2a2a2a"}}><div style={{fontSize:11, color:"#666", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>Pedido existente</div>{(mergeModal.existingOrder.items||[]).map((item,i) => (<div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:12, color:"#888", padding:"2px 0"}}><span>{item.qty}x {item.name}</span><span>{fmt(item.price * item.qty)}</span></div>))}<div style={{borderTop:"1px solid #2a2a2a", marginTop:6, paddingTop:6, display:"flex", justifyContent:"space-between", fontWeight:900, fontSize:13}}><span>Subtotal</span><span style={{color:Y}}>{fmt(mergeModal.existingOrder.total)}</span></div></div>
  <div style={{background:"#0a1f0a", borderRadius:8, padding:10, marginBottom:16, border:"1px solid #27ae6044"}}><div style={{fontSize:11, color:"#27ae60", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>{mergeModal.newDraftData.orderType === "llevar" ? " Ítems Para Llevar a agregar" : "Nuevos ítems a agregar"}</div>{(mergeModal.newDraftData.items||[]).map((item,i) => (<div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:12, color:"#aaa", padding:"2px 0"}}><span>{item.qty}x {item.name}</span><span>{fmt(item.price * item.qty)}</span></div>))}<div style={{borderTop:"1px solid #27ae6033", marginTop:6, paddingTop:6, display:"flex", justifyContent:"space-between", fontWeight:900, fontSize:13}}><span style={{color:"#27ae60"}}>+ Subtotal</span><span style={{color:"#27ae60"}}>{fmt(mergeModal.newDraftData.items.reduce((s,i)=>s+i.price*i.qty,0))}</span></div></div>
- <div style={{display:"flex", flexDirection:"column", gap:8}}><button style={{...s.btn("success"), padding:14, fontSize:14, width:"100%"}} onClick={() => submitOrder("merge")}> Agregar al pedido existente<div style={{fontSize:11, fontWeight:400, marginTop:2, opacity:0.8}}>Total: {fmt(mergeModal.existingOrder.total + mergeModal.newDraftData.items.reduce((s,i)=>s+i.price*i.qty,0) + (mergeModal.newDraftData.taperNum || 0))}</div></button><button style={{...s.btn("blue"), padding:12, fontSize:13, width:"100%"}} onClick={() => submitOrder("new")}> Crear pedido separado para Mesa {mergeModal.existingOrder.table}</button><button style={{...s.btn("secondary"), padding:10, fontSize:12, width:"100%"}} onClick={() => setMergeModal(null)}> Cancelar</button></div>
+ <div style={{display:"flex", flexDirection:"column", gap:8}}><button style={{...s.btn("success"), padding:14, fontSize:14, width:"100%"}} onClick={() => submitOrder("merge")}> Agregar al pedido existente<div style={{fontSize:11, fontWeight:400, marginTop:2, opacity:0.8}}>Total: {fmt(mergeModal.existingOrder.total + mergeModal.newDraftData.items.reduce((s,i)=>s+i.price*i.qty,0))}</div></button><button style={{...s.btn("blue"), padding:12, fontSize:13, width:"100%"}} onClick={() => submitOrder("new")}> Crear pedido separado para Mesa {mergeModal.existingOrder.table}</button><button style={{...s.btn("secondary"), padding:10, fontSize:12, width:"100%"}} onClick={() => setMergeModal(null)}> Cancelar</button></div>
  </div>
  </div>
  )}
@@ -2283,7 +2309,7 @@ export default function App() {
 
  <div style={s.content}>
  {tab==="dashboard" && <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} />}
- {tab==="mesas" && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} mesasArr={mesasArr} addMesa={addMesa} removeMesa={removeMesa} currentUser={currentUser} />}
+ {tab==="mesas" && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setAnulacionModal={setAnulacionModal} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} mesasArr={mesasArr} addMesa={addMesa} removeMesa={removeMesa} currentUser={currentUser} />}
  {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} mesasArr={mesasArr} />}
  {tab==="pedidos" && <PedidosComponent orders={orders} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
  {tab==="cocina" && <CocinaComponent orders={orders} kitchenChecks={kitchenChecks} setKitchenChecks={setKitchenChecks} markKitchenListo={markKitchenListo} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} />}
