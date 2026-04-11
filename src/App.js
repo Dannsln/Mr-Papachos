@@ -1236,7 +1236,8 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  const mins = Math.floor((Date.now()-new Date(o.createdAt))/60000);
  const urgentColor = mins>=20?"#e74c3c":mins>=10?"#e67e22":Y;
  return (
- <div key={o.id} className="pedido-card" style={{
+ <div key={o.id}>
+ <div className="pedido-card" style={{
  ...s.card,
  borderLeft:`4px solid ${urgentColor}`,
  marginBottom: splitOpen ? 0 : 10,
