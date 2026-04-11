@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Component } from "react";
 import { initializeApp, getApps } from "firebase/app";
 import {
  getFirestore, doc, setDoc, getDoc, collection, addDoc, query, orderBy, limit, onSnapshot
@@ -15,6 +15,34 @@ const FIREBASE_CONFIG = {
 
 const _fbApp = getApps().length ? getApps()[0] : initializeApp(FIREBASE_CONFIG);
 const db = getFirestore(_fbApp);
+
+// ─── ERROR BOUNDARY ──────────────────────────────────────────────────────────
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  componentDidCatch(error, info) { console.error("App crash:", error, info); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{background:"#111",color:"#fff",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{textAlign:"center",maxWidth:500}}>
+            <div style={{fontSize:40,marginBottom:12}}>⚠️</div>
+            <div style={{color:"#FFD700",fontWeight:900,fontSize:20,marginBottom:12}}>Error en la aplicación</div>
+            <div style={{background:"#1a1a1a",padding:16,borderRadius:8,fontSize:12,color:"#e74c3c",textAlign:"left",marginBottom:16,whiteSpace:"pre-wrap",wordBreak:"break-all"}}>
+              {this.state.error?.message || "Error desconocido"}
+            </div>
+            <button onClick={()=>this.setState({hasError:false,error:null})} style={{background:"#FFD700",color:"#111",border:"none",borderRadius:8,padding:"10px 24px",fontWeight:900,cursor:"pointer",fontSize:14}}>
+              Reintentar
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+
 
 // ─── MOTOR MULTI-LOCAL ────────────────────────────────────────────────────────
 const FS = (localId) => ({
@@ -79,12 +107,12 @@ const MENU_BASE = [
  { id:"AC04", cat:"Alichaufa", name:"Alichaufa 10 pzas", price:36, desc:"10 alitas + papas fritas + chaufa + ensalada" },
  { id:"PB01", cat:"Pollo Broaster", name:"Pollo 1/8 Clásico", price:12, desc:"1/8 de pollo broaster clásico" },
  { id:"PB02", cat:"Pollo Broaster", name:"Pollo 1/4 Clásico", price:18, desc:"1/4 de pollo broaster clásico" },
- { id:"PB03", cat:"Pollo 1/8 A lo Pobre", price:16, desc:"1/8 de pollo broaster a lo pobre" },
- { id:"PB04", cat:"Pollo 1/4 A lo Pobre", price:22, desc:"1/4 de pollo broaster a lo pobre" },
+ { id:"PB03", cat:"Pollo Broaster", name:"Pollo 1/8 A lo Pobre", price:16, desc:"1/8 de pollo broaster a lo pobre" },
+ { id:"PB04", cat:"Pollo Broaster", name:"Pollo 1/4 A lo Pobre", price:22, desc:"1/4 de pollo broaster a lo pobre" },
  { id:"MB01", cat:"Mostrito Broaster", name:"Mostrito 1/8 Clásico", price:14, desc:"1/8 de mostrito broaster clásico" },
  { id:"MB02", cat:"Mostrito Broaster", name:"Mostrito 1/4 Clásico", price:22, desc:"1/4 de mostrito broaster clásico" },
  { id:"MB03", cat:"Mostrito Broaster", name:"Mostrito 1/8 A lo Pobre", price:18, desc:"1/8 de mostrito broaster a lo pobre" },
- { id:"MB04", cat:"Mostrito 1/4 A lo Pobre", price:25, desc:"1/4 de mostrito broaster a lo pobre" },
+ { id:"MB04", cat:"Mostrito Broaster", name:"Mostrito 1/4 A lo Pobre", price:25, desc:"1/4 de mostrito broaster a lo pobre" },
  { id:"PE01", cat:"Platos Extras", name:"Caldo de Gallina", price:14, desc:"Caldo de gallina tradicional" },
  { id:"PE02", cat:"Platos Extras", name:"Arroz Chaufa", price:14, desc:"Arroz chaufa estilo chifa" },
  { id:"PE03", cat:"Platos Extras", name:"Arroz Chaufa a lo Pobre", price:18, desc:"Arroz chaufa con huevo, plátano y más" },
@@ -382,7 +410,7 @@ function SalsasModalComponent({ initialSalsas = [], onSave, onClose, s, Y }) {
 // ═══════════════════════════════════════════════════════════════════
 function SplitBillModal({ order, onProceed, onClose, s, Y, fmt }) {
  const [splitItems, setSplitItems] = useState(
- order.items.map(i => ({ ...i, splitQty: 0 }))
+ (order.items||[]).map(i => ({ ...i, splitQty: 0 }))
  );
 
  const splitTotal = splitItems.reduce((acc, i) => acc + (i.price * i.splitQty), 0);
@@ -934,7 +962,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
 
 // ── Impresión mejorada con Blob (Evita bloqueos en Móvil/Tablet) ────────────
 function printOrder(order) {
- const items = order.items.map(i => {
+ const items = (order.items||[]).map(i => {
  const validNotes = (i.individualNotes || []).filter(n => n.trim() !== "");
  let notesHtml = "";
  if (validNotes.length > 0) {
@@ -1106,7 +1134,7 @@ function MesaModalComponent({ num, orders, setDraft, newDraft, onClose, setTab, 
  <span style={{color:Y, fontWeight:900}}>{fmt(o.total)}</span>
  </div>
  <div style={{margin:"8px 0"}}>
- {o.items.map((item,i) => {
+ {(o.items||[]).map((item,i) => {
  const validNotes = (item.individualNotes || []).filter(n => n.trim() !== "");
  return (
  <div key={i} style={{marginBottom:6}}>
@@ -1155,7 +1183,7 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  </div>
  <div style={{color:"#666", fontSize:11, marginBottom:8}}> {timeStr(o.createdAt)} · {minutesAgo(o.createdAt)}</div>
  <div style={{marginBottom:8}}>
- {o.items.map((item,i) => {
+ {(o.items||[]).map((item,i) => {
  const validNotes = (item.individualNotes || []).filter(n => n.trim() !== "");
  return (
  <div key={i} style={{marginBottom:6}}>
@@ -1230,7 +1258,7 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
  <div style={{position:"absolute", top:-10, left:14, background:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y, color:mins>=8?"#fff":"#111", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:900}}>{`#${priority+1} · ${mins<1?"ahora":`${mins}m`}`}</div>
  <div style={{...s.row, marginBottom:10, marginTop:6}}><span style={{fontFamily:"'Bebas Neue',cursive", fontSize:22, color:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y}}>{order.orderType==="llevar"?` ${order.table}`:`Mesa ${order.table}`}</span></div>
  <div style={{background:"#2a2a2a", borderRadius:4, height:5, marginBottom:12, overflow:"hidden"}}><div style={{background:Y, height:"100%", width:`${totalPortions > 0 ? (donePortions/totalPortions)*100 : 0}%`, transition:"width .3s"}}/></div>
- {order.items.map((item,i) => {
+ {(order.items||[]).map((item,i) => {
  let doneQty = checks[i];
  if (doneQty === true) doneQty = item.qty;
  doneQty = Number(doneQty) || 0;
@@ -1392,7 +1420,7 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder }
 
  {/* Platos del Ticket */}
  <div style={{display:"grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap:8}}>
- {o.items.map((item,i) => (
+ {(o.items||[]).map((item,i) => (
  <div key={i} style={{fontSize:12, color:"#ccc", padding:"8px 12px", background:"#222", borderRadius:6, borderLeft:`3px solid ${isCanceled ? '#e74c3c' : Y}`}}>
  <div style={{display:"flex", justifyContent:"space-between", fontWeight:700}}>
   <span>{item.qty}x {item.name} {item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:9}}> Llevar</span>}</span>
@@ -1791,10 +1819,12 @@ export default function App() {
  const deleteMenuItem = async (id) => { await saveMenu(menu.filter(i=>i.id!==id)); showToast(" Platillo eliminado","#e74c3c"); };
 
  if (splash) return (
+ <ErrorBoundary>
  <>
  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito:wght@400;700;900&display=swap" rel="stylesheet"/>
  <LandingScreen onEnter={() => setSplash(false)} Y="#FFD700" isMobile={isMobile} />
  </>
+ </ErrorBoundary>
  );
 
  const Y = "#FFD700";
@@ -1820,8 +1850,8 @@ export default function App() {
  modal: {background:"#1a1a1a",border:`1px solid ${Y}44`,borderRadius:isMobile?"16px 16px 0 0":14,padding:isMobile?"16px 12px":20,width:"100%",maxWidth:isMobile?"100%":600,maxHeight:isMobile?"92vh":"88vh",overflowY:"auto"},
  };
 
- if (!currentUser) return <LoginScreen onLogin={(user) => { setCurrentUser(user); setTab(user.id === 'cocinero' ? 'cocina' : 'mesas'); }} s={s} Y={Y} />;
- if (!loaded) return <div style={{background:"#111",color:"#FFD700",height:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{textAlign:"center"}}><div style={{fontSize:52}}></div><div style={{marginTop:12,fontWeight:700,letterSpacing:2}}>Cargando Sucursal...</div></div></div>;
+ if (!currentUser) return <ErrorBoundary><LoginScreen onLogin={(user) => { setCurrentUser(user); setTab(user.id === 'cocinero' ? 'cocina' : 'mesas'); }} s={s} Y={Y} /></ErrorBoundary>;
+ if (!loaded) return <ErrorBoundary><div style={{background:"#111",color:"#FFD700",height:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{textAlign:"center"}}><div style={{marginTop:12,fontWeight:700,letterSpacing:2}}>Cargando Sucursal...</div></div></div></ErrorBoundary>;
 
  const allTabs = [
  {id:"dashboard", label:"Inicio"}, {id:"mesas", label:"Mesas"}, {id:"nuevo", label:"Nuevo"},
@@ -1839,6 +1869,7 @@ export default function App() {
  });
 
  return (
+ <ErrorBoundary>
  <>
  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito:wght@400;700;900&display=swap" rel="stylesheet"/>
  <div style={s.app}>
@@ -1869,8 +1900,8 @@ export default function App() {
  <div style={{fontWeight:900, fontSize:18, marginBottom:6, color:Y, textAlign:"center", fontFamily:"'Bebas Neue',cursive", letterSpacing:1}}>MESA {mergeModal.existingOrder.table} YA TIENE PEDIDO</div>
  <div style={{color:"#aaa", fontSize:13, textAlign:"center", marginBottom:16}}>{mergeModal.newDraftData.orderType === "llevar" ? <>¿Deseas <b style={{color:"#3498db"}}>acoplar este pedido Para Llevar</b> a la mesa?</> : "¿Qué quieres hacer con los nuevos ítems?"}</div>
  {mergeModal.newDraftData.orderType === "llevar" && <div style={{marginBottom:14}}><input style={{...s.input, borderColor:"#3498db"}} placeholder="Nombre (Ej: Juan)" value={mergeName} onChange={e => setMergeName(e.target.value)} spellCheck="false" /></div>}
- <div style={{background:"#111", borderRadius:8, padding:10, marginBottom:12, border:"1px solid #2a2a2a"}}><div style={{fontSize:11, color:"#666", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>Pedido existente</div>{mergeModal.existingOrder.items.map((item,i) => (<div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:12, color:"#888", padding:"2px 0"}}><span>{item.qty}x {item.name}</span><span>{fmt(item.price * item.qty)}</span></div>))}<div style={{borderTop:"1px solid #2a2a2a", marginTop:6, paddingTop:6, display:"flex", justifyContent:"space-between", fontWeight:900, fontSize:13}}><span>Subtotal</span><span style={{color:Y}}>{fmt(mergeModal.existingOrder.total)}</span></div></div>
- <div style={{background:"#0a1f0a", borderRadius:8, padding:10, marginBottom:16, border:"1px solid #27ae6044"}}><div style={{fontSize:11, color:"#27ae60", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>{mergeModal.newDraftData.orderType === "llevar" ? " Ítems Para Llevar a agregar" : "Nuevos ítems a agregar"}</div>{mergeModal.newDraftData.items.map((item,i) => (<div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:12, color:"#aaa", padding:"2px 0"}}><span>{item.qty}x {item.name}</span><span>{fmt(item.price * item.qty)}</span></div>))}<div style={{borderTop:"1px solid #27ae6033", marginTop:6, paddingTop:6, display:"flex", justifyContent:"space-between", fontWeight:900, fontSize:13}}><span style={{color:"#27ae60"}}>+ Subtotal</span><span style={{color:"#27ae60"}}>{fmt(mergeModal.newDraftData.items.reduce((s,i)=>s+i.price*i.qty,0))}</span></div></div>
+ <div style={{background:"#111", borderRadius:8, padding:10, marginBottom:12, border:"1px solid #2a2a2a"}}><div style={{fontSize:11, color:"#666", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>Pedido existente</div>{(mergeModal.existingOrder.items||[]).map((item,i) => (<div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:12, color:"#888", padding:"2px 0"}}><span>{item.qty}x {item.name}</span><span>{fmt(item.price * item.qty)}</span></div>))}<div style={{borderTop:"1px solid #2a2a2a", marginTop:6, paddingTop:6, display:"flex", justifyContent:"space-between", fontWeight:900, fontSize:13}}><span>Subtotal</span><span style={{color:Y}}>{fmt(mergeModal.existingOrder.total)}</span></div></div>
+ <div style={{background:"#0a1f0a", borderRadius:8, padding:10, marginBottom:16, border:"1px solid #27ae6044"}}><div style={{fontSize:11, color:"#27ae60", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>{mergeModal.newDraftData.orderType === "llevar" ? " Ítems Para Llevar a agregar" : "Nuevos ítems a agregar"}</div>{(mergeModal.newDraftData.items||[]).map((item,i) => (<div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:12, color:"#aaa", padding:"2px 0"}}><span>{item.qty}x {item.name}</span><span>{fmt(item.price * item.qty)}</span></div>))}<div style={{borderTop:"1px solid #27ae6033", marginTop:6, paddingTop:6, display:"flex", justifyContent:"space-between", fontWeight:900, fontSize:13}}><span style={{color:"#27ae60"}}>+ Subtotal</span><span style={{color:"#27ae60"}}>{fmt(mergeModal.newDraftData.items.reduce((s,i)=>s+i.price*i.qty,0))}</span></div></div>
  <div style={{display:"flex", flexDirection:"column", gap:8}}><button style={{...s.btn("success"), padding:14, fontSize:14, width:"100%"}} onClick={() => submitOrder("merge")}> Agregar al pedido existente<div style={{fontSize:11, fontWeight:400, marginTop:2, opacity:0.8}}>Total: {fmt(mergeModal.existingOrder.total + mergeModal.newDraftData.items.reduce((s,i)=>s+i.price*i.qty,0) + (mergeModal.newDraftData.taperNum || 0))}</div></button><button style={{...s.btn("blue"), padding:12, fontSize:13, width:"100%"}} onClick={() => submitOrder("new")}> Crear pedido separado para Mesa {mergeModal.existingOrder.table}</button><button style={{...s.btn("secondary"), padding:10, fontSize:12, width:"100%"}} onClick={() => setMergeModal(null)}> Cancelar</button></div>
  </div>
  </div>
@@ -1890,5 +1921,6 @@ export default function App() {
  </div>
  </div>
  </>
+ </ErrorBoundary>
  )
 }
