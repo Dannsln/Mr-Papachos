@@ -16,26 +16,28 @@ const FIREBASE_CONFIG = {
 const _fbApp = getApps().length ? getApps()[0] : initializeApp(FIREBASE_CONFIG);
 const db     = getFirestore(_fbApp);
 
-const FS = {
-  ordersRef:  () => doc(db, "mrpapachos", "orders"),
-  menuRef:    () => doc(db, "mrpapachos", "customMenu"),
-  historyCol: () => collection(db, "mrpapachos_historial"),
+// ─── MOTOR MULTI-LOCAL ────────────────────────────────────────────────────────
+const FS = (localId) => ({
+  ordersRef:  () => doc(db, `mrpapachos_${localId}`, "orders"),
+  menuRef:    () => doc(db, `mrpapachos_${localId}`, "customMenu"),
+  historyCol: () => collection(db, `mrpapachos_${localId}_historial`),
+  
   async getOrders() {
-    try { const s = await getDoc(FS.ordersRef()); return s.exists() ? (s.data().list ?? []) : []; } catch { return []; }
+    try { const s = await getDoc(this.ordersRef()); return s.exists() ? (s.data().list ?? []) : []; } catch { return []; }
   },
   async saveOrders(list) {
-    try { await setDoc(FS.ordersRef(), { list, ts: new Date().toISOString() }); } catch (e) { console.error(e); }
+    try { await setDoc(this.ordersRef(), { list, ts: new Date().toISOString() }); } catch (e) { console.error(e); }
   },
   async getMenu() {
-    try { const s = await getDoc(FS.menuRef()); return s.exists() ? (s.data().list ?? []) : []; } catch { return []; }
+    try { const s = await getDoc(this.menuRef()); return s.exists() ? (s.data().list ?? []) : []; } catch { return []; }
   },
   async saveMenu(list) {
-    try { await setDoc(FS.menuRef(), { list, ts: new Date().toISOString() }); } catch (e) { console.error(e); }
+    try { await setDoc(this.menuRef(), { list, ts: new Date().toISOString() }); } catch (e) { console.error(e); }
   },
   async addHistory(order) {
-    try { await addDoc(FS.historyCol(), order); } catch (e) { console.error(e); }
+    try { await addDoc(this.historyCol(), order); } catch (e) { console.error(e); }
   }
-};
+});
 
 const MENU_BASE = [
   { id:"H01",  cat:"Hamburguesas",      icon:"🍔", name:"La Silvestre",             price:7,    desc:"Carne, papa frita, ensalada" },
@@ -189,7 +191,7 @@ function useWindowWidth() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  ICONO DE MESA VECTORIAL (SVG) - Reemplaza al emoji 🪑
+//  ICONO DE MESA VECTORIAL (SVG) 
 // ═══════════════════════════════════════════════════════════════════
 const IconoMesa = ({ color, size }) => (
   <svg width={size} height={size * 0.75} viewBox="0 0 120 90" fill="none" xmlns="http://www.w3.org/2000/svg" 
@@ -204,15 +206,17 @@ const IconoMesa = ({ color, size }) => (
     {/* Sillas Abajo */}
     <rect x="35" y="70" width="20" height="15" rx="4" stroke={color} strokeWidth="3" />
     <rect x="65" y="70" width="20" height="15" rx="4" stroke={color} strokeWidth="3" />
-    {/* Mesa Central (superpuesta) */}
+    {/* Mesa Central */}
     <rect x="16" y="16" width="88" height="58" rx="8" fill="#1c1c1c" stroke={color} strokeWidth="4" />
   </svg>
 );
 
 // ═══════════════════════════════════════════════════════════════════
-//  LOGIN SCREEN
+//  LOGIN SCREEN MULTI-LOCAL
 // ═══════════════════════════════════════════════════════════════════
 function LoginScreen({ onLogin, s, Y }) {
+  const [selectedLocal, setSelectedLocal] = useState("amazonas");
+
   const roles = [
     { id: 'admin', icon: '👑', label: 'Administrador' },
     { id: 'cajero', icon: '💰', label: 'Cajero' },
@@ -220,14 +224,38 @@ function LoginScreen({ onLogin, s, Y }) {
     { id: 'cocinero', icon: '👨‍🍳', label: 'Cocina' }
   ];
 
+  const locales = [
+    { id: "amazonas", nombre: "Amazonas" },
+    { id: "sanmartin", nombre: "San Martín" },
+    { id: "belen", nombre: "Belén" }
+  ];
+
   return (
     <div style={{background:"#111", height:"100vh", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", color:"#fff"}}>
       <div style={{fontSize:60, marginBottom:10}}>🍔</div>
-      <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:32, color:Y, letterSpacing:2, marginBottom:40}}>MR. PAPACHOS</div>
-      <div style={{fontSize:13, color:"#888", marginBottom:20, textTransform:"uppercase", letterSpacing:1}}>Selecciona tu usuario</div>
+      <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:32, color:Y, letterSpacing:2, marginBottom:20}}>MR. PAPACHOS</div>
+      
+      {/* Selector de Sucursal */}
+      <div style={{marginBottom:30, textAlign:"center"}}>
+        <label style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, display:"block", marginBottom:8}}>Selecciona tu sucursal</label>
+        <select 
+          style={{...s.input, width:250, textAlign:"center", fontSize:16, fontWeight:700, border:`1px solid ${Y}55`}}
+          value={selectedLocal}
+          onChange={(e) => setSelectedLocal(e.target.value)}
+        >
+          {locales.map(loc => (
+            <option key={loc.id} value={loc.id}>{loc.nombre}</option>
+          ))}
+        </select>
+      </div>
+
+      <div style={{fontSize:11, color:"#888", marginBottom:14, textTransform:"uppercase", letterSpacing:1}}>Ingresa tu rol</div>
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:16}}>
         {roles.map(r => (
-          <button key={r.id} onClick={() => onLogin(r)} style={{...s.card, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", padding:20, border:`1px solid #333`}}>
+          <button key={r.id} onClick={() => {
+            const locName = locales.find(l => l.id === selectedLocal)?.nombre || selectedLocal;
+            onLogin({ ...r, localId: selectedLocal, localName: locName });
+          }} style={{...s.card, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", padding:20, border:`1px solid #333`}}>
             <div style={{fontSize:32, marginBottom:10}}>{r.icon}</div>
             <div style={{fontWeight:800, fontSize:14}}>{r.label}</div>
           </button>
@@ -501,7 +529,7 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
 
       <div style={{ marginBottom:10 }}>
         <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas Generales</label>
-        <textarea style={{ ...s.input, marginTop:4, resize:"vertical", minHeight:60 }} value={eNotes} onChange={e => setENotes(e.target.value)} placeholder="Sin cebolla en general..." spellCheck="false" />
+        <textarea style={{ ...s.input, marginTop:4, resize:"vertical", minHeight:60, fontFamily:"inherit" }} value={eNotes} onChange={e => setENotes(e.target.value)} placeholder="Sin cebolla en general..." spellCheck="false" />
       </div>
 
       <div style={{ marginBottom:12 }}>
@@ -534,7 +562,7 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
               {item.id !== "TAPER" && Array.from({ length: item.qty }).map((_, idx) => (
                 <textarea 
                   key={idx}
-                  style={{ ...s.input, fontSize:13, padding:"6px 10px", marginTop: 4, background:"#141414", resize:"vertical", minHeight:36 }} 
+                  style={{ ...s.input, fontSize:13, padding:"6px 10px", marginTop: 4, background:"#141414", resize:"vertical", minHeight:40, fontFamily:"inherit" }} 
                   placeholder={`Nota para el plato ${idx + 1}...`} 
                   value={item.individualNotes?.[idx] || ""} 
                   spellCheck="false"
@@ -766,7 +794,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
 
       <div style={{ marginBottom:12 }}>
         <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas Generales</label>
-        <textarea style={{ ...s.input, marginTop:4, resize:"vertical", minHeight:60 }} value={draft.notes}
+        <textarea style={{ ...s.input, marginTop:4, resize:"vertical", minHeight:60, fontFamily:"inherit" }} value={draft.notes}
           onChange={e => setDraft(d => ({...d, notes: e.target.value}))} placeholder="Sin cebolla en general..." spellCheck="false" />
       </div>
 
@@ -793,7 +821,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
                 </div>
                 {item.salsas?.length > 0 && <div style={{color:Y, fontSize:11, marginBottom:4, fontStyle:"italic"}}>🥫 Salsas: {item.salsas.map(sa => `${sa.name} (${sa.style})`).join(", ")}</div>}
                 {Array.from({ length: item.qty }).map((_, idx) => (
-                  <textarea key={idx} style={{ ...s.input, fontSize:13, padding:"6px 10px", marginTop: 4, background:"#141414", resize:"vertical", minHeight:36 }} 
+                  <textarea key={idx} style={{ ...s.input, fontSize:13, padding:"6px 10px", marginTop: 4, background:"#141414", resize:"vertical", minHeight:40, fontFamily:"inherit" }} 
                     placeholder={`Nota para el plato ${idx + 1}...`} value={item.individualNotes?.[idx] || ""} spellCheck="false" onChange={e => updateIndividualNote(item.cartId, idx, e.target.value)} />
                 ))}
               </div>
@@ -919,7 +947,7 @@ function printOrder(order) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  COMPONENTES SECUNDARIOS (Mesas, Cocina, Historial, Inventario)
+//  COMPONENTES SECUNDARIOS
 // ═══════════════════════════════════════════════════════════════════
 function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, setCobrarTarget, isMobile, s, Y }) {
   const today = new Date().toDateString();
@@ -962,7 +990,7 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
   return (
     <div>
       <div style={{...s.row, marginBottom:14}}>
-        <div style={s.title}>MESAS</div>
+        <div style={s.title}>🪑 MESAS</div>
         <button style={s.btn()} onClick={() => { setDraft({...newDraft(), orderType:"llevar", payTiming:"ahora"}); setTab("nuevo"); }}>🥡 Para llevar</button>
       </div>
       <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(3, 1fr)", gridAutoRows: isTablet ? "minmax(25vh, auto)" : "auto", gap: isMobile ? 12 : 20, marginBottom:20 }}>
@@ -1010,11 +1038,11 @@ function MesaModalComponent({ num, orders, setDraft, newDraft, onClose, setTab, 
                     <span style={{color:"#888"}}>{fmt(item.price*item.qty)}</span>
                   </div>
                   {item.salsas?.length > 0 && <div style={{fontSize:11, color:Y, paddingLeft:4, marginTop:2}}>🥫 {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>}
-                  {validNotes.map((n, idx) => <div key={idx} style={{fontSize:11, color:"#999", fontStyle:"italic", paddingLeft:4, marginTop:2}}>└ Plato {idx+1}: {n}</div>)}
+                  {validNotes.map((n, idx) => <div key={idx} style={{fontSize:11, color:"#999", fontStyle:"italic", paddingLeft:4, marginTop:2, whiteSpace:"pre-wrap"}}>└ Plato {idx+1}: {n}</div>)}
                 </div>
               )})}
             </div>
-            {o.notes && <div style={{fontSize:11, color:"#888", fontStyle:"italic", marginBottom:8}}>📝 {o.notes}</div>}
+            {o.notes && <div style={{fontSize:11, color:"#888", fontStyle:"italic", marginBottom:8, whiteSpace:"pre-wrap"}}>📝 {o.notes}</div>}
             <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
               {!o.isPaid && <button style={{...s.btn("success"), flex:1}} onClick={() => { setCobrarTarget({type:'existing', data:o}); onClose(); }}>💰 Cobrar Todo</button>}
               {!o.isPaid && <button style={{...s.btn("secondary"), flex:1}} onClick={() => { setSplitTarget(o); onClose(); }}>✂️ Dividir</button>}
@@ -1058,11 +1086,11 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
                     <span>{item.qty}x {item.name}{item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:10, fontWeight:700}}>🥡 Llevar</span>}</span>
                   </div>
                   {item.salsas?.length > 0 && <div style={{fontSize:11, color:Y, paddingLeft:4, marginTop:2}}>🥫 {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>}
-                  {validNotes.map((n, idx) => <div key={idx} style={{fontSize:11, color:"#999", fontStyle:"italic", paddingLeft:4, marginTop:2}}>└ Plato {idx+1}: {n}</div>)}
+                  {validNotes.map((n, idx) => <div key={idx} style={{fontSize:11, color:"#999", fontStyle:"italic", paddingLeft:4, marginTop:2, whiteSpace:"pre-wrap"}}>└ Plato {idx+1}: {n}</div>)}
                 </div>
               )})}
             </div>
-            {o.notes && <div style={{fontSize:11, color:"#888", fontStyle:"italic", marginBottom:8}}>📝 {o.notes}</div>}
+            {o.notes && <div style={{fontSize:11, color:"#888", fontStyle:"italic", marginBottom:8, whiteSpace:"pre-wrap"}}>📝 {o.notes}</div>}
             <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
               {o.isPaid ? <button style={{...s.btn("blue"), flex:1}} onClick={() => finishPaidOrder(o.id)}>✅ Entregado</button> 
                : <><button style={{...s.btn("success"), flex:1}} onClick={() => setCobrarTarget({type:'existing', data:o})}>💰 Cobrar Todo</button>
@@ -1085,28 +1113,26 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
   
   const toggleCheck = (order, itemIdx, maxQty) => { 
     const orderId = order.id;
-    let isFullyDone = false;
-
     setKitchenChecks(prev => { 
       const oc = prev[orderId] || {}; 
-      const curr = Number(oc[itemIdx]) || (oc[itemIdx] === true ? maxQty : 0);
-      let next = curr + 1; 
+      let valAnterior = oc[itemIdx];
+      if (valAnterior === true) valAnterior = maxQty; 
+      let next = (Number(valAnterior) || 0) + 1; 
       if (next > maxQty) next = 0;
       
       const newOrderChecks = {...oc, [itemIdx]: next};
 
-      isFullyDone = order.items.length > 0 && order.items.every((item, i) => { 
+      const isFullyDone = order.items.length > 0 && order.items.every((item, i) => { 
           let val = (i === itemIdx) ? next : newOrderChecks[i];
           if (val === true) val = item.qty;
           return Number(val || 0) === item.qty; 
       });
 
+      if (isFullyDone) {
+          setTimeout(() => markKitchenListo(orderId), 500); 
+      }
       return {...prev, [orderId]: newOrderChecks}; 
     }); 
-
-    if (isFullyDone) {
-        setTimeout(() => markKitchenListo(orderId), 600); 
-    }
   };
 
   const activeOrders = sorted.filter(order => order.kitchenStatus !== 'listo');
@@ -1140,12 +1166,12 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
                     <div style={{flex:1}}>
                       <span style={{fontWeight:800, fontSize:isMobile?13:15, textDecoration:isDone?"line-through":"none", color:isDone?"#555":"#eee"}}>{item.qty>1&&<span style={{color:Y, marginRight:4}}>{item.qty}×</span>}{item.name} {item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:10}}>🥡 Llevar</span>}</span>
                       {item.salsas?.length > 0 && <div style={{color:Y, fontSize:11, fontStyle:"italic", marginTop:2}}>🥫 {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>}
-                      {validNotes.map((n, idx) => <div key={idx} style={{fontSize:11, color:"#aaa", marginTop:3, fontStyle:"italic"}}>📝 Plato {idx+1}: {n}</div>)}
+                      {validNotes.map((n, idx) => <div key={idx} style={{fontSize:11, color:"#aaa", marginTop:3, fontStyle:"italic", whiteSpace:"pre-wrap"}}>📝 Plato {idx+1}: {n}</div>)}
                     </div>
                   </div>
                 )
               })}
-              {order.notes && <div style={{marginTop:8, padding:"8px 10px", background:"#1a1500", borderRadius:8, border:"1px solid #3a3000", fontSize:12, color:"#e6c200"}}>📝 General: {order.notes}</div>}
+              {order.notes && <div style={{marginTop:8, padding:"8px 10px", background:"#1a1500", borderRadius:8, border:"1px solid #3a3000", fontSize:12, color:"#e6c200", whiteSpace:"pre-wrap"}}>📝 General: {order.notes}</div>}
             </div>
           );
         })}
@@ -1385,31 +1411,39 @@ export default function App() {
   useEffect(() => { const t=setTimeout(()=>setSplash(false),2200); return()=>clearTimeout(t); }, []);
 
   useEffect(() => {
+    if (!currentUser) return;
+    setLoaded(false);
+    const localFS = FS(currentUser.localId);
+    
     let unsubOrders, unsubHistory, unsubMenu;
     const setupListeners = () => {
-      unsubOrders = onSnapshot(FS.ordersRef(), (docSnap) => {
+      unsubOrders = onSnapshot(localFS.ordersRef(), (docSnap) => {
         if (docSnap.exists()) setOrders(docSnap.data().list || []); else setOrders([]);
       });
-      unsubMenu = onSnapshot(FS.menuRef(), (docSnap) => {
+      unsubMenu = onSnapshot(localFS.menuRef(), (docSnap) => {
         if (docSnap.exists()) setMenu([...MENU_BASE, ...(docSnap.data().list || [])]); else setMenu(MENU_BASE);
       });
-      unsubHistory = onSnapshot(query(FS.historyCol(), orderBy("createdAt", "desc"), limit(1000)), (snapshot) => {
+      unsubHistory = onSnapshot(query(localFS.historyCol(), orderBy("createdAt", "desc"), limit(1000)), (snapshot) => {
         setHistory(snapshot.docs.map(d => ({ _fid: d.id, ...d.data() })));
       });
       setLoaded(true);
     };
     setupListeners();
     return () => { if (unsubOrders) unsubOrders(); if (unsubHistory) unsubHistory(); if (unsubMenu) unsubMenu(); };
-  }, []);
+  }, [currentUser]);
 
   const showToast = (msg,color="#27ae60") => { setToast({msg,color}); setTimeout(()=>setToast(null),2800); };
-  const saveOrders = async (v) => { await FS.saveOrders(v); };
-  const saveMenu   = async (v) => { setMenu(v); await FS.saveMenu(v.filter(i=>i.id.startsWith("CUSTOM_"))); };
+  
+  const saveOrders = async (v) => { await FS(currentUser.localId).saveOrders(v); };
+  const saveMenu   = async (v) => { setMenu(v); await FS(currentUser.localId).saveMenu(v.filter(i=>i.id.startsWith("CUSTOM_"))); };
+  const addHistory = async (o) => { await FS(currentUser.localId).addHistory(o); };
 
   const markKitchenListo = async (orderId) => {
-    const updatedOrders = orders.map(o => o.id === orderId ? {...o, kitchenStatus: 'listo'} : o);
-    setOrders(updatedOrders);
-    await saveOrders(updatedOrders);
+    setOrders(prevOrders => {
+      const updatedOrders = prevOrders.map(o => o.id === orderId ? {...o, kitchenStatus: 'listo'} : o);
+      saveOrders(updatedOrders);
+      return updatedOrders;
+    });
   };
 
   const addItem = (item) => setDraft(d => {
@@ -1524,12 +1558,12 @@ export default function App() {
         
         if (remainingItems.length === 0) {
            const newOrders = orders.filter(x => x.id !== originalOrder.id);
-           setOrders(newOrders); await Promise.all([ FS.addHistory(finishedOrder), saveOrders(newOrders) ]);
+           setOrders(newOrders); await Promise.all([ addHistory(finishedOrder), saveOrders(newOrders) ]);
         } else {
            const newTotal = remainingItems.reduce((s,i) => s + i.price * i.qty, 0);
            const updatedOriginal = { ...originalOrder, items: remainingItems, total: newTotal };
            const newOrders = orders.map(o => o.id === originalOrder.id ? updatedOriginal : o);
-           setOrders(newOrders); await Promise.all([ FS.addHistory(finishedOrder), saveOrders(newOrders) ]);
+           setOrders(newOrders); await Promise.all([ addHistory(finishedOrder), saveOrders(newOrders) ]);
         }
         showToast("💰 Cuenta dividida cobrada");
         setTab("pedidos"); return;
@@ -1543,7 +1577,7 @@ export default function App() {
       const o = target.data;
       const newOrders = orders.filter(x => x.id !== o.id); setOrders(newOrders); 
       const finished = { ...o, isPaid: true, status: "pagado", payments, paidAt: new Date().toISOString(), ...sunatData };
-      await Promise.all([FS.addHistory(finished), saveOrders(newOrders)]);
+      await Promise.all([addHistory(finished), saveOrders(newOrders)]);
       showToast("💰 Pedido cobrado y archivado");
     }
   };
@@ -1551,7 +1585,7 @@ export default function App() {
   const finishPaidOrder = async (id) => {
     const o = orders.find(x=>x.id===id); if (!o) return;
     const newOrders = orders.filter(x=>x.id!==id); setOrders(newOrders); 
-    const finished = { ...o, status: "pagado" }; await Promise.all([FS.addHistory(finished), saveOrders(newOrders)]);
+    const finished = { ...o, status: "pagado" }; await Promise.all([addHistory(finished), saveOrders(newOrders)]);
     showToast("✅ Pedido entregado y archivado");
   };
 
@@ -1559,7 +1593,7 @@ export default function App() {
     const o = orders.find(x=>x.id===id); if (!o) return;
     const newOrders = orders.filter(x=>x.id!==id); setOrders(newOrders); 
     const finished = {...o,status:"cancelado",cancelledAt:new Date().toISOString(),createdAt:o.createdAt||new Date().toISOString()};
-    await Promise.all([FS.addHistory(finished), saveOrders(newOrders)]); showToast("❌ Pedido cancelado","#e74c3c");
+    await Promise.all([addHistory(finished), saveOrders(newOrders)]); showToast("❌ Pedido cancelado","#e74c3c");
   };
 
   const deleteOrderPermanent = async (id) => {
@@ -1614,7 +1648,7 @@ export default function App() {
   };
 
   if (!currentUser) return <LoginScreen onLogin={(user) => { setCurrentUser(user); setTab(user.id === 'cocinero' ? 'cocina' : 'mesas'); }} s={s} Y={Y} />;
-  if (!loaded) return <div style={{background:"#111",color:"#FFD700",height:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{textAlign:"center"}}><div style={{fontSize:52}}>🍔</div><div style={{marginTop:12,fontWeight:700,letterSpacing:2}}>Cargando Base...</div></div></div>;
+  if (!loaded) return <div style={{background:"#111",color:"#FFD700",height:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{textAlign:"center"}}><div style={{fontSize:52}}>🍔</div><div style={{marginTop:12,fontWeight:700,letterSpacing:2}}>Cargando Sucursal...</div></div></div>;
 
   const allTabs = [
     {id:"dashboard", label:isMobile?"📊":"📊 Inicio"}, {id:"mesas", label:isMobile?"🪑":"🪑 Mesas"}, {id:"nuevo", label:isMobile?"➕":"➕ Nuevo"},
@@ -1638,7 +1672,7 @@ export default function App() {
         <header style={s.header}>
           <div>
             <h1 style={s.logo}>🍔 MR. PAPACHOS · CAJAMARCA</h1>
-            {!isMobile&&<div style={{fontSize:11,color:"#555",fontWeight:700}}>Modo: {currentUser.label}</div>}
+            {!isMobile&&<div style={{fontSize:11,color:"#555",fontWeight:700}}>Modo: {currentUser.label} | SUCURSAL: {currentUser.localName.toUpperCase()}</div>}
           </div>
           <div style={{display:"flex", gap:10, alignItems:"center"}}>
             {!isMobile&&<div style={{fontSize:11,color:"#333",fontWeight:700,textAlign:"right"}}>{new Date().toLocaleDateString("es-PE",{weekday:"long",day:"numeric",month:"long"})}</div>}
