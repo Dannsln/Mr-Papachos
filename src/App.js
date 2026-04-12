@@ -341,6 +341,21 @@ function LoginScreen({ onLogin, s, Y }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// BOTÓN DE CIERRE UNIVERSAL — visible, hover rojo, fácil de tocar
+// ═══════════════════════════════════════════════════════════════════
+function CloseBtn({ onClose }) {
+ return (
+ <button
+ onClick={onClose}
+ style={{flexShrink:0,width:38,height:38,borderRadius:10,background:"#2a2a2a",border:"2px solid #555",color:"#eee",fontSize:20,fontWeight:900,lineHeight:1,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"background .15s,border-color .15s"}}
+ onMouseEnter={e=>{e.currentTarget.style.background="#c0392b";e.currentTarget.style.borderColor="#e74c3c";}}
+ onMouseLeave={e=>{e.currentTarget.style.background="#2a2a2a";e.currentTarget.style.borderColor="#555";}}
+ aria-label="Cerrar"
+ >✕</button>
+ );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // MODAL CONFIGURADOR DE SALSAS
 // ═══════════════════════════════════════════════════════════════════
 function SalsasModalComponent({ initialSalsas = [], onSave, onClose, s, Y }) {
@@ -369,7 +384,7 @@ function SalsasModalComponent({ initialSalsas = [], onSave, onClose, s, Y }) {
  <div style={{...s.modal, maxWidth:380}} onClick={e => e.stopPropagation()}>
  <div style={{fontSize:24, marginBottom:10, color:Y, fontFamily:"'Bebas Neue',cursive", letterSpacing:1, display:"flex", justifyContent:"space-between", alignItems:"center"}}>
  <span>ELEGIR SALSAS (Max. 4)</span>
- <button style={{background:"#333", border:"none", borderRadius:8, color:"#eee", width:34, height:34, fontSize:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900}} onClick={onClose}>✕</button>
+ <CloseBtn onClose={onClose} />
  </div>
  
  <div style={{ display:"flex", gap:6, marginTop:6, flexWrap:"wrap", marginBottom:16 }}>
@@ -439,7 +454,7 @@ function SplitBillModal({ order, onProceed, onClose, s, Y, fmt }) {
  <div style={{...s.modal, maxWidth:420}} onClick={e => e.stopPropagation()}>
  <div style={{...s.row, marginBottom:14}}>
  <h2 style={{color:Y, fontFamily:"'Bebas Neue',cursive", margin:0, fontSize:24, letterSpacing:1}}> DIVIDIR CUENTA</h2>
- <button style={{background:"#333", border:"none", borderRadius:8, color:"#eee", width:34, height:34, fontSize:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900}} onClick={onClose}>✕</button>
+ <CloseBtn onClose={onClose} />
  </div>
  
  <div style={{fontSize:12, color:"#aaa", marginBottom:16}}>
@@ -565,7 +580,7 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
 
  <div style={{ ...s.row, marginBottom:14 }}>
  <div style={{ color:Y, fontFamily:"'Bebas Neue',cursive", fontSize:20, letterSpacing:1 }}> EDITAR PEDIDO</div>
- <button style={{background:"#333", border:"none", borderRadius:8, color:"#eee", width:34, height:34, fontSize:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900}} onClick={onClose}>✕</button>
+ <CloseBtn onClose={onClose} />
  </div>
 
  <div style={{ marginBottom:10 }}>
@@ -677,58 +692,138 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// MODAL MULTICOBRO
+// MODAL MULTICOBRO — con descuento opcional
 // ═══════════════════════════════════════════════════════════════════
 function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
- const [ef, setEf] = useState(total);
+ const [descPct, setDescPct] = useState(0);
+ const [descMotivo, setDescMotivo] = useState("");
+ const [showDesc, setShowDesc] = useState(false);
+
+ const descAmt = Math.round((total * (Number(descPct)||0) / 100) * 100) / 100;
+ const totalFinal = Math.max(0, total - descAmt);
+
+ const [ef, setEf] = useState(totalFinal);
  const [ya, setYa] = useState(0);
  const [ta, setTa] = useState(0);
 
+ // Recalculate efectivo default when discount changes
+ useEffect(() => { setEf(totalFinal); setYa(0); setTa(0); }, [totalFinal]);
+
  const sum = Number(ef||0) + Number(ya||0) + Number(ta||0);
- const diff = total - sum;
+ const diff = totalFinal - sum;
+
+ const DESCUENTOS_RAPIDOS = [5, 10, 15, 20, 25, 50];
 
  const handleConfirm = () => {
- onConfirm({ efectivo: Number(ef||0), yape: Number(ya||0), tarjeta: Number(ta||0) });
+ onConfirm({
+ efectivo: Number(ef||0),
+ yape: Number(ya||0),
+ tarjeta: Number(ta||0),
+ descuentoPct: Number(descPct)||0,
+ descuentoAmt: descAmt,
+ descuentoMotivo: descMotivo,
+ totalOriginal: total,
+ totalFinal,
+ });
  };
 
  return (
  <div style={s.modal} onClick={e => e.stopPropagation()}>
- <div style={{...s.row, marginBottom:16}}>
+ <div style={{...s.row, marginBottom:14}}>
  <h2 style={{color:Y, fontFamily:"'Bebas Neue',cursive", margin:0, fontSize:24, letterSpacing:1}}>💰 COBRAR</h2>
- <button style={{background:"#333", border:"none", borderRadius:8, color:"#eee", width:34, height:34, fontSize:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900}} onClick={onClose}>✕</button>
+ <CloseBtn onClose={onClose} />
  </div>
 
- <div style={{fontSize:22, fontWeight:900, marginBottom:16, textAlign:"center", background:"#111", padding:12, borderRadius:8}}>
- TOTAL: <span style={{color:Y}}>{fmt(total)}</span>
+ {/* Total display */}
+ <div style={{textAlign:"center", background:"#111", padding:"12px 16px", borderRadius:10, marginBottom:14}}>
+ {descAmt > 0 && (
+ <div style={{fontSize:13, color:"#888", textDecoration:"line-through", marginBottom:2}}>
+ Total original: {fmt(total)}
+ </div>
+ )}
+ <div style={{fontSize:22, fontWeight:900}}>
+ TOTAL A COBRAR: <span style={{color: descAmt>0?"#27ae60":Y}}>{fmt(totalFinal)}</span>
+ </div>
+ {descAmt > 0 && (
+ <div style={{fontSize:12, color:"#27ae60", marginTop:4, fontWeight:700}}>
+ Descuento {descPct}%: −{fmt(descAmt)}{descMotivo ? ` · ${descMotivo}` : ""}
+ </div>
+ )}
  </div>
 
- <div style={{display:"flex", flexDirection:"column", gap:10}}>
- <div style={{display:"flex", alignItems:"center", gap:10}}>
- <span style={{width:80, fontWeight:700}}>💵 Efectivo</span>
- <input type="number" style={s.input} value={ef} onChange={e=>setEf(e.target.value)} min="0" step="0.5" />
- <button style={s.btn("secondary")} onClick={()=>{setEf(total);setYa(0);setTa(0);}}>Todo</button>
+ {/* Descuento toggle */}
+ <div style={{marginBottom:14}}>
+ <button
+ style={{...s.btn(showDesc?"warn":"secondary"), width:"100%", padding:"8px 12px", fontSize:12, marginBottom: showDesc ? 10 : 0}}
+ onClick={()=>setShowDesc(v=>!v)}>
+ {showDesc ? "▲ Ocultar descuento" : "🏷 Aplicar descuento"}
+ </button>
+
+ {showDesc && (
+ <div style={{background:"#111", border:"1px solid #d35400", borderRadius:10, padding:"12px 14px"}}>
+ <div style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, marginBottom:8}}>Porcentaje de descuento</div>
+ {/* Botones rápidos */}
+ <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:10}}>
+ {DESCUENTOS_RAPIDOS.map(p => (
+ <button key={p}
+ style={{...s.btn(Number(descPct)===p?"warn":"secondary"), padding:"5px 10px", fontSize:12}}
+ onClick={()=>setDescPct(Number(descPct)===p ? 0 : p)}>
+ {p}%
+ </button>
+ ))}
  </div>
- <div style={{display:"flex", alignItems:"center", gap:10}}>
- <span style={{width:80, fontWeight:700}}>📱 Yape</span>
- <input type="number" style={s.input} value={ya} onChange={e=>setYa(e.target.value)} min="0" step="0.5" />
- <button style={s.btn("secondary")} onClick={()=>{setEf(0);setYa(total);setTa(0);}}>Todo</button>
+ {/* Input manual */}
+ <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:10}}>
+ <input
+ type="number"
+ style={{...s.input, flex:1}}
+ min="0" max="100" step="1"
+ placeholder="% personalizado"
+ value={descPct||""}
+ onChange={e => {
+ const v = Math.min(100, Math.max(0, Number(e.target.value)||0));
+ setDescPct(v);
+ }}
+ />
+ <span style={{color:"#888", fontWeight:700, whiteSpace:"nowrap"}}>% = −{fmt(descAmt)}</span>
  </div>
- <div style={{display:"flex", alignItems:"center", gap:10}}>
- <span style={{width:80, fontWeight:700}}>💳 Tarjeta</span>
- <input type="number" style={s.input} value={ta} onChange={e=>setTa(e.target.value)} min="0" step="0.5" />
- <button style={s.btn("secondary")} onClick={()=>{setEf(0);setYa(0);setTa(total);}}>Todo</button>
+ {/* Motivo opcional */}
+ <input
+ style={s.input}
+ placeholder="Motivo (opcional)"
+ value={descMotivo}
+ onChange={e => setDescMotivo(e.target.value)}
+ spellCheck="false"
+ />
  </div>
+ )}
+ </div>
+
+ {/* Métodos de pago */}
+ <div style={{display:"flex", flexDirection:"column", gap:10, marginBottom:12}}>
+ {[
+ {label:"💵 Efectivo", val:ef, set:setEf, todoFn:()=>{setEf(totalFinal);setYa(0);setTa(0);}},
+ {label:"📱 Yape", val:ya, set:setYa, todoFn:()=>{setEf(0);setYa(totalFinal);setTa(0);}},
+ {label:"💳 Tarjeta", val:ta, set:setTa, todoFn:()=>{setEf(0);setYa(0);setTa(totalFinal);}},
+ ].map(({label, val, set, todoFn}) => (
+ <div key={label} style={{display:"flex", alignItems:"center", gap:10}}>
+ <span style={{width:90, fontWeight:700, fontSize:13}}>{label}</span>
+ <input type="number" style={s.input} value={val} onChange={e=>set(e.target.value)} min="0" step="0.5" />
+ <button style={s.btn("secondary")} onClick={todoFn}>Todo</button>
+ </div>
+ ))}
  </div>
 
  {Math.abs(diff) > 0.01 && (
- <div style={{marginTop:10, textAlign:"center", fontSize:13, color:"#e74c3c", fontWeight:700}}>
- {diff > 0 ? `Falta: ${fmt(diff)}` : `Excede: ${fmt(Math.abs(diff))}`}
+ <div style={{textAlign:"center", fontSize:13, color: diff>0?"#e74c3c":"#e67e22", fontWeight:700, marginBottom:8, padding:"6px", background:"#1a0a0a", borderRadius:6}}>
+ {diff > 0 ? `⚠ Falta: ${fmt(diff)}` : `⚠ Excede: ${fmt(Math.abs(diff))}`}
  </div>
  )}
 
- <button style={{...s.btn("success"), width:"100%", padding:14, fontSize:16, marginTop:16, opacity: Math.abs(diff)>0.01 ? 0.5 : 1}} 
+ <button
+ style={{...s.btn("success"), width:"100%", padding:14, fontSize:16, opacity: Math.abs(diff)>0.01 ? 0.45 : 1}}
  onClick={handleConfirm} disabled={Math.abs(diff)>0.01}>
- Confirmar Cobro
+ ✅ Confirmar Cobro {descAmt>0 ? `(−${descPct}%)` : ""}
  </button>
  </div>
  )
@@ -1085,7 +1180,7 @@ function MesaModalComponent({ num, orders, setDraft, newDraft, onClose, setTab, 
  <div style={s.modal} onClick={e => e.stopPropagation()}>
  <div style={{...s.row, marginBottom:14}}>
  <div style={{color:Y, fontFamily:"'Bebas Neue',cursive", fontSize:22}}>🍽 MESA {num}</div>
- <button style={{background:"#333", border:"none", borderRadius:8, color:"#eee", width:34, height:34, fontSize:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900}} onClick={onClose}>✕</button>
+ <CloseBtn onClose={onClose} />
  </div>
  {mesaOrders.length === 0
  ? <div style={{textAlign:"center", padding:30, color:"#555"}}><div style={{fontSize:32}}></div><div style={{marginTop:8}}>Mesa libre</div></div>
@@ -1278,7 +1373,7 @@ function AnulacionModal({ order, onConfirm, onClose, menu, s, Y, fmt }) {
  <div style={s.modal} onClick={e => e.stopPropagation()}>
  <div style={{...s.row, marginBottom:14}}>
  <h2 style={{color:"#e74c3c", fontFamily:"'Bebas Neue',cursive", margin:0, fontSize:22, letterSpacing:1}}>🚫 ANULAR PEDIDO</h2>
- <button style={{background:"#333", border:"none", borderRadius:8, color:"#eee", width:34, height:34, fontSize:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900}} onClick={onClose}>✕</button>
+ <CloseBtn onClose={onClose} />
  </div>
 
  {/* Motivo */}
@@ -1757,9 +1852,17 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder }
 
  {/* Detalle de Pagos - Normal */}
  {!isCanceled && !o.splitPayments?.length && (
- <div style={{fontSize:11, color:"#aaa", display:"flex", gap:12, marginBottom:10, background:"#0a0a0a", padding:"8px 12px", borderRadius:6}}>
+ <div style={{fontSize:11, color:"#aaa", marginBottom:10, background:"#0a0a0a", padding:"8px 12px", borderRadius:6}}>
+ <div style={{display:"flex", gap:12, flexWrap:"wrap"}}>
  <span style={{fontWeight:800, color:"#777"}}>MEDIO DE PAGO:</span>
  {[pe>0&&`💵 Efectivo: ${fmt(pe)}`, py>0&&`📱 Yape: ${fmt(py)}`, pt>0&&`💳 Tarjeta: ${fmt(pt)}`].filter(Boolean).join(" | ")}
+ </div>
+ {o.descuentoPct > 0 && (
+ <div style={{marginTop:5, color:"#27ae60", fontWeight:700}}>
+ 🏷 Descuento {o.descuentoPct}%: −{fmt(o.descuentoAmt)} {o.descuentoMotivo ? `· ${o.descuentoMotivo}` : ""}
+ <span style={{color:"#555", marginLeft:6}}>| Precio original: {fmt(o.totalOriginal)}</span>
+ </div>
+ )}
  </div>
  )}
 
@@ -1942,6 +2045,8 @@ export default function App() {
 
  const [tab, setTab] = useState("mesas");
  const [orders, setOrders] = useState([]);
+ const ordersRef = useRef([]); // always current, avoids stale closures in async functions
+ useEffect(() => { ordersRef.current = orders; }, [orders]);
  const [history, setHistory] = useState([]);
  const [menu, setMenu] = useState(MENU_BASE);
  const [draft, setDraft] = useState(newDraft());
@@ -2009,7 +2114,7 @@ export default function App() {
  if (mesasArr.length === 0) return;
  const lastMesa = mesasArr[mesasArr.length - 1];
  
- const hasOrders = orders.some(o => o.table === String(lastMesa) && o.orderType !== "llevar");
+ const hasOrders = ordersRef.current.some(o => o.table === String(lastMesa) && o.orderType !== "llevar");
  if (hasOrders) {
  showToast(` La Mesa ${lastMesa} tiene pedidos activos. Cóbrelos primero.`, "#e74c3c");
  return;
@@ -2022,11 +2127,9 @@ export default function App() {
  };
 
  const markKitchenListo = async (orderId) => {
- setOrders(prevOrders => {
- const updatedOrders = prevOrders.map(o => o.id === orderId ? {...o, kitchenStatus: 'listo'} : o);
- saveOrders(updatedOrders);
- return updatedOrders;
- });
+ const newOrders = ordersRef.current.map(o => o.id === orderId ? {...o, kitchenStatus:'listo'} : o);
+ setOrders(newOrders);
+ await saveOrders(newOrders);
  };
 
  const addItem = (item) => setDraft(d => {
@@ -2074,7 +2177,7 @@ export default function App() {
  if (draft.orderType === "mesa" && !draft.table.trim()) return;
  if (!draft.items.length) return;
  const total = draftTotal;
- const existingMesaOrder = orders.find(o => o.table === draft.table.trim() && o.orderType === "mesa" && !o.isPaid) ?? null;
+ const existingMesaOrder = ordersRef.current.find(o => o.table === draft.table.trim() && o.orderType === "mesa" && !o.isPaid) ?? null;
 
  if (existingMesaOrder && forceMerge === null) {
  setMergeModal({ existingOrder: existingMesaOrder, newDraftData: { ...draft, total } });
@@ -2100,8 +2203,9 @@ export default function App() {
  }
  });
  const updated = { ...existing, items: mergedItems, total: mergedItems.reduce((s, i) => s + i.price * i.qty, 0), notes: [existing.notes, mergeModal.newDraftData.notes].filter(Boolean).join(" | "), taperCost: 0, kitchenStatus: 'pendiente' };
- setOrders(prev => prev.map(o => o.id === existing.id ? updated : o));
- await saveOrders(orders.map(o => o.id === existing.id ? updated : o));
+ const mergedList = ordersRef.current.map(o => o.id === existing.id ? updated : o);
+ setOrders(mergedList);
+ await saveOrders(mergedList);
  setDraft(newDraft()); setMergeModal(null); setMergeName(""); showToast(` Ítems agregados a Mesa ${existing.table}`); setTab("pedidos"); return;
  }
 
@@ -2112,62 +2216,48 @@ export default function App() {
  setCobrarTarget({ type: 'new', data: { id:Date.now().toString(), ...finalDraft, total, createdAt:new Date().toISOString() } });
  } else {
  const order = { id:Date.now().toString(), ...finalDraft, total, isPaid: false, status:"pendiente", kitchenStatus:"pendiente", createdAt:new Date().toISOString() };
- setOrders(prev => [...prev, order]); await saveOrders([...orders,order]);
+ const newOrders = [...ordersRef.current, order];
+ setOrders(newOrders); await saveOrders(newOrders);
  setDraft(newDraft()); showToast(` Pedido enviado a cocina`); setTab("pedidos");
  }
  };
 
  const handleConfirmCobro = async (paymentData) => {
  if (!cobrarTarget) return;
+ const cur = ordersRef.current; // always fresh, no stale closure
  const target = cobrarTarget; setCobrarTarget(null);
  const payments = { efectivo: paymentData.efectivo, yape: paymentData.yape, tarjeta: paymentData.tarjeta };
+ const descuentoData = paymentData.descuentoPct > 0 ? {
+ descuentoPct: paymentData.descuentoPct,
+ descuentoAmt: paymentData.descuentoAmt,
+ descuentoMotivo: paymentData.descuentoMotivo || "",
+ totalOriginal: paymentData.totalOriginal,
+ } : {};
 
  if (target.type === 'split') {
  const originalOrder = target.data.originalOrder;
  const splitItems = target.data.splitItems;
  const paidItems = splitItems.map(si => ({...si, qty: si.splitQty}));
-
- // Registro de este cobro parcial
- const thisSplitRecord = {
- items: paidItems,
- total: target.data.total,
- payments,
- paidAt: new Date().toISOString()
- };
-
- // Acumular con cobros parciales anteriores
+ const thisSplitRecord = { items: paidItems, total: target.data.total, payments, paidAt: new Date().toISOString() };
  const accumulatedSplits = [...(originalOrder.splitPayments || []), thisSplitRecord];
-
  let remainingItems = originalOrder.items.map(origItem => {
  const splitItem = splitItems.find(si => si.cartId === origItem.cartId);
- if (splitItem) {
- return { ...origItem, qty: origItem.qty - splitItem.splitQty, individualNotes: origItem.individualNotes.slice(splitItem.splitQty) };
- }
+ if (splitItem) return { ...origItem, qty: origItem.qty - splitItem.splitQty, individualNotes: origItem.individualNotes.slice(splitItem.splitQty) };
  return origItem;
  }).filter(i => i.qty > 0);
- 
  if (remainingItems.length === 0) {
- // Todos pagaron → guardar en historial como UN solo pedido con todas las divisiones
- const totalEf = accumulatedSplits.reduce((s, sp) => s + sp.payments.efectivo, 0);
- const totalYa = accumulatedSplits.reduce((s, sp) => s + sp.payments.yape, 0);
- const totalTa = accumulatedSplits.reduce((s, sp) => s + sp.payments.tarjeta, 0);
- const finalOrder = {
- ...originalOrder,
- isPaid: true,
- status: "pagado",
- payments: { efectivo: totalEf, yape: totalYa, tarjeta: totalTa },
- splitPayments: accumulatedSplits,
- paidAt: new Date().toISOString()
- };
- const newOrders = orders.filter(x => x.id !== originalOrder.id);
+ const totalEf = accumulatedSplits.reduce((s,sp) => s+sp.payments.efectivo, 0);
+ const totalYa = accumulatedSplits.reduce((s,sp) => s+sp.payments.yape, 0);
+ const totalTa = accumulatedSplits.reduce((s,sp) => s+sp.payments.tarjeta, 0);
+ const finalOrder = { ...originalOrder, isPaid:true, status:"pagado", payments:{efectivo:totalEf,yape:totalYa,tarjeta:totalTa}, splitPayments:accumulatedSplits, paidAt:new Date().toISOString(), ...descuentoData };
+ const newOrders = cur.filter(x => x.id !== originalOrder.id);
  setOrders(newOrders);
  await Promise.all([addHistory(finalOrder), saveOrders(newOrders)]);
  showToast("✅ Cuenta completa cobrada y archivada");
  } else {
- // Quedan ítems, actualizar pedido con cobros acumulados
- const newTotal = remainingItems.reduce((s, i) => s + i.price * i.qty, 0);
- const updatedOriginal = { ...originalOrder, items: remainingItems, total: newTotal, splitPayments: accumulatedSplits };
- const newOrders = orders.map(o => o.id === originalOrder.id ? updatedOriginal : o);
+ const newTotal = remainingItems.reduce((s,i) => s+i.price*i.qty, 0);
+ const updatedOriginal = { ...originalOrder, items:remainingItems, total:newTotal, splitPayments:accumulatedSplits };
+ const newOrders = cur.map(o => o.id === originalOrder.id ? updatedOriginal : o);
  setOrders(newOrders);
  await saveOrders(newOrders);
  showToast(`✅ División cobrada · Quedan ${fmt(newTotal)}`);
@@ -2176,76 +2266,59 @@ export default function App() {
  }
 
  if (target.type === 'new') {
- const order = { ...target.data, isPaid: true, status: "pendiente", kitchenStatus: "pendiente", payments, paidAt: new Date().toISOString() };
- setOrders(prev => [...prev, order]); await saveOrders([...orders, order]);
+ const order = { ...target.data, isPaid:true, status:"pendiente", kitchenStatus:"pendiente", payments, paidAt:new Date().toISOString(), ...descuentoData };
+ const newOrders = [...cur, order];
+ setOrders(newOrders); await saveOrders(newOrders);
  setDraft(newDraft()); showToast("✅ Pedido cobrado y enviado a cocina"); setTab("pedidos");
  } else if (target.type === 'existing') {
  const o = target.data;
- const newOrders = orders.filter(x => x.id !== o.id); setOrders(newOrders); 
- const finished = { ...o, isPaid: true, status: "pagado", payments, paidAt: new Date().toISOString() };
+ const finished = { ...o, isPaid:true, status:"pagado", payments, paidAt:new Date().toISOString(), ...descuentoData };
+ const newOrders = cur.filter(x => x.id !== o.id);
+ setOrders(newOrders);
  await Promise.all([addHistory(finished), saveOrders(newOrders)]);
  showToast("✅ Pedido cobrado y archivado");
  }
  };
 
  const finishPaidOrder = async (id) => {
- const o = orders.find(x=>x.id===id); if (!o) return;
- const newOrders = orders.filter(x=>x.id!==id); setOrders(newOrders); 
- const finished = { ...o, status: "pagado" }; await Promise.all([addHistory(finished), saveOrders(newOrders)]);
- showToast(" Pedido entregado y archivado");
+ const cur = ordersRef.current;
+ const o = cur.find(x=>x.id===id); if (!o) return;
+ const newOrders = cur.filter(x=>x.id!==id);
+ setOrders(newOrders);
+ const finished = { ...o, status:"pagado" };
+ await Promise.all([addHistory(finished), saveOrders(newOrders)]);
+ showToast("✅ Pedido entregado y archivado");
  };
 
  const cancelOrder = async (id) => {
- const o = orders.find(x=>x.id===id); if (!o) return;
- const newOrders = orders.filter(x=>x.id!==id); setOrders(newOrders); 
- const finished = {...o,status:"cancelado",cancelledAt:new Date().toISOString(),createdAt:o.createdAt||new Date().toISOString()};
- await Promise.all([addHistory(finished), saveOrders(newOrders)]); showToast(" Pedido cancelado","#e74c3c");
+ const cur = ordersRef.current;
+ const o = cur.find(x=>x.id===id); if (!o) return;
+ const newOrders = cur.filter(x=>x.id!==id);
+ setOrders(newOrders);
+ const finished = {...o, status:"cancelado", cancelledAt:new Date().toISOString(), createdAt:o.createdAt||new Date().toISOString()};
+ await Promise.all([addHistory(finished), saveOrders(newOrders)]);
+ showToast("🚫 Pedido cancelado","#e74c3c");
  };
 
  const deleteOrderPermanent = async (id) => {
- const newOrders = orders.filter(x=>x.id!==id); setOrders(newOrders); await saveOrders(newOrders);
- setConfirmDelete(null); showToast(" Pedido eliminado","#888");
+ const newOrders = ordersRef.current.filter(x=>x.id!==id);
+ setOrders(newOrders); await saveOrders(newOrders);
+ setConfirmDelete(null); showToast("🗑 Pedido eliminado","#888");
  };
 
  // Anulación con reemplazo (solo admin)
  const anularPedido = async (originalOrder, replacementItems, motivo) => {
+ const cur = ordersRef.current;
  const now = new Date().toISOString();
  const newId = Date.now().toString();
  const hasReplacement = replacementItems && replacementItems.length > 0;
-
- const anuladoOrder = {
- ...originalOrder,
- anulado: true,
- status: "anulado",
- anuladoAt: now,
- motivoAnulacion: motivo || "",
- replacedById: hasReplacement ? newId : null,
- };
-
- let updatedOrders = orders.map(o => o.id === originalOrder.id ? anuladoOrder : o);
-
- let replacementOrder = null;
+ const anuladoOrder = { ...originalOrder, anulado:true, status:"anulado", anuladoAt:now, motivoAnulacion:motivo||"", replacedById:hasReplacement?newId:null };
+ let updatedOrders = cur.map(o => o.id === originalOrder.id ? anuladoOrder : o);
  if (hasReplacement) {
- const repTotal = replacementItems.reduce((s, i) => s + i.price * i.qty, 0);
- replacementOrder = {
- id: newId,
- table: originalOrder.table,
- orderType: originalOrder.orderType,
- phone: originalOrder.phone || "",
- deliveryAddress: originalOrder.deliveryAddress || "",
- notes: originalOrder.notes || "",
- items: replacementItems,
- total: repTotal,
- isPaid: false,
- status: "pendiente",
- kitchenStatus: "pendiente",
- createdAt: now,
- replacesId: originalOrder.id,
- taperCost: 0,
- };
+ const repTotal = replacementItems.reduce((s,i) => s+i.price*i.qty, 0);
+ const replacementOrder = { id:newId, table:originalOrder.table, orderType:originalOrder.orderType, phone:originalOrder.phone||"", deliveryAddress:originalOrder.deliveryAddress||"", notes:originalOrder.notes||"", items:replacementItems, total:repTotal, isPaid:false, status:"pendiente", kitchenStatus:"pendiente", createdAt:now, replacesId:originalOrder.id, taperCost:0 };
  updatedOrders = [...updatedOrders, replacementOrder];
  }
-
  setOrders(updatedOrders);
  await saveOrders(updatedOrders);
  setAnulacionModal(null);
@@ -2253,8 +2326,10 @@ export default function App() {
  };
 
  const saveEditedOrder = async (updated) => {
- setOrders(prev => prev.map(o=>o.id===updated.id?updated:o)); await saveOrders(orders.map(o=>o.id===updated.id?updated:o));
- setEditingOrder(null); showToast(` Pedido actualizado`,"#f39c12");
+ const cur = ordersRef.current;
+ const newOrders = cur.map(o=>o.id===updated.id?updated:o);
+ setOrders(newOrders); await saveOrders(newOrders);
+ setEditingOrder(null); showToast("✏️ Pedido actualizado","#f39c12");
  };
 
  const addMenuItem = async () => {
