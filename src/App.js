@@ -863,8 +863,8 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  )}
 
  <div style={{ ...s.title, fontSize:22, marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
- <span> PEDIDO ACTUAL</span>
- {isMobile && <button onClick={() => setShowCartModal(false)} style={{...s.btn("secondary"), padding:"4px 10px"}}></button>}
+ <span>🛒 PEDIDO ACTUAL</span>
+ {isMobile && <CloseBtn onClose={() => setShowCartModal(false)} />}
  </div>
 
  <div style={{ marginBottom:10 }}>
@@ -1845,7 +1845,17 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder }
  <span style={{color:"#666", fontSize:12}}>{timeStr(o.paidAt || o.cancelledAt || o.createdAt)}</span>
  </div>
  <div style={{display:"flex", alignItems:"center", gap:12}}>
- <span style={{color: isCanceled ? "#888" : Y, fontWeight:900, fontSize:18}}>{isCanceled ? <del>{fmt(o.total)}</del> : fmt(o.total)}</span>
+ <div style={{textAlign:"right"}}>
+ {o.descuentoPct > 0 && !isCanceled && (
+ <div style={{fontSize:11, color:"#888", textDecoration:"line-through"}}>{fmt(o.totalOriginal)}</div>
+ )}
+ <span style={{color: isCanceled ? "#888" : o.descuentoPct > 0 ? "#27ae60" : Y, fontWeight:900, fontSize:18}}>
+ {isCanceled ? <del>{fmt(o.total)}</del> : fmt(o.total)}
+ </span>
+ {o.descuentoPct > 0 && !isCanceled && (
+ <div style={{fontSize:10, color:"#27ae60", fontWeight:700}}>🏷 −{o.descuentoPct}%</div>
+ )}
+ </div>
  <button style={{...s.btn("secondary"), padding:"6px 10px", fontSize:11}} onClick={(e) => { e.stopPropagation(); printOrder(o); }}>🖨 Ticket</button>
  </div>
  </div>
@@ -2266,13 +2276,25 @@ export default function App() {
  }
 
  if (target.type === 'new') {
- const order = { ...target.data, isPaid:true, status:"pendiente", kitchenStatus:"pendiente", payments, paidAt:new Date().toISOString(), ...descuentoData };
+ const order = {
+ ...target.data,
+ isPaid:true, status:"pendiente", kitchenStatus:"pendiente",
+ payments, paidAt:new Date().toISOString(),
+ ...descuentoData,
+ ...(paymentData.descuentoPct > 0 ? { total: paymentData.totalFinal } : {}),
+ };
  const newOrders = [...cur, order];
  setOrders(newOrders); await saveOrders(newOrders);
  setDraft(newDraft()); showToast("✅ Pedido cobrado y enviado a cocina"); setTab("pedidos");
  } else if (target.type === 'existing') {
  const o = target.data;
- const finished = { ...o, isPaid:true, status:"pagado", payments, paidAt:new Date().toISOString(), ...descuentoData };
+ const finished = {
+ ...o,
+ isPaid:true, status:"pagado",
+ payments, paidAt:new Date().toISOString(),
+ ...descuentoData,
+ ...(paymentData.descuentoPct > 0 ? { total: paymentData.totalFinal } : {}),
+ };
  const newOrders = cur.filter(x => x.id !== o.id);
  setOrders(newOrders);
  await Promise.all([addHistory(finished), saveOrders(newOrders)]);
