@@ -2281,7 +2281,7 @@ export default function App() {
  isPaid:true, status:"pendiente", kitchenStatus:"pendiente",
  payments, paidAt:new Date().toISOString(),
  ...descuentoData,
- ...(paymentData.descuentoPct > 0 ? { total: paymentData.totalFinal } : {}),
+ total: paymentData.descuentoPct > 0 ? paymentData.totalFinal : target.data.total,
  };
  const newOrders = [...cur, order];
  setOrders(newOrders); await saveOrders(newOrders);
@@ -2293,7 +2293,7 @@ export default function App() {
  isPaid:true, status:"pagado",
  payments, paidAt:new Date().toISOString(),
  ...descuentoData,
- ...(paymentData.descuentoPct > 0 ? { total: paymentData.totalFinal } : {}),
+ total: paymentData.descuentoPct > 0 ? paymentData.totalFinal : o.total,
  };
  const newOrders = cur.filter(x => x.id !== o.id);
  setOrders(newOrders);
