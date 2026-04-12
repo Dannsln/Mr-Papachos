@@ -1634,14 +1634,14 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  {canCobrar && (o.isPaid
  ? <button style={{...s.btn("blue"),flex:1}} onClick={()=>finishPaidOrder(o.id)}>Entregado</button>
  : <>
- <button style={{...s.btn("success"),flex:2,fontWeight:900}} onClick={()=>setCobrarTarget({type:'existing',data:o})}>💰 Cobrar</button>
+ <button style={{...s.btn("success"),flex:2,fontWeight:900}} onClick={()=>setCobrarTarget({type:'existing',data:o})}> Cobrar</button>
  <button style={{...s.btn(splitOpen?"primary":"secondary"), flex:1}} onClick={()=>setSplitOpenId(splitOpen?null:o.id)}>
- {splitOpen ? "▲" : "✂️ Dividir"}
+ {splitOpen ? "▲" : "Dividir"}
  </button>
  </>
  )}
  {isAdmin && !o.isPaid && (
- <button style={{...s.btn("warn"),flex:1}} onClick={()=>setEditingOrder(o)}>✏️ Editar</button>
+ <button style={{...s.btn("warn"),flex:1}} onClick={()=>setEditingOrder(o)}> Editar</button>
  )}
  <button style={{...s.btn("secondary"), padding:"7px 10px", fontSize:11}} onClick={()=>printOrder(o)}>🖨</button>
  {canAnular && !o.isPaid && (
