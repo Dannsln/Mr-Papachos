@@ -350,8 +350,8 @@ function CloseBtn({ onClose }) {
  style={{flexShrink:0,width:38,height:38,borderRadius:10,background:"#2a2a2a",border:"2px solid #555",color:"#eee",fontSize:20,fontWeight:900,lineHeight:1,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"background .15s,border-color .15s"}}
  onMouseEnter={e=>{e.currentTarget.style.background="#c0392b";e.currentTarget.style.borderColor="#e74c3c";}}
  onMouseLeave={e=>{e.currentTarget.style.background="#2a2a2a";e.currentTarget.style.borderColor="#555";}}
- aria-label="Minimizar"
- >−</button>
+ aria-label="Cerrar"
+ >✕</button>
  );
 }
 
@@ -365,7 +365,6 @@ function SalsasModalComponent({ initialSalsas = [], onSave, onClose, s, Y }) {
  if (selected.find(x => x.name === salsa)) {
  setSelected(selected.filter(x => x.name !== salsa));
  } else {
- if (selected.length >= 4) return;
  if (salsa === "Clásica") {
  setSelected([{ name: "Clásica", style: "Sin crema" }]);
  } else {
@@ -383,7 +382,7 @@ function SalsasModalComponent({ initialSalsas = [], onSave, onClose, s, Y }) {
  <div style={s.overlay} onClick={onClose}>
  <div style={{...s.modal, maxWidth:380}} onClick={e => e.stopPropagation()}>
  <div style={{fontSize:24, marginBottom:10, color:Y, fontFamily:"'Bebas Neue',cursive", letterSpacing:1, display:"flex", justifyContent:"space-between", alignItems:"center"}}>
- <span>ELEGIR SALSAS (Max. 4)</span>
+ <span>ELEGIR SALSAS</span>
  <CloseBtn onClose={onClose} />
  </div>
  
@@ -392,8 +391,8 @@ function SalsasModalComponent({ initialSalsas = [], onSave, onClose, s, Y }) {
  const isSelected = selected.find(x => x.name === salsa);
  return (
  <button key={salsa} 
- style={{...s.btn(isSelected ? "primary" : "secondary"), fontSize:11, opacity: (!isSelected && selected.length >= 4) ? 0.4 : 1}}
- onClick={() => toggleSalsa(salsa)} disabled={!isSelected && selected.length >= 4}>
+ style={{...s.btn(isSelected ? "primary" : "secondary"), fontSize:11}}
+ onClick={() => toggleSalsa(salsa)}>
  {salsa}
  </button>
  )
@@ -692,39 +691,27 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// MODAL MULTICOBRO — con descuento total o por ítems específicos
+// MODAL MULTICOBRO — con descuento opcional
 // ═══════════════════════════════════════════════════════════════════
 function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
- const items = orderContext?.items || [];
-
  const [descPct, setDescPct] = useState(0);
  const [descMotivo, setDescMotivo] = useState("");
  const [showDesc, setShowDesc] = useState(false);
- // "total" = descuento al total, "items" = descuento a ítems específicos
- const [descMode, setDescMode] = useState("total");
- // Para modo por ítems: { [cartId]: true/false }
- const [selectedItems, setSelectedItems] = useState({});
 
- // Base de cálculo según modo
- const baseParaDescuento = descMode === "items"
- ? items.filter(i => selectedItems[i.cartId]).reduce((s,i) => s + i.price * i.qty, 0)
- : total;
-
- const descAmt = Math.round((baseParaDescuento * (Number(descPct)||0) / 100) * 100) / 100;
+ const descAmt = Math.round((total * (Number(descPct)||0) / 100) * 100) / 100;
  const totalFinal = Math.max(0, total - descAmt);
 
  const [ef, setEf] = useState(totalFinal);
  const [ya, setYa] = useState(0);
  const [ta, setTa] = useState(0);
 
+ // Recalculate efectivo default when discount changes
  useEffect(() => { setEf(totalFinal); setYa(0); setTa(0); }, [totalFinal]);
 
  const sum = Number(ef||0) + Number(ya||0) + Number(ta||0);
  const diff = totalFinal - sum;
 
  const DESCUENTOS_RAPIDOS = [5, 10, 15, 20, 25, 50];
-
- const toggleItem = (cartId) => setSelectedItems(prev => ({...prev, [cartId]: !prev[cartId]}));
 
  const handleConfirm = () => {
  onConfirm({
@@ -736,8 +723,6 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
  descuentoMotivo: descMotivo,
  totalOriginal: total,
  totalFinal,
- descuentoMode: descMode,
- descuentoItems: descMode === "items" ? Object.keys(selectedItems).filter(k => selectedItems[k]) : null,
  });
  };
 
@@ -760,7 +745,7 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
  </div>
  {descAmt > 0 && (
  <div style={{fontSize:12, color:"#27ae60", marginTop:4, fontWeight:700}}>
- Descuento {descPct}%{descMode==="items"?" (ítems sel.)":""}: −{fmt(descAmt)}{descMotivo ? ` · ${descMotivo}` : ""}
+ Descuento {descPct}%: −{fmt(descAmt)}{descMotivo ? ` · ${descMotivo}` : ""}
  </div>
  )}
  </div>
@@ -775,49 +760,6 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
 
  {showDesc && (
  <div style={{background:"#111", border:"1px solid #d35400", borderRadius:10, padding:"12px 14px"}}>
-
- {/* Modo de descuento */}
- {items.length > 0 && (
- <div style={{marginBottom:12}}>
- <div style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>Aplicar descuento a</div>
- <div style={{display:"flex", gap:8}}>
- <button style={{...s.btn(descMode==="total"?"warn":"secondary"), flex:1, fontSize:12}}
- onClick={()=>{ setDescMode("total"); setSelectedItems({}); }}>
- 📦 Todo el pedido
- </button>
- <button style={{...s.btn(descMode==="items"?"warn":"secondary"), flex:1, fontSize:12}}
- onClick={()=>setDescMode("items")}>
- 🍔 Ítems específicos
- </button>
- </div>
- </div>
- )}
-
- {/* Selector de ítems específicos */}
- {descMode === "items" && items.length > 0 && (
- <div style={{marginBottom:12, background:"#0d0d0d", borderRadius:8, padding:"8px 10px", border:"1px solid #2a2a2a"}}>
- <div style={{fontSize:11, color:"#888", marginBottom:6}}>Selecciona los ítems con descuento:</div>
- {items.map(item => {
- const sel = !!selectedItems[item.cartId];
- return (
- <div key={item.cartId} onClick={() => toggleItem(item.cartId)}
- style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 8px", borderRadius:6, marginBottom:4, background: sel ? `${Y}18` : "#1a1a1a", border:`1px solid ${sel ? Y+"55" : "#2a2a2a"}`, cursor:"pointer"}}>
- <span style={{fontSize:13, color: sel?"#fff":"#aaa"}}>{item.qty}× {item.name}</span>
- <div style={{display:"flex", alignItems:"center", gap:8}}>
- <span style={{fontSize:12, color:"#666"}}>{fmt(item.price * item.qty)}</span>
- <div style={{width:18, height:18, borderRadius:4, border:`2px solid ${sel ? Y : "#555"}`, background: sel ? Y : "transparent", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, color:"#111", fontWeight:900}}>{sel?"✓":""}</div>
- </div>
- </div>
- );
- })}
- {baseParaDescuento > 0 && (
- <div style={{fontSize:11, color:Y, fontWeight:700, marginTop:6, paddingTop:6, borderTop:"1px solid #2a2a2a"}}>
- Base del descuento: {fmt(baseParaDescuento)}
- </div>
- )}
- </div>
- )}
-
  <div style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, marginBottom:8}}>Porcentaje de descuento</div>
  {/* Botones rápidos */}
  <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:10}}>
@@ -1062,13 +1004,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  {isDesktop ? <div>{CartContent()}</div> : (
  <>
  {showCartModal && <div style={{...s.overlay, zIndex:9999}} onClick={() => setShowCartModal(false)}><div style={s.modal} onClick={e => e.stopPropagation()}>{CartContent()}</div></div>}
- <button onClick={() => setShowCartModal(true)} style={{ position: "fixed", bottom: 20, right: 20, width: 66, height: 66, borderRadius: 33, background: Y, border: "none", boxShadow: "0 6px 16px rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999, cursor: "pointer" }}>
- <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
- <path d="M6 4h2.5l3.5 14h12l2.5-10H11" stroke="#111" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
- <circle cx="14" cy="27" r="2" fill="#111"/>
- <circle cx="22" cy="27" r="2" fill="#111"/>
- <path d="M14 10h8M14 14h6" stroke="#111" strokeWidth="2" strokeLinecap="round"/>
- </svg>
+ <button onClick={() => setShowCartModal(true)} style={{ position: "fixed", bottom: 20, right: 20, width: 66, height: 66, borderRadius: 33, background: Y, border: "none", boxShadow: "0 6px 16px rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, zIndex: 999, cursor: "pointer", paddingLeft: 4 }}>
  {itemCount > 0 && <div style={{ position: "absolute", top: 0, right: 0, background: "#e74c3c", color: "#fff", borderRadius: 12, padding: "2px 7px", fontSize: 13, fontWeight: 900, border: "2px solid #111" }}>{itemCount}</div>}
  </button>
  </>
@@ -1634,14 +1570,14 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  {canCobrar && (o.isPaid
  ? <button style={{...s.btn("blue"),flex:1}} onClick={()=>finishPaidOrder(o.id)}>Entregado</button>
  : <>
- <button style={{...s.btn("success"),flex:2,fontWeight:900}} onClick={()=>setCobrarTarget({type:'existing',data:o})}> Cobrar</button>
+ <button style={{...s.btn("success"),flex:2,fontWeight:900}} onClick={()=>setCobrarTarget({type:'existing',data:o})}>💰 Cobrar</button>
  <button style={{...s.btn(splitOpen?"primary":"secondary"), flex:1}} onClick={()=>setSplitOpenId(splitOpen?null:o.id)}>
- {splitOpen ? "▲" : "Dividir"}
+ {splitOpen ? "▲" : "✂️ Dividir"}
  </button>
  </>
  )}
  {isAdmin && !o.isPaid && (
- <button style={{...s.btn("warn"),flex:1}} onClick={()=>setEditingOrder(o)}> Editar</button>
+ <button style={{...s.btn("warn"),flex:1}} onClick={()=>setEditingOrder(o)}>✏️ Editar</button>
  )}
  <button style={{...s.btn("secondary"), padding:"7px 10px", fontSize:11}} onClick={()=>printOrder(o)}>🖨</button>
  {canAnular && !o.isPaid && (
@@ -1891,11 +1827,7 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder }
 
  {/* Lista de Tickets del Día */}
  <div style={{display:"flex", flexDirection:"column", gap:12}}>
- {[...d.orders].sort((a,b) => {
- const ta = a.paidAt || a.cancelledAt || a.createdAt || "";
- const tb = b.paidAt || b.cancelledAt || b.createdAt || "";
- return tb.localeCompare(ta);
- }).map((o,idx) => {
+ {d.orders.map((o,idx) => {
  const pe = getPay(o, "efectivo"); 
  const py = getPay(o, "yape"); 
  const pt = getPay(o, "tarjeta");
@@ -2348,7 +2280,7 @@ export default function App() {
  isPaid:true, status:"pendiente", kitchenStatus:"pendiente",
  payments, paidAt:new Date().toISOString(),
  ...descuentoData,
- total: paymentData.descuentoPct > 0 ? paymentData.totalFinal : target.data.total,
+ ...(paymentData.descuentoPct > 0 ? { total: paymentData.totalFinal } : {}),
  };
  const newOrders = [...cur, order];
  setOrders(newOrders); await saveOrders(newOrders);
@@ -2360,7 +2292,7 @@ export default function App() {
  isPaid:true, status:"pagado",
  payments, paidAt:new Date().toISOString(),
  ...descuentoData,
- total: paymentData.descuentoPct > 0 ? paymentData.totalFinal : o.total,
+ ...(paymentData.descuentoPct > 0 ? { total: paymentData.totalFinal } : {}),
  };
  const newOrders = cur.filter(x => x.id !== o.id);
  setOrders(newOrders);
