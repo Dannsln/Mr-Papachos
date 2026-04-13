@@ -987,7 +987,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  };
 
  const CartContent = () => (
- <div style={{ ...s.cardHL, position: isDesktop ? "sticky" : "static", top:8, background: isMobile ? "#1a1a1a" : "#1c1c1c", border: isMobile ? "none" : `1px solid ${Y}44`, padding: isMobile ? 0 : 14 }}>
+ <div style={{ ...s.cardHL, position: isDesktop ? "sticky" : "static", top:8, background: isMobile ? "#1a1a1a" : "#1c1c1c", border: isMobile ? "none" : `1px solid ${Y}44`, padding: isMobile ? "14px 12px 12px 12px" : 14, height: isMobile ? "auto" : "auto", display: "flex", flexDirection: "column" }}>
  {salsasModal && !salsasModal.itemToAdd && (
  <SalsasModalComponent 
  initialSalsas={salsasModal.salsas} 
@@ -1055,13 +1055,13 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
 
  <div style={{ marginBottom:12 }}>
  <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas Generales</label>
- <textarea style={{ ...s.input, marginTop:4, resize:"vertical", minHeight:60, fontFamily:"inherit" }} value={draft.notes}
- onChange={e => setDraft(d => ({...d, notes: e.target.value}))} placeholder="Sin cebolla en general..." spellCheck="false" />
+ <textarea style={{ ...s.input, marginTop:4, resize:"none", minHeight: isMobile ? 40 : 60, maxHeight: isMobile ? 60 : 80, fontFamily:"inherit" }} value={draft.notes}
+ onChange={e => setDraft(d => ({...d, notes: e.target.value}))} placeholder={isMobile ? "Sin cebolla..." : "Sin cebolla en general..."} spellCheck="false" />
  </div>
 
  {draft.items.length === 0
  ? <div style={{ textAlign:"center", color:"#444", padding:"20px 0", fontSize:13 }}>Toca un platillo para agregarlo →</div>
- : <div style={{ maxHeight: isDesktop ? 400 : "none", overflowY: isDesktop ? "auto" : "visible", marginBottom:8 }}>
+ : <div style={{ maxHeight: !isDesktop ? 200 : 400, overflowY: "auto", marginBottom:8, paddingRight: isMobile ? 4 : 0 }}>
  {draft.items.map(item => (
  <div key={item.cartId} style={{ marginBottom:10, padding:"10px", background:"#0a0a0a", borderRadius:8, border:"1px solid #222" }}>
  <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8, paddingBottom:8, borderBottom:"1px solid #252525" }}>
@@ -1082,8 +1082,8 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  </div>
  {item.salsas?.length > 0 && <div style={{color:Y, fontSize:11, marginBottom:4, fontStyle:"italic"}}> Salsas: {item.salsas.map(sa => `${sa.name} (${sa.style})`).join(", ")}</div>}
  {Array.from({ length: item.qty }).map((_, idx) => (
- <textarea key={idx} style={{ ...s.input, fontSize:13, padding:"6px 10px", marginTop: 4, background:"#141414", resize:"vertical", minHeight:40, fontFamily:"inherit" }} 
- placeholder={`Nota para el plato ${idx + 1}...`} value={item.individualNotes?.[idx] || ""} spellCheck="false" onChange={e => updateIndividualNote(item.cartId, idx, e.target.value)} />
+ <textarea key={idx} style={{ ...s.input, fontSize:isMobile?12:13, padding:"6px 10px", marginTop: 4, background:"#141414", resize:"none", minHeight: isMobile ? 32 : 40, maxHeight: isMobile ? 32 : 60, fontFamily:"inherit" }} 
+ placeholder={`Nota plato ${idx + 1}`} value={item.individualNotes?.[idx] || ""} spellCheck="false" onChange={e => updateIndividualNote(item.cartId, idx, e.target.value)} />
  ))}
  </div>
  ))}
