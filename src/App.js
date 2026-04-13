@@ -987,7 +987,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  };
 
  const CartContent = () => (
- <div style={{ ...s.cardHL, position: isDesktop ? "sticky" : "static", top:8, background: isMobile ? "#1a1a1a" : "#1c1c1c", border: isMobile ? "none" : `1px solid ${Y}44`, padding: isMobile ? "14px 12px 12px 12px" : 14, height: isMobile ? "auto" : "auto", display: "flex", flexDirection: "column" }}>
+ <div style={{ ...s.cardHL, position: isDesktop ? "sticky" : "static", top:8, background: isMobile ? "#1a1a1a" : "#1c1c1c", border: isMobile ? "none" : `1px solid ${Y}44`, padding: isMobile ? "14px 12px 12px 12px" : "12px 12px", height: isMobile ? "auto" : "auto", display: "flex", flexDirection: "column" }}>
  {salsasModal && !salsasModal.itemToAdd && (
  <SalsasModalComponent 
  initialSalsas={salsasModal.salsas} 
@@ -999,45 +999,46 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  />
  )}
 
- <div style={{ ...s.title, fontSize:22, marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
- <span>🛒 PEDIDO ACTUAL</span>
+ <div style={{ ...s.title, fontSize: isMobile ? 22 : 18, marginBottom: isMobile ? 12 : 10, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+ <span style={{ lineHeight: 1 }}>🛒 {isMobile ? "PEDIDO ACTUAL" : "PEDIDO"}</span>
  {isMobile && <CloseBtn onClose={() => setShowCartModal(false)} />}
  </div>
 
- <div style={{ marginBottom:10 }}>
+ <div style={{ marginBottom: isMobile ? 10 : 8, display: isDesktop ? "grid" : "block", gridTemplateColumns: isDesktop ? "1fr 1fr" : "1fr", gap: isDesktop ? 8 : 0 }}>
+ <div>
  <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Tipo de pedido</label>
  <div style={{ display:"flex", gap:6, marginTop:4 }}>
  {["mesa","llevar"].map(t => (
- <button key={t} style={{ ...s.btn(draft.orderType===t?"primary":"secondary"), flex:1 }}
+ <button key={t} style={{ ...s.btn(draft.orderType===t?"primary":"secondary"), flex:1, fontSize: isMobile ? 13 : 11, padding: isMobile ? "8px 10px" : "6px 8px" }}
  onClick={() => setDraft(d => ({...d, orderType:t, taperCost:0, payTiming: t==="llevar"?"ahora":"despues", table:"", phone:"", deliveryAddress:""}))}>
- {t==="mesa"?"Mesa":"Para llevar"}
+ {t==="mesa"?"Mesa":"Llevar"}
  </button>
  ))}
  </div>
 
  {draft.orderType === "mesa" ? (
- <select style={{ ...s.input, marginTop:6 }}
+ <select style={{ ...s.input, marginTop:6, fontSize: isMobile ? 13 : 12 }}
  value={draft.table}
  onChange={e => setDraft(d => ({...d, table: e.target.value}))}>
- <option value="">-- Seleccionar Mesa --</option>
+ <option value="">-- Mesa --</option>
  {(mesasArr||[]).map(n => (
  <option key={n} value={String(n)}>Mesa {n}</option>
  ))}
  </select>
  ) : (
- <div style={{marginTop:6, display:"flex", flexDirection:"column", gap:6}}>
- <input style={s.input}
- placeholder="Nombre del cliente (opcional)"
+ <div style={{marginTop:6, display:"flex", flexDirection:"column", gap:4}}>
+ <input style={{...s.input, fontSize: isMobile ? 13 : 12}}
+ placeholder={isMobile ? "Cliente" : "Nombre del cliente"}
  value={draft.table || ""}
  onChange={e => setDraft(d => ({...d, table: e.target.value}))}
  spellCheck="false" />
- <input style={s.input}
- placeholder="Número de teléfono (opcional)"
+ <input style={{...s.input, fontSize: isMobile ? 13 : 12}}
+ placeholder={isMobile ? "Teléfono" : "Teléfono"}
  value={draft.phone || ""}
  onChange={e => setDraft(d => ({...d, phone: e.target.value}))}
  spellCheck="false" />
- <input style={s.input}
- placeholder="Dirección de entrega (opcional)"
+ <input style={{...s.input, fontSize: isMobile ? 13 : 12}}
+ placeholder={isMobile ? "Dirección" : "Dirección"}
  value={draft.deliveryAddress || ""}
  onChange={e => setDraft(d => ({...d, deliveryAddress: e.target.value}))}
  spellCheck="false" />
@@ -1045,52 +1046,55 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  )}
  </div>
 
- <div style={{ marginBottom:10 }}>
- <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Momento del Cobro</label>
+ <div>
+ <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Cobro</label>
  <div style={{ display:"flex", gap:6, marginTop:4 }}>
- <button style={{ ...s.btn(draft.payTiming==="despues"?"primary":"secondary"), flex:1 }} onClick={() => setDraft(d => ({...d,payTiming:"despues"}))}> Pagar después</button>
- <button style={{ ...s.btn(draft.payTiming==="ahora"?"primary":"secondary"), flex:1 }} onClick={() => setDraft(d => ({...d,payTiming:"ahora"}))}> Pagar ahora</button>
+ <button style={{ ...s.btn(draft.payTiming==="despues"?"primary":"secondary"), flex:1, fontSize: isMobile ? 13 : 11, padding: isMobile ? "8px 10px" : "6px 8px" }} onClick={() => setDraft(d => ({...d,payTiming:"despues"}))}>{isMobile ? "Después" : "Pagar después"}</button>
+ <button style={{ ...s.btn(draft.payTiming==="ahora"?"primary":"secondary"), flex:1, fontSize: isMobile ? 13 : 11, padding: isMobile ? "8px 10px" : "6px 8px" }} onClick={() => setDraft(d => ({...d,payTiming:"ahora"}))}>{isMobile ? "Ahora" : "Pagar ahora"}</button>
+ </div>
  </div>
  </div>
 
- <div style={{ marginBottom:12 }}>
+ <div style={{ marginBottom: isMobile ? 12 : 8 }}>
  <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas Generales</label>
- <textarea style={{ ...s.input, marginTop:4, resize:"none", minHeight: isMobile ? 40 : 60, maxHeight: isMobile ? 60 : 80, fontFamily:"inherit" }} value={draft.notes}
- onChange={e => setDraft(d => ({...d, notes: e.target.value}))} placeholder={isMobile ? "Sin cebolla..." : "Sin cebolla en general..."} spellCheck="false" />
+ <textarea style={{ ...s.input, marginTop:4, resize:"none", minHeight: isMobile ? 40 : 32, maxHeight: isMobile ? 60 : 50, fontFamily:"inherit", fontSize: isMobile ? 13 : 12 }} value={draft.notes}
+ onChange={e => setDraft(d => ({...d, notes: e.target.value}))} placeholder={isMobile ? "Sin cebolla..." : "Notas..."} spellCheck="false" />
  </div>
 
  {draft.items.length === 0
  ? <div style={{ textAlign:"center", color:"#444", padding:"20px 0", fontSize:13 }}>Toca un platillo para agregarlo →</div>
- : <div style={{ maxHeight: !isDesktop ? 200 : 400, overflowY: "auto", marginBottom:8, paddingRight: isMobile ? 4 : 0 }}>
+ : <div style={{ maxHeight: !isDesktop ? 200 : 700, overflowY: "auto", marginBottom:8, paddingRight: isMobile ? 4 : 0 }}>
  {draft.items.map(item => (
- <div key={item.cartId} style={{ marginBottom:10, padding:"10px", background:"#0a0a0a", borderRadius:8, border:"1px solid #222" }}>
- <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8, paddingBottom:8, borderBottom:"1px solid #252525" }}>
- <div style={{ flex:1 }}>
- <div style={{ fontWeight:700, fontSize:14 }}>
+ <div key={item.cartId} style={{ marginBottom: isMobile ? 10 : 8, padding: isMobile ? "10px" : "9px 10px", background:"#0a0a0a", borderRadius:8, border:"1px solid #222" }}>
+ <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom: isMobile ? 8 : 6, paddingBottom: isMobile ? 8 : 6, borderBottom:"1px solid #252525", flexWrap: "wrap" }}>
+ <div style={{ flex:1, minWidth: "150px" }}>
+ <div style={{ fontWeight:700, fontSize: isMobile ? 14 : 13 }}>
  {item.name} 
  {["Alitas", "Alichaufa", "Rondas"].includes(item.cat) && (
- <button style={{...s.btn("secondary"), padding:"2px 6px", fontSize:10, marginLeft:6}} onClick={() => setSalsasModal({cartId: item.cartId, salsas: item.salsas || []})}>
+ <button style={{...s.btn("secondary"), padding:"2px 6px", fontSize:10, marginLeft:6, marginTop: isMobile ? 0 : 4 }} onClick={() => setSalsasModal({cartId: item.cartId, salsas: item.salsas || []})}>
  Salsas
  </button>
  )}
  </div>
  </div>
- <button style={{ ...s.btn("danger"), padding:"4px 10px", fontSize:14 }} onClick={() => changeQty(item.cartId,-1)}>−</button>
- <span style={{ fontWeight:900, minWidth:20, textAlign:"center", fontSize:14 }}>{item.qty}</span>
- <button style={{ ...s.btn(), padding:"4px 10px", fontSize:14 }} onClick={() => changeQty(item.cartId,1)}>+</button>
- <span style={{ color:Y, fontWeight:900, fontSize:14, minWidth:55, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
+ <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+ <button style={{ ...s.btn("danger"), padding:"3px 8px", fontSize:12 }} onClick={() => changeQty(item.cartId,-1)}>−</button>
+ <span style={{ fontWeight:900, minWidth:18, textAlign:"center", fontSize:12 }}>{item.qty}</span>
+ <button style={{ ...s.btn(), padding:"3px 8px", fontSize:12 }} onClick={() => changeQty(item.cartId,1)}>+</button>
+ <span style={{ color:Y, fontWeight:900, fontSize:12, minWidth:50, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
  </div>
- {item.salsas?.length > 0 && <div style={{color:Y, fontSize:11, marginBottom:4, fontStyle:"italic"}}> Salsas: {item.salsas.map(sa => `${sa.name} (${sa.style})`).join(", ")}</div>}
+ </div>
+ {item.salsas?.length > 0 && <div style={{color:Y, fontSize:10, marginBottom:3, fontStyle:"italic", padding: "0 2px"}}> 🌶️ {item.salsas.map(sa => `${sa.name} (${sa.style})`).join(", ")}</div>}
  {Array.from({ length: item.qty }).map((_, idx) => (
- <textarea key={idx} style={{ ...s.input, fontSize:isMobile?12:13, padding:"6px 10px", marginTop: 4, background:"#141414", resize:"none", minHeight: isMobile ? 32 : 40, maxHeight: isMobile ? 32 : 60, fontFamily:"inherit" }} 
- placeholder={`Nota plato ${idx + 1}`} value={item.individualNotes?.[idx] || ""} spellCheck="false" onChange={e => updateIndividualNote(item.cartId, idx, e.target.value)} />
+ <textarea key={idx} style={{ ...s.input, fontSize:isMobile?12:11, padding:"5px 8px", marginTop: 3, background:"#141414", resize:"none", minHeight: isMobile ? 32 : 28, maxHeight: isMobile ? 32 : 40, fontFamily:"inherit" }} 
+ placeholder={`Nota ${idx + 1}`} value={item.individualNotes?.[idx] || ""} spellCheck="false" onChange={e => updateIndividualNote(item.cartId, idx, e.target.value)} />
  ))}
  </div>
  ))}
  </div>
  }
 
- <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderTop:`2px solid ${Y}55`, marginBottom: isDesktop ? 0 : 12 }}><span style={{ fontWeight:900, fontSize:17 }}>TOTAL</span><span style={{ fontWeight:900, fontSize:17, color:Y }}>{fmt(draftTotal)}</span></div>
+ <div style={{ display:"flex", justifyContent:"space-between", padding: isMobile ? "10px 0" : "8px 0", borderTop:`2px solid ${Y}55`, marginBottom: isDesktop ? 0 : 12, fontSize: isMobile ? 17 : 15 }}><span style={{ fontWeight:900 }}>TOTAL</span><span style={{ fontWeight:900, color:Y }}>{fmt(draftTotal)}</span></div>
 
  {isDesktop ? (
  <div style={{ position: "sticky", bottom: 0, background: "linear-gradient(to top, #1c1c1c 85%, transparent)", padding: "12px 0 0 0", borderTop: `2px solid ${Y}44`, zIndex: 50 }}>
