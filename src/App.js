@@ -1961,7 +1961,7 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder }
  })}
  <div style={{display:"flex", justifyContent:"space-between", padding:"6px 12px", background:"#111", borderRadius:6, fontSize:11}}>
  <span style={{color:"#777", fontWeight:800}}>TOTAL COBRADO:</span>
- <span style={{color:Y, fontWeight:900}}>{fmt(o.total)}</span>
+ <span style={{color:Y, fontWeight:900}}>{fmt(o.splitPayments.reduce((s,sp)=>s+(sp.total||0),0))}</span>
  </div>
  </div>
  )}
