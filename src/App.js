@@ -973,7 +973,6 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  const [search, setSearch] = useState("");
  const [catFilter, setCatFilter] = useState("Todos");
  const [showCartModal, setShowCartModal] = useState(false);
- const [showNotesModal, setShowNotesModal] = useState(false);
  const [salsasModal, setSalsasModal] = useState(null);
 
  const filteredMenu = menu.filter(i => (catFilter === "Todos" || i.cat === catFilter) && i.name.toLowerCase().includes(search.toLowerCase()));
@@ -999,34 +998,6 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  onClose={() => setSalsasModal(null)} s={s} Y={Y} 
  />
  )}
-
- {showNotesModal && <div style={{...s.overlay, zIndex:9999}} onClick={() => setShowNotesModal(false)}>
- <div style={s.modal} onClick={e => e.stopPropagation()}>
- <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
- <div>
- <div style={{ fontSize: isMobile ? 18 : 20, fontWeight:900, color:"#FFD700" }}>Notas del pedido</div>
- <div style={{ fontSize:11, color:"#aaa", marginTop:4 }}>General y específicas</div>
- </div>
- <CloseBtn onClose={() => setShowNotesModal(false)} />
- </div>
- <div style={{ marginBottom:14 }}>
- <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas Generales</label>
- <textarea style={{ ...s.input, marginTop:6, minHeight:80, maxHeight:220, resize:"vertical", fontFamily:"inherit" }} value={draft.notes} onChange={e => setDraft(d => ({...d, notes: e.target.value}))} placeholder="Sin cebolla en general..." spellCheck="false" />
- </div>
- <div style={{ marginBottom:14 }}>
- <div style={{ fontSize:13, fontWeight:800, marginBottom:10 }}>Notas específicas</div>
- {draft.items.length === 0 ? <div style={{ color:"#888", fontSize:12 }}>Agrega un plato para ver las notas específicas.</div> : draft.items.map(item => (
- <div key={item.cartId} style={{ marginBottom:12, padding:12, background:"#111", borderRadius:10, border:"1px solid #222" }}>
- <div style={{ fontWeight:800, fontSize:13, marginBottom:8 }}>{item.name} · {item.qty}x</div>
- {Array.from({ length: item.qty }).map((_, idx) => (
- <textarea key={idx} style={{ ...s.input, fontSize:12, padding:"8px 10px", marginBottom:6, minHeight:44, resize:"vertical", fontFamily:"inherit" }} placeholder={`Nota para el plato ${idx + 1}`} value={item.individualNotes?.[idx] || ""} spellCheck="false" onChange={e => updateIndividualNote(item.cartId, idx, e.target.value)} />
- ))}
- </div>
- ))}
- </div>
- <button style={{ ...s.btn(), width:"100%", padding:12, fontSize:14 }} onClick={() => setShowNotesModal(false)}>Guardar y cerrar</button>
- </div>
- </div>}
 
  <div style={{ ...s.title, fontSize: isMobile ? 22 : 18, marginBottom: isMobile ? 12 : 10, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
  <span style={{ lineHeight: 1 }}>🛒 {isMobile ? "PEDIDO ACTUAL" : "PEDIDO"}</span>
@@ -1085,6 +1056,39 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  <button style={{ ...s.btn(draft.payTiming==="despues"?"primary":"secondary"), flex:1, minWidth:110, fontSize: isMobile ? 13 : 11, padding: isMobile ? "8px 10px" : "6px 8px" }} onClick={() => setDraft(d => ({...d,payTiming:"despues"}))}>{isMobile ? "Después" : "Pagar después"}</button>
  <button style={{ ...s.btn(draft.payTiming==="ahora"?"primary":"secondary"), flex:1, minWidth:110, fontSize: isMobile ? 13 : 11, padding: isMobile ? "8px 10px" : "6px 8px" }} onClick={() => setDraft(d => ({...d,payTiming:"ahora"}))}>{isMobile ? "Ahora" : "Pagar ahora"}</button>
  </div>
+ </div>
+ </div>
+
+ <div style={{ marginBottom: isMobile ? 12 : 10 }}>
+ <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas del pedido</label>
+ <textarea style={{ ...s.input, marginTop:6, minHeight:80, maxHeight:220, resize:"vertical", fontFamily:"inherit" }} value={draft.notes} onChange={e => setDraft(d => ({...d, notes: e.target.value}))} placeholder="Sin cebolla en general..." spellCheck="false" />
+ </div>
+
+ <div style={{ marginBottom: isMobile ? 12 : 10 }}>
+ <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+ <div style={{ fontSize:13, fontWeight:800 }}>Agregar más platos</div>
+ <div style={{ fontSize:11, color:"#aaa" }}>{filteredMenu.length} resultados</div>
+ </div>
+ <input style={{ ...s.input, marginBottom:8 }} placeholder="Buscar platillo..." value={search} onChange={e => setSearch(e.target.value)} />
+ <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:10 }}>
+ { ["Todos",...ALL_CATS].map(c => <button key={c} style={{ ...s.btn(catFilter===c?"primary":"secondary"), fontSize: isMobile?9:10, padding: isMobile?"3px 6px":"4px 10px" }} onClick={() => setCatFilter(c)}>{c}</button>) }
+ </div>
+ <div style={{ maxHeight: isDesktop ? 240 : 200, overflowY:"auto", paddingRight: isMobile ? 4 : 0 }}>
+ {filteredMenu.length === 0 ? <div style={{ color:"#555", textAlign:"center", padding:16, fontSize:12 }}>Sin resultados</div> : filteredMenu.map(item => {
+ const inDraftQty = draft.items.filter(i => i.id === item.id).reduce((s,i) => s + i.qty, 0);
+ return (
+ <div key={item.id} onClick={() => handleCartaClick(item)} style={{ ...s.card, cursor:"pointer", border: inDraftQty > 0 ? `1px solid ${Y}66` : "1px solid #2a2a2a", marginBottom:8, padding: isMobile?"8px 10px":"10px 12px" }}>
+ <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+ <div style={{ flex:1 }}><span style={{ fontWeight:700, fontSize: isMobile?13:14 }}>{item.name}</span></div>
+ <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+ <span style={{ color:Y, fontWeight:900, fontSize: isMobile?13:14 }}>{fmt(item.price)}</span>
+ {inDraftQty > 0 ? <span style={{ background:Y, color:"#111", borderRadius:12, padding:"1px 8px", fontSize:12, fontWeight:900 }}>×{inDraftQty}</span> : <span style={{ background:"#2a2a2a", borderRadius:"50%", width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:16, color:"#aaa" }}>+</span>}
+ </div>
+ </div>
+ {item.desc && <div style={{ fontSize:10, color:"#555", marginTop:3, paddingLeft:22 }}>{item.desc}</div>}
+ </div>
+ );
+ })}
  </div>
  </div>
 
