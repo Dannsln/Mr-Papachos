@@ -351,7 +351,7 @@ function CloseBtn({ onClose }) {
  onMouseEnter={e=>{e.currentTarget.style.background="#c0392b";e.currentTarget.style.borderColor="#e74c3c";}}
  onMouseLeave={e=>{e.currentTarget.style.background="#2a2a2a";e.currentTarget.style.borderColor="#555";}}
  aria-label="Cerrar"
- >✕</button>
+ >−</button>
  );
 }
 
@@ -1090,14 +1090,27 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  </div>
  }
 
- <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderTop:`2px solid ${Y}55`, marginBottom:12 }}><span style={{ fontWeight:900, fontSize:17 }}>TOTAL</span><span style={{ fontWeight:900, fontSize:17, color:Y }}>{fmt(draftTotal)}</span></div>
+ <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderTop:`2px solid ${Y}55`, marginBottom: isDesktop ? 0 : 12 }}><span style={{ fontWeight:900, fontSize:17 }}>TOTAL</span><span style={{ fontWeight:900, fontSize:17, color:Y }}>{fmt(draftTotal)}</span></div>
 
+ {isDesktop ? (
+ <div style={{ position: "sticky", bottom: 0, background: "linear-gradient(to top, #1c1c1c 85%, transparent)", padding: "12px 0 0 0", borderTop: `2px solid ${Y}44`, zIndex: 50 }}>
  <button style={{ ...s.btn(), width:"100%", padding:16, fontSize:16, opacity:(draft.orderType==="mesa" && !draft.table || !draft.items.length)?0.4:1 }}
  onClick={() => { submitOrder(); if(isMobile) setShowCartModal(false); }} disabled={draft.orderType==="mesa" && !draft.table || !draft.items.length}>
  {draft.payTiming==="ahora" ? " Continuar al Cobro" : " Enviar a Cocina"}
  </button>
  <button style={{ ...s.btn("secondary"), width:"100%", padding:10, marginTop:8, fontSize:13 }}
  onClick={() => { setDraft(newDraft()); if(isMobile) setShowCartModal(false); }}> Limpiar Pedido</button>
+ </div>
+ ) : (
+ <>
+ <button style={{ ...s.btn(), width:"100%", padding:16, fontSize:16, opacity:(draft.orderType==="mesa" && !draft.table || !draft.items.length)?0.4:1 }}
+ onClick={() => { submitOrder(); if(isMobile) setShowCartModal(false); }} disabled={draft.orderType==="mesa" && !draft.table || !draft.items.length}>
+ {draft.payTiming==="ahora" ? " Continuar al Cobro" : " Enviar a Cocina"}
+ </button>
+ <button style={{ ...s.btn("secondary"), width:"100%", padding:10, marginTop:8, fontSize:13 }}
+ onClick={() => { setDraft(newDraft()); if(isMobile) setShowCartModal(false); }}> Limpiar Pedido</button>
+ </>
+ )}
  </div>
  );
 
@@ -1142,8 +1155,9 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  {isDesktop ? <div>{CartContent()}</div> : (
  <>
  {showCartModal && <div style={{...s.overlay, zIndex:9999}} onClick={() => setShowCartModal(false)}><div style={s.modal} onClick={e => e.stopPropagation()}>{CartContent()}</div></div>}
- <button onClick={() => setShowCartModal(true)} style={{ position: "fixed", bottom: 20, right: 20, width: 66, height: 66, borderRadius: 33, background: Y, border: "none", boxShadow: "0 6px 16px rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, zIndex: 999, cursor: "pointer", paddingLeft: 4 }}>
+ <button onClick={() => setShowCartModal(true)} style={{ position: "fixed", bottom: 20, right: 20, width: 66, height: 66, borderRadius: 33, background: Y, border: "none", boxShadow: "0 6px 16px rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999, cursor: "pointer" }}>
  {itemCount > 0 && <div style={{ position: "absolute", top: 0, right: 0, background: "#e74c3c", color: "#fff", borderRadius: 12, padding: "2px 7px", fontSize: 13, fontWeight: 900, border: "2px solid #111" }}>{itemCount}</div>}
+ <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
  </button>
  </>
  )}
@@ -1157,34 +1171,36 @@ function printOrder(order) {
  const validNotes = (i.individualNotes || []).filter(n => n.trim() !== "");
  let notesHtml = "";
  if (validNotes.length > 0) {
- notesHtml = validNotes.map((n, idx) => `<tr><td colspan="3" style="font-size:9px;color:#666;padding-top:0;padding-bottom:1mm;font-style:italic;"> [Plato ${idx+1}]: ${n}</td></tr>`).join("");
+ notesHtml = validNotes.map((n, idx) => `<tr><td colspan="3" style="font-size:10px;color:#000;padding-top:2mm;padding-bottom:1mm;font-weight:bold;background:#f0f0f0; padding-left:2mm;">📝 Plato ${idx+1}: ${n}</td></tr>`).join("");
  }
- const salsasHtml = i.salsas?.length > 0 ? `<tr><td colspan="3" style="font-size:9px;color:#333;padding-top:0;padding-bottom:1mm;">Salsas: ${i.salsas.map(s=>`${s.name} (${s.style})`).join(', ')}</td></tr>` : "";
- const llevarTag = i.isLlevar ? ` <span style="font-size:8px;font-weight:bold;">[(LLEVAR)]</span>` : "";
+ const salsasHtml = i.salsas?.length > 0 ? `<tr><td colspan="3" style="font-size:10px;color:#000;padding-top:1mm;padding-bottom:1mm;font-weight:bold;">🌶️ Salsas: ${i.salsas.map(s=>`${s.name} (${s.style})`).join(', ')}</td></tr>` : "";
+ const llevarTag = i.isLlevar ? ` <span style="font-size:9px;font-weight:bold;color:#c0392b;">[(LLEVAR)]</span>` : "";
  return `<tr><td class="qty">${i.qty}x</td><td class="item">${i.name}${llevarTag}</td><td class="price">S/.${(i.price*i.qty).toFixed(2)}</td></tr>${salsasHtml}${notesHtml}`;
  }).join("");
 
- const notes = order.notes ? `<div class="notes">${order.notes}</div>` : "";
+ const notes = order.notes ? `<div class="notes">📋 ${order.notes}</div>` : "";
  const tipo = order.orderType==="llevar" ? `LLEVAR — ${order.table}${order.phone?` · ${order.phone}`:""}` : `MESA ${order.table}`;
  const hora = new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"});
  const fecha = new Date().toLocaleDateString("es-PE",{day:"2-digit",month:"2-digit",year:"2-digit"});
- const paidMarker = order.isPaid ? `<div style="text-align:center;font-weight:bold;margin-top:2mm;border:1px solid #000;padding:2px;">** PAGADO **</div>` : "";
+ const paidMarker = order.isPaid ? `<div style="text-align:center;font-weight:bold;margin-top:3mm;border:2px solid #000;padding:3mm;background:#f0f0f0;">✅ PAGADO ✅</div>` : "";
  
  const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Pedido</title>
 <style>
  @page{size:50mm auto;margin:0}*{box-sizing:border-box;margin:0;padding:0}
- body{font-family:'Courier New',monospace;font-size:11px;width:50mm;padding:10mm 2mm 4mm;background:#fff;color:#000}
- .logo{text-align:center;font-size:13px;font-weight:bold;letter-spacing:1px;margin-bottom:1mm}
- .sub{text-align:center;font-size:9px;margin-bottom:2mm;color:#333}
- .divider{border-top:1px dashed #000;margin:2mm 0}
- .mesa{text-align:center;font-size:16px;font-weight:bold;margin:2mm 0;letter-spacing:1px}
- .hora{text-align:center;font-size:9px;color:#444;margin-bottom:2mm}
- table{width:100%;border-collapse:collapse}
- td{padding:1mm 0;vertical-align:top}
- .qty{width:7mm;font-weight:bold}.item{width:auto}.price{width:16mm;text-align:right;white-space:nowrap}
- .total-row{display:flex;justify-content:space-between;font-size:13px;font-weight:bold;margin-top:2mm;padding-top:1mm;border-top:1px solid #000}
- .notes{font-size:10px;font-style:italic;margin-top:2mm;padding:1mm;border:1px dashed #999}
- .footer{text-align:center;font-size:9px;margin-top:3mm;color:#555}
+ body{font-family:'Courier New', 'Courier', monospace;font-size:12px;width:50mm;padding:12mm 3mm 5mm;background:#fff;color:#000;line-height:1.2;}
+ .logo{text-align:center;font-size:14px;font-weight:bold;letter-spacing:2px;margin-bottom:1mm;text-transform:uppercase;}
+ .sub{text-align:center;font-size:10px;margin-bottom:3mm;color:#000;font-style:italic;font-weight:bold;}
+ .divider{border-top:2px solid #000;margin:2.5mm 0;}
+ .divider-light{border-top:1px dashed #000;margin:1.5mm 0;}
+ .mesa{text-align:center;font-size:18px;font-weight:bold;margin:3mm 0;letter-spacing:1px;text-transform:uppercase;}
+ .hora{text-align:center;font-size:10px;color:#000;margin-bottom:2mm;font-weight:600;}
+ table{width:100%;border-collapse:collapse;margin:2mm 0;}
+ td{padding:1.5mm 0;vertical-align:top;color:#000;}
+ .qty{width:8mm;font-weight:bold;text-align:center;}.item{width:auto;padding-right:2mm;}.price{width:14mm;text-align:right;font-weight:bold;white-space:nowrap;padding-right:1mm;}
+ tr{border-bottom:1px solid #eee;}
+ .total-row{display:flex;justify-content:space-between;font-size:14px;font-weight:bold;margin:2mm 0;padding:2mm 0;border-top:2px solid #000;border-bottom:2px solid #000;}
+ .notes{font-size:11px;margin-top:2mm;padding:2mm;border:1px solid #000;background:#fff;color:#000;font-weight:600;line-height:1.4;}
+ .footer{text-align:center;font-size:10px;margin-top:3mm;color:#000;font-weight:bold;}
 </style></head><body>
  <div class="logo">MR. PAPACHOS</div>
  <div class="sub">¡Sabe a Cajacho!</div>
@@ -1194,10 +1210,11 @@ function printOrder(order) {
  <div class="divider"></div>
  <table>${items}</table>
  ${notes}
- <div class="divider"></div>
+ <div class="divider-light"></div>
  <div class="total-row"><span>TOTAL</span><span>S/.${order.total.toFixed(2)}</span></div>
  ${paidMarker}
- <div class="footer">— Cocina —</div>
+ <div class="divider"></div>
+ <div class="footer">— COCINA —</div>
  <script>window.onload=function(){window.print();}<\/script>
 </body></html>`;
 
