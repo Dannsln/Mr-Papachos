@@ -504,8 +504,15 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
  const [eCat, setECat] = useState("Todos");
  const [eSearch, setESearch] = useState("");
  const [salsasModal, setSalsasModal] = useState(null);
+ const [editingPrice, setEditingPrice] = useState(null); // { cartId, value, motivo }
 
  const eTotal = eItems.reduce((sum, i) => sum + i.price * i.qty, 0);
+
+ const eUpdatePrice = (cartId, newPrice, motivo) => {
+ const p = Math.max(0, parseFloat(newPrice) || 0);
+ setEItems(prev => prev.map(i => i.cartId === cartId ? { ...i, price: p, ...(motivo?.trim() ? { priceNote: motivo.trim() } : {}) } : i));
+ setEditingPrice(null);
+ };
 
  const eAddItem = (item) => setEItems(prev => {
  const ex = prev.find(i => i.cartId === item.id);
@@ -626,12 +633,61 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
  <button style={{ ...s.btn("danger"), padding:"4px 10px", fontSize:14 }} onClick={() => eChangeQty(item.cartId,-1)}>−</button>
  <span style={{ fontWeight:900, minWidth:20, textAlign:"center", fontSize:14 }}>{item.qty}</span>
  <button style={{ ...s.btn(), padding:"4px 10px", fontSize:14 }} onClick={() => eChangeQty(item.cartId,1)}>+</button>
+ <div style={{display:"flex", flexDirection:"column", alignItems:"flex-end", gap:2}}>
  <span style={{ color:Y, fontWeight:900, fontSize:14, minWidth:55, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
+ <button
+ style={{...s.btn("secondary"), padding:"1px 6px", fontSize:10, opacity:0.8}}
+ onClick={() => setEditingPrice({ cartId: item.cartId, value: String(item.price), motivo: "" })}>
+ ✏️ precio
+ </button>
  </div>
+ </div>
+
+ {/* Editor inline de precio */}
+ {editingPrice?.cartId === item.cartId && (
+ <div style={{background:"#0d1a0d", border:`1px solid ${Y}44`, borderRadius:8, padding:"10px 12px", marginBottom:8}}>
+ <div style={{fontSize:11, color:"#888", marginBottom:6, textTransform:"uppercase", letterSpacing:1}}>Editar precio unitario</div>
+ <div style={{display:"flex", gap:6, alignItems:"center", marginBottom:8}}>
+ <span style={{fontSize:12, color:"#aaa", whiteSpace:"nowrap"}}>S/.</span>
+ <input
+ type="number"
+ min="0" step="0.5"
+ autoFocus
+ style={{...s.input, flex:1, fontWeight:900, fontSize:16, color:Y}}
+ value={editingPrice.value}
+ onChange={e => setEditingPrice(prev => ({...prev, value: e.target.value}))}
+ onKeyDown={e => { if(e.key==="Enter") eUpdatePrice(item.cartId, editingPrice.value, editingPrice.motivo); if(e.key==="Escape") setEditingPrice(null); }}
+ />
+ <span style={{fontSize:12, color:"#555", whiteSpace:"nowrap"}}>× {item.qty} = {fmt((parseFloat(editingPrice.value)||0)*item.qty)}</span>
+ </div>
+ <input
+ style={{...s.input, fontSize:12, marginBottom:8}}
+ placeholder="Motivo del cambio (opcional)"
+ value={editingPrice.motivo}
+ onChange={e => setEditingPrice(prev => ({...prev, motivo: e.target.value}))}
+ spellCheck="false"
+ />
+ <div style={{display:"flex", gap:6}}>
+ <button style={{...s.btn("success"), flex:2, padding:"6px 10px", fontSize:12}}
+ onClick={() => eUpdatePrice(item.cartId, editingPrice.value, editingPrice.motivo)}>
+ ✅ Aplicar
+ </button>
+ <button style={{...s.btn("secondary"), flex:1, padding:"6px 10px", fontSize:12}}
+ onClick={() => setEditingPrice(null)}>
+ Cancelar
+ </button>
+ </div>
+ </div>
+ )}
  
  {item.salsas?.length > 0 && (
  <div style={{color:Y, fontSize:11, marginBottom:4, fontStyle:"italic"}}>
  Salsas: {item.salsas.map(sa => `${sa.name} (${sa.style})`).join(", ")}
+ </div>
+ )}
+ {item.priceNote && (
+ <div style={{fontSize:11, color:"#e67e22", marginBottom:4}}>
+ ✏️ Precio ajustado: {item.priceNote}
  </div>
  )}
 
@@ -691,37 +747,27 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// MODAL MULTICOBRO — con descuento total o por ítems específicos
+// MODAL MULTICOBRO — con descuento opcional
 // ═══════════════════════════════════════════════════════════════════
 function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
- const items = orderContext?.items || [];
-
  const [descPct, setDescPct] = useState(0);
  const [descMotivo, setDescMotivo] = useState("");
  const [showDesc, setShowDesc] = useState(false);
- // "total" = descuento al pedido completo | "items" = descuento a ítems específicos
- const [descMode, setDescMode] = useState("total");
- const [selectedItems, setSelectedItems] = useState({});
 
- // Base para el cálculo del descuento
- const baseParaDescuento = descMode === "items"
- ? items.filter(i => selectedItems[i.cartId]).reduce((s, i) => s + i.price * i.qty, 0)
- : total;
-
- const descAmt = Math.round((baseParaDescuento * (Number(descPct)||0) / 100) * 100) / 100;
+ const descAmt = Math.round((total * (Number(descPct)||0) / 100) * 100) / 100;
  const totalFinal = Math.max(0, total - descAmt);
 
  const [ef, setEf] = useState(totalFinal);
  const [ya, setYa] = useState(0);
  const [ta, setTa] = useState(0);
 
+ // Recalculate efectivo default when discount changes
  useEffect(() => { setEf(totalFinal); setYa(0); setTa(0); }, [totalFinal]);
 
  const sum = Number(ef||0) + Number(ya||0) + Number(ta||0);
  const diff = totalFinal - sum;
- const DESCUENTOS_RAPIDOS = [5, 10, 15, 20, 25, 50];
 
- const toggleItem = (cartId) => setSelectedItems(prev => ({...prev, [cartId]: !prev[cartId]}));
+ const DESCUENTOS_RAPIDOS = [5, 10, 15, 20, 25, 50];
 
  const handleConfirm = () => {
  onConfirm({
@@ -733,8 +779,6 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
  descuentoMotivo: descMotivo,
  totalOriginal: total,
  totalFinal,
- descuentoMode: descMode,
- descuentoItemsIds: descMode === "items" ? Object.keys(selectedItems).filter(k => selectedItems[k]) : null,
  });
  };
 
@@ -757,7 +801,7 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
  </div>
  {descAmt > 0 && (
  <div style={{fontSize:12, color:"#27ae60", marginTop:4, fontWeight:700}}>
- Descuento {descPct}%{descMode==="items"?" (ítems sel.)":""}: −{fmt(descAmt)}{descMotivo ? ` · ${descMotivo}` : ""}
+ Descuento {descPct}%: −{fmt(descAmt)}{descMotivo ? ` · ${descMotivo}` : ""}
  </div>
  )}
  </div>
@@ -772,51 +816,8 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
 
  {showDesc && (
  <div style={{background:"#111", border:"1px solid #d35400", borderRadius:10, padding:"12px 14px"}}>
-
- {/* Selector de modo */}
- {items.length > 0 && (
- <div style={{marginBottom:12}}>
- <div style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>Aplicar descuento a</div>
- <div style={{display:"flex", gap:8}}>
- <button style={{...s.btn(descMode==="total"?"warn":"secondary"), flex:1, fontSize:12}}
- onClick={()=>{ setDescMode("total"); setSelectedItems({}); }}>
- 📦 Todo el pedido
- </button>
- <button style={{...s.btn(descMode==="items"?"warn":"secondary"), flex:1, fontSize:12}}
- onClick={()=>setDescMode("items")}>
- 🍔 Ítems específicos
- </button>
- </div>
- </div>
- )}
-
- {/* Lista de ítems seleccionables */}
- {descMode === "items" && items.length > 0 && (
- <div style={{marginBottom:12, background:"#0d0d0d", borderRadius:8, padding:"8px 10px", border:"1px solid #2a2a2a"}}>
- <div style={{fontSize:11, color:"#888", marginBottom:6}}>Selecciona los ítems con descuento:</div>
- {items.map(item => {
- const sel = !!selectedItems[item.cartId];
- return (
- <div key={item.cartId} onClick={() => toggleItem(item.cartId)}
- style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"7px 8px", borderRadius:6, marginBottom:4, background: sel?`${Y}18`:"#1a1a1a", border:`1px solid ${sel?Y+"55":"#2a2a2a"}`, cursor:"pointer", transition:"all .15s"}}>
- <span style={{fontSize:13, color: sel?"#fff":"#aaa"}}>{item.qty}× {item.name}</span>
- <div style={{display:"flex", alignItems:"center", gap:8}}>
- <span style={{fontSize:12, color:"#666"}}>{fmt(item.price * item.qty)}</span>
- <div style={{width:18, height:18, borderRadius:4, border:`2px solid ${sel?Y:"#555"}`, background: sel?Y:"transparent", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, color:"#111", fontWeight:900, flexShrink:0}}>{sel?"✓":""}</div>
- </div>
- </div>
- );
- })}
- {baseParaDescuento > 0 && (
- <div style={{fontSize:11, color:Y, fontWeight:700, marginTop:6, paddingTop:6, borderTop:"1px solid #2a2a2a"}}>
- Base del descuento: {fmt(baseParaDescuento)}
- </div>
- )}
- </div>
- )}
-
- {/* % de descuento */}
  <div style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, marginBottom:8}}>Porcentaje de descuento</div>
+ {/* Botones rápidos */}
  <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:10}}>
  {DESCUENTOS_RAPIDOS.map(p => (
  <button key={p}
@@ -826,6 +827,7 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
  </button>
  ))}
  </div>
+ {/* Input manual */}
  <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:10}}>
  <input
  type="number"
@@ -833,10 +835,14 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
  min="0" max="100" step="1"
  placeholder="% personalizado"
  value={descPct||""}
- onChange={e => setDescPct(Math.min(100, Math.max(0, Number(e.target.value)||0)))}
+ onChange={e => {
+ const v = Math.min(100, Math.max(0, Number(e.target.value)||0));
+ setDescPct(v);
+ }}
  />
  <span style={{color:"#888", fontWeight:700, whiteSpace:"nowrap"}}>% = −{fmt(descAmt)}</span>
  </div>
+ {/* Motivo opcional */}
  <input
  style={s.input}
  placeholder="Motivo (opcional)"
@@ -1609,6 +1615,7 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  </span>
  </div>
  {item.salsas?.length>0 && <div style={{fontSize:10,color:Y,paddingLeft:8,marginTop:1,fontStyle:"italic"}}>↳ {item.salsas.map(sa=>`${sa.name} (${sa.style})`).join(', ')}</div>}
+ {item.priceNote && <div style={{fontSize:10,color:"#e67e22",paddingLeft:8,marginTop:1}}>✏️ {item.priceNote}</div>}
  {notes.map((n,idx)=><div key={idx} style={{fontSize:10,color:"#777",fontStyle:"italic",paddingLeft:8,marginTop:1}}>└ Plato {idx+1}: {n}</div>)}
  </div>
  );
@@ -1954,7 +1961,7 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder }
  })}
  <div style={{display:"flex", justifyContent:"space-between", padding:"6px 12px", background:"#111", borderRadius:6, fontSize:11}}>
  <span style={{color:"#777", fontWeight:800}}>TOTAL COBRADO:</span>
- <span style={{color:Y, fontWeight:900}}>{fmt(o.splitPayments.reduce((s,sp)=>s+(sp.total||0),0))}</span>
+ <span style={{color:Y, fontWeight:900}}>{fmt(o.total)}</span>
  </div>
  </div>
  )}
@@ -2018,8 +2025,6 @@ function Inventario({ menu, orders, history, isMobile, s, Y, fmt }) {
  if (invSortBy==="cantidad") items=items.sort((a,b)=>b.qty-a.qty); else items=items.sort((a,b)=>a.name.localeCompare(b.name));
 
  const totalQty=items.reduce((s,i)=>s+i.qty,0); const totalRev=items.reduce((s,i)=>s+i.revenue,0); const maxQty=Math.max(...items.map(i=>i.qty),1);
- const CATS_NO_PLATO = ["Cervezas","Chilcanos","Gaseosas","Otros","Extras","Tapers","Bebidas"];
- const platosDistintos = items.filter(i=>i.qty>0 && !CATS_NO_PLATO.includes(i.cat)).length;
  const periodLabel = invPeriod==="hoy" ? "hoy" : invPeriod==="semana" ? "esta semana" : invPeriod==="fecha" ? "esa fecha" : "histórico";
 
  return (
@@ -2034,7 +2039,7 @@ function Inventario({ menu, orders, history, isMobile, s, Y, fmt }) {
  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
  <div style={s.statCard}><div style={{...s.statNum,fontSize:isMobile?18:24}}>{totalQty}</div><div style={s.statLbl}>Items {periodLabel}</div></div>
  <div style={{...s.statCard,border:`1px solid ${Y}55`}}><div style={{...s.statNum,fontSize:isMobile?14:18}}>{fmt(totalRev)}</div><div style={s.statLbl}>Ingresos {periodLabel}</div></div>
- <div style={s.statCard}><div style={{...s.statNum,fontSize:isMobile?18:24}}>{platosDistintos}</div><div style={s.statLbl}>Platos distintos</div></div>
+ <div style={s.statCard}><div style={{...s.statNum,fontSize:isMobile?18:24}}>{items.filter(i=>i.qty>0).length}</div><div style={s.statLbl}>Platos distintos</div></div>
  </div>
  <input style={{...s.input,marginBottom:8}} placeholder="Buscar platillo..." value={search} onChange={e=>setSearch(e.target.value)}/>
  <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:12}}>
@@ -2332,7 +2337,7 @@ export default function App() {
  isPaid:true, status:"pendiente", kitchenStatus:"pendiente",
  payments, paidAt:new Date().toISOString(),
  ...descuentoData,
- total: paymentData.descuentoPct > 0 ? paymentData.totalFinal : target.data.total,
+ ...(paymentData.descuentoPct > 0 ? { total: paymentData.totalFinal } : {}),
  };
  const newOrders = [...cur, order];
  setOrders(newOrders); await saveOrders(newOrders);
@@ -2344,7 +2349,7 @@ export default function App() {
  isPaid:true, status:"pagado",
  payments, paidAt:new Date().toISOString(),
  ...descuentoData,
- total: paymentData.descuentoPct > 0 ? paymentData.totalFinal : o.total,
+ ...(paymentData.descuentoPct > 0 ? { total: paymentData.totalFinal } : {}),
  };
  const newOrders = cur.filter(x => x.id !== o.id);
  setOrders(newOrders);
