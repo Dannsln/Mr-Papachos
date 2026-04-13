@@ -1079,11 +1079,11 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  )}
  </div>
 
- <div>
+ <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10, textAlign:"center" }}>
  <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Cobro</label>
- <div style={{ display:"flex", gap:6, marginTop:4 }}>
- <button style={{ ...s.btn(draft.payTiming==="despues"?"primary":"secondary"), flex:1, fontSize: isMobile ? 13 : 11, padding: isMobile ? "8px 10px" : "6px 8px" }} onClick={() => setDraft(d => ({...d,payTiming:"despues"}))}>{isMobile ? "Después" : "Pagar después"}</button>
- <button style={{ ...s.btn(draft.payTiming==="ahora"?"primary":"secondary"), flex:1, fontSize: isMobile ? 13 : 11, padding: isMobile ? "8px 10px" : "6px 8px" }} onClick={() => setDraft(d => ({...d,payTiming:"ahora"}))}>{isMobile ? "Ahora" : "Pagar ahora"}</button>
+ <div style={{ display:"flex", gap:6, marginTop:4, width:"100%", justifyContent:"center" }}>
+ <button style={{ ...s.btn(draft.payTiming==="despues"?"primary":"secondary"), flex:1, minWidth:110, fontSize: isMobile ? 13 : 11, padding: isMobile ? "8px 10px" : "6px 8px" }} onClick={() => setDraft(d => ({...d,payTiming:"despues"}))}>{isMobile ? "Después" : "Pagar después"}</button>
+ <button style={{ ...s.btn(draft.payTiming==="ahora"?"primary":"secondary"), flex:1, minWidth:110, fontSize: isMobile ? 13 : 11, padding: isMobile ? "8px 10px" : "6px 8px" }} onClick={() => setDraft(d => ({...d,payTiming:"ahora"}))}>{isMobile ? "Ahora" : "Pagar ahora"}</button>
  </div>
  </div>
  </div>
@@ -1179,9 +1179,36 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  })}
  </div>
  </div>
- {isDesktop ? <div>{CartContent()}</div> : (
- <>
  {showCartModal && <div style={{...s.overlay, zIndex:9999}} onClick={() => setShowCartModal(false)}><div style={s.modal} onClick={e => e.stopPropagation()}>{CartContent()}</div></div>}
+ {isDesktop ? (
+ <div style={{ ...s.cardHL, padding: 14, background: isMobile ? "#1a1a1a" : "#1c1c1c", border: `1px solid ${Y}44`, display: "flex", flexDirection: "column", gap: 12 }}>
+ <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+ <div>
+ <div style={{ fontSize: 16, fontWeight: 900 }}>Pedido</div>
+ <div style={{ fontSize: 12, color: "#aaa", marginTop: 4 }}>{itemCount} platillo{itemCount===1?"":"s"} • {fmt(draftTotal)}</div>
+ </div>
+ <button style={{ ...s.btn(), padding: "10px 14px", fontSize: 13 }} onClick={() => setShowCartModal(true)}>Ver pedido</button>
+ </div>
+ <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+ <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+ <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Tipo de pedido</label>
+ <div style={{ display:"flex", gap:6 }}>
+ {['mesa','llevar'].map(t => (
+ <button key={t} style={{...s.btn(draft.orderType===t?"primary":"secondary"), flex:1, fontSize:11, padding:"6px 8px"}} onClick={() => setDraft(d => ({...d, orderType:t, taperCost:0, payTiming: t==='llevar'?"ahora":"despues", table:'', phone:'', deliveryAddress:''}))}>{t==='mesa'?'Mesa':'Llevar'}</button>
+ ))}
+ </div>
+ </div>
+ <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+ <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Cobro</label>
+ <div style={{ display:"flex", gap:6 }}>
+ <button style={{...s.btn(draft.payTiming==='despues'?'primary':'secondary'), flex:1, fontSize:11, padding:"6px 8px"}} onClick={() => setDraft(d => ({...d,payTiming:"despues"}))}>Después</button>
+ <button style={{...s.btn(draft.payTiming==='ahora'?'primary':'secondary'), flex:1, fontSize:11, padding:"6px 8px"}} onClick={() => setDraft(d => ({...d,payTiming:"ahora"}))}>Ahora</button>
+ </div>
+ </div>
+ </div>
+ </div>
+ ) : (
+ <>
  <button onClick={() => setShowCartModal(true)} style={{ position: "fixed", bottom: 20, right: 20, width: 66, height: 66, borderRadius: 33, background: Y, border: "none", boxShadow: "0 6px 16px rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999, cursor: "pointer" }}>
  {itemCount > 0 && <div style={{ position: "absolute", top: 0, right: 0, background: "#e74c3c", color: "#fff", borderRadius: 12, padding: "2px 7px", fontSize: 13, fontWeight: 900, border: "2px solid #111" }}>{itemCount}</div>}
  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
