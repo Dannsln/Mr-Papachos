@@ -973,6 +973,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  const [search, setSearch] = useState("");
  const [catFilter, setCatFilter] = useState("Todos");
  const [showCartModal, setShowCartModal] = useState(false);
+ const [showNotesModal, setShowNotesModal] = useState(false);
  const [salsasModal, setSalsasModal] = useState(null);
 
  const filteredMenu = menu.filter(i => (catFilter === "Todos" || i.cat === catFilter) && i.name.toLowerCase().includes(search.toLowerCase()));
@@ -999,9 +1000,41 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  />
  )}
 
+ {showNotesModal && <div style={{...s.overlay, zIndex:9999}} onClick={() => setShowNotesModal(false)}>
+ <div style={s.modal} onClick={e => e.stopPropagation()}>
+ <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+ <div>
+ <div style={{ fontSize: isMobile ? 18 : 20, fontWeight:900, color:"#FFD700" }}>Notas del pedido</div>
+ <div style={{ fontSize:11, color:"#aaa", marginTop:4 }}>General y específicas</div>
+ </div>
+ <CloseBtn onClose={() => setShowNotesModal(false)} />
+ </div>
+ <div style={{ marginBottom:14 }}>
+ <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas Generales</label>
+ <textarea style={{ ...s.input, marginTop:6, minHeight:80, maxHeight:220, resize:"vertical", fontFamily:"inherit" }} value={draft.notes} onChange={e => setDraft(d => ({...d, notes: e.target.value}))} placeholder="Sin cebolla en general..." spellCheck="false" />
+ </div>
+ <div style={{ marginBottom:14 }}>
+ <div style={{ fontSize:13, fontWeight:800, marginBottom:10 }}>Notas específicas</div>
+ {draft.items.length === 0 ? <div style={{ color:"#888", fontSize:12 }}>Agrega un plato para ver las notas específicas.</div> : draft.items.map(item => (
+ <div key={item.cartId} style={{ marginBottom:12, padding:12, background:"#111", borderRadius:10, border:"1px solid #222" }}>
+ <div style={{ fontWeight:800, fontSize:13, marginBottom:8 }}>{item.name} · {item.qty}x</div>
+ {Array.from({ length: item.qty }).map((_, idx) => (
+ <textarea key={idx} style={{ ...s.input, fontSize:12, padding:"8px 10px", marginBottom:6, minHeight:44, resize:"vertical", fontFamily:"inherit" }} placeholder={`Nota para el plato ${idx + 1}`} value={item.individualNotes?.[idx] || ""} spellCheck="false" onChange={e => updateIndividualNote(item.cartId, idx, e.target.value)} />
+ ))}
+ </div>
+ ))}
+ </div>
+ <button style={{ ...s.btn(), width:"100%", padding:12, fontSize:14 }} onClick={() => setShowNotesModal(false)}>Guardar y cerrar</button>
+ </div>
+ </div>}
+
  <div style={{ ...s.title, fontSize: isMobile ? 22 : 18, marginBottom: isMobile ? 12 : 10, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
  <span style={{ lineHeight: 1 }}>🛒 {isMobile ? "PEDIDO ACTUAL" : "PEDIDO"}</span>
  {isMobile && <CloseBtn onClose={() => setShowCartModal(false)} />}
+ </div>
+ <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: isMobile ? 10 : 8, flexWrap:"wrap", gap:8 }}>
+ <div style={{ fontSize:12, color:"#aaa", letterSpacing:1, textTransform:"uppercase" }}>Pedidos</div>
+ <button style={{ ...s.btn("secondary"), padding:"8px 12px", fontSize:12 }} onClick={() => setShowNotesModal(true)}>Notas del pedido</button>
  </div>
 
  <div style={{ marginBottom: isMobile ? 10 : 8, display: isDesktop ? "grid" : "block", gridTemplateColumns: isDesktop ? "1fr 1fr" : "1fr", gap: isDesktop ? 8 : 0 }}>
@@ -1055,12 +1088,6 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  </div>
  </div>
 
- <div style={{ marginBottom: isMobile ? 12 : 8 }}>
- <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas Generales</label>
- <textarea style={{ ...s.input, marginTop:4, resize:"none", minHeight: isMobile ? 40 : 32, maxHeight: isMobile ? 60 : 50, fontFamily:"inherit", fontSize: isMobile ? 13 : 12 }} value={draft.notes}
- onChange={e => setDraft(d => ({...d, notes: e.target.value}))} placeholder={isMobile ? "Sin cebolla..." : "Notas..."} spellCheck="false" />
- </div>
-
  {draft.items.length === 0
  ? <div style={{ textAlign:"center", color:"#444", padding:"20px 0", fontSize:13 }}>Toca un platillo para agregarlo →</div>
  : <div style={{ maxHeight: !isDesktop ? 200 : 700, overflowY: "auto", marginBottom:8, paddingRight: isMobile ? 4 : 0 }}>
@@ -1085,10 +1112,6 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  </div>
  </div>
  {item.salsas?.length > 0 && <div style={{color:Y, fontSize:10, marginBottom:3, fontStyle:"italic", padding: "0 2px"}}> 🌶️ {item.salsas.map(sa => `${sa.name} (${sa.style})`).join(", ")}</div>}
- {Array.from({ length: item.qty }).map((_, idx) => (
- <textarea key={idx} style={{ ...s.input, fontSize:isMobile?12:11, padding:"5px 8px", marginTop: 3, background:"#141414", resize:"none", minHeight: isMobile ? 32 : 28, maxHeight: isMobile ? 32 : 40, fontFamily:"inherit" }} 
- placeholder={`Nota ${idx + 1}`} value={item.individualNotes?.[idx] || ""} spellCheck="false" onChange={e => updateIndividualNote(item.cartId, idx, e.target.value)} />
- ))}
  </div>
  ))}
  </div>
