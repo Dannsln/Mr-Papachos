@@ -2312,17 +2312,36 @@ export default function App() {
  return origItem;
  }).filter(i => i.qty > 0);
  if (remainingItems.length === 0) {
- const totalEf = accumulatedSplits.reduce((s,sp) => s+sp.payments.efectivo, 0);
- const totalYa = accumulatedSplits.reduce((s,sp) => s+sp.payments.yape, 0);
- const totalTa = accumulatedSplits.reduce((s,sp) => s+sp.payments.tarjeta, 0);
- const finalOrder = { ...originalOrder, isPaid:true, status:"pagado", payments:{efectivo:totalEf,yape:totalYa,tarjeta:totalTa}, splitPayments:accumulatedSplits, paidAt:new Date().toISOString(), ...descuentoData };
+ // Sumar todos los pagos y el total real de todas las divisiones
+ const totalEf = accumulatedSplits.reduce((s,sp) => s + (sp.payments?.efectivo || 0), 0);
+ const totalYa = accumulatedSplits.reduce((s,sp) => s + (sp.payments?.yape || 0), 0);
+ const totalTa = accumulatedSplits.reduce((s,sp) => s + (sp.payments?.tarjeta || 0), 0);
+ const totalCobrado = accumulatedSplits.reduce((s,sp) => s + (sp.total || 0), 0);
+ // Recuperar ítems originales si fueron guardados, sino usar los acumulados de splits
+ const allItems = originalOrder.originalItems || [
+ ...accumulatedSplits.flatMap(sp => sp.items || []),
+ ...remainingItems
+ ];
+ const finalOrder = {
+ ...originalOrder,
+ isPaid: true,
+ status: "pagado",
+ payments: { efectivo: totalEf, yape: totalYa, tarjeta: totalTa },
+ splitPayments: accumulatedSplits,
+ paidAt: new Date().toISOString(),
+ total: totalCobrado,
+ items: allItems,
+ ...descuentoData
+ };
  const newOrders = cur.filter(x => x.id !== originalOrder.id);
  setOrders(newOrders);
  await Promise.all([addHistory(finalOrder), saveOrders(newOrders)]);
  showToast("✅ Cuenta completa cobrada y archivada");
  } else {
  const newTotal = remainingItems.reduce((s,i) => s+i.price*i.qty, 0);
- const updatedOriginal = { ...originalOrder, items:remainingItems, total:newTotal, splitPayments:accumulatedSplits };
+ // Guardar ítems originales la primera vez que se hace una división
+ const originalItems = originalOrder.originalItems || originalOrder.items;
+ const updatedOriginal = { ...originalOrder, items:remainingItems, total:newTotal, splitPayments:accumulatedSplits, originalItems };
  const newOrders = cur.map(o => o.id === originalOrder.id ? updatedOriginal : o);
  setOrders(newOrders);
  await saveOrders(newOrders);
