@@ -1817,14 +1817,17 @@ function InlineSplit({ order, onProceed, onClose, s, Y, fmt }) {
 // ═══════════════════════════════════════════════════════════════════
 // MODAL DE ANULACIÓN CON REEMPLAZO (solo Admin)
 // ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+// MODAL DE ANULACIÓN CON REEMPLAZO (Unificado para Admin y Staff)
+// ═══════════════════════════════════════════════════════════════════
 function AnulacionModal({ order, onConfirm, onRequest, onClose, menu, s, Y, fmt, isAdmin=true, currentUser }) {
- const [step, setStep] = useState("confirm"); // "confirm" | "details" | "request"
+ const [step, setStep] = useState("confirm"); // "confirm" | "details"
  const [motivo, setMotivo] = useState("");
  const [crearReemplazo, setCrearReemplazo] = useState(null);
  const [repItems, setRepItems] = useState(
- (order.items || [])
- .filter(i => i.cat !== "Tapers" && i.id !== "TAPER")
- .map(i => ({ ...i, qty: i.qty, individualNotes: i.individualNotes || [] }))
+  (order.items || [])
+  .filter(i => i.cat !== "Tapers" && i.id !== "TAPER")
+  .map(i => ({ ...i, qty: i.qty, individualNotes: i.individualNotes || [] }))
  );
  const [menuSearch, setMenuSearch] = useState("");
  const [menuCat, setMenuCat] = useState("Todos");
@@ -1832,225 +1835,203 @@ function AnulacionModal({ order, onConfirm, onRequest, onClose, menu, s, Y, fmt,
  const repTotal = repItems.reduce((s, i) => s + i.price * i.qty, 0);
 
  const changeRepQty = (cartId, delta) => {
- setRepItems(prev => prev.map(i => {
- if (i.cartId !== cartId) return i;
- const newQty = Math.max(0, i.qty + delta);
- return { ...i, qty: newQty };
- }).filter(i => i.qty > 0));
+  setRepItems(prev => prev.map(i => {
+   if (i.cartId !== cartId) return i;
+   const newQty = Math.max(0, i.qty + delta);
+   return { ...i, qty: newQty };
+  }).filter(i => i.qty > 0));
  };
 
  const addRepItem = (item) => {
- setRepItems(prev => {
- const cartId = item.cartId || item.id;
- const ex = prev.find(i => i.cartId === cartId);
- if (ex) return prev.map(i => i.cartId === cartId ? { ...i, qty: i.qty + 1 } : i);
- return [...prev, { ...item, cartId, qty: 1, individualNotes: [""] }];
- });
+  setRepItems(prev => {
+   const cartId = item.cartId || item.id;
+   const ex = prev.find(i => i.cartId === cartId);
+   if (ex) return prev.map(i => i.cartId === cartId ? { ...i, qty: i.qty + 1 } : i);
+   return [...prev, { ...item, cartId, qty: 1, individualNotes: [""] }];
+  });
  };
 
  // Filtrar tapers de la carta del reemplazo
  const menuParaReemplazo = (menu || []).filter(i => i.cat !== "Tapers");
  const filteredRepMenu = menuParaReemplazo.filter(i =>
- (menuCat === "Todos" || i.cat === menuCat) &&
- i.name.toLowerCase().includes(menuSearch.toLowerCase())
+  (menuCat === "Todos" || i.cat === menuCat) &&
+  i.name.toLowerCase().includes(menuSearch.toLowerCase())
  );
  const repCats = [...new Set(menuParaReemplazo.map(i => i.cat))];
 
  // PASO 1: Confirmación explícita
  if (step === "confirm") {
- return (
- <div style={s.modal} onClick={e => e.stopPropagation()}>
- <div style={{textAlign:"center", padding:"10px 0 20px"}}>
- <div style={{fontSize:52, marginBottom:10}}>🚫</div>
- <div style={{color:"#e74c3c", fontFamily:"'Bebas Neue',cursive", fontSize:26, letterSpacing:1, marginBottom:8}}>
- ¿ANULAR ESTE PEDIDO?
- </div>
- <div style={{background:"#1a0a0a", border:"1px solid #e74c3c44", borderRadius:8, padding:"10px 14px", marginBottom:16, textAlign:"left"}}>
- <div style={{fontWeight:900, fontSize:15, color:"#eee", marginBottom:6}}>
- {order.orderType==="llevar" ? `🥡 ${order.table||"Sin nombre"}` : `🍽 Mesa ${order.table}`}
- <span style={{color:Y, marginLeft:10}}>{fmt(order.total)}</span>
- </div>
- {(order.items||[]).map((item,i) => (
- <div key={i} style={{fontSize:12, color:"#888", display:"flex", justifyContent:"space-between"}}>
- <span>{item.qty}× {item.name}</span><span>{fmt(item.price*item.qty)}</span>
- </div>
- ))}
- </div>
- <div style={{color:"#888", fontSize:13, marginBottom:20}}>
- Esta acción marcará el pedido como <b style={{color:"#e74c3c"}}>ANULADO</b>.<br/>No se puede deshacer.
- </div>
- <div style={{display:"flex", gap:10}}>
- <button style={{...s.btn("secondary"), flex:1, padding:14, fontSize:14}} onClick={onClose}>
- No, mantener pedido
- </button>
- <button style={{...s.btn("danger"), flex:1, padding:14, fontSize:14, fontWeight:900}}
-  onClick={() => isAdmin ? setStep("details") : setStep("request")}>
-  {isAdmin ? "Sí, ANULAR" : "Solicitar Anulación"}
- </button>
- </div>
- </div>
- </div>
- );
- }
-
- // PASO 2: Motivo + ¿reemplazo?
- return (
- <div style={s.modal} onClick={e => e.stopPropagation()}>
- <div style={{...s.row, marginBottom:14}}>
- <h2 style={{color:"#e74c3c", fontFamily:"'Bebas Neue',cursive", margin:0, fontSize:22, letterSpacing:1}}>🚫 ANULAR PEDIDO</h2>
- <CloseBtn onClose={onClose} />
- </div>
-
- {/* Motivo */}
- <div style={{marginBottom:16}}>
- <label style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1}}>Motivo de anulación (opcional)</label>
- <input style={{...s.input, marginTop:4}} placeholder="Ej: Error en el pedido, cambio de cliente..." value={motivo} onChange={e => setMotivo(e.target.value)} spellCheck="false" />
- </div>
-
- {/* ¿Agregar reemplazo? */}
- <div style={{marginBottom:14}}>
- <div style={{fontSize:12, color:"#aaa", marginBottom:10, fontWeight:700, textTransform:"uppercase", letterSpacing:1}}>¿Desea agregar un pedido de reemplazo?</div>
- <div style={{display:"flex", gap:8}}>
- <button style={{...s.btn(crearReemplazo===true?"success":"secondary"), flex:1, padding:12, fontSize:13}} onClick={() => setCrearReemplazo(true)}>
- ✅ Sí, crear reemplazo
- </button>
- <button style={{...s.btn(crearReemplazo===false?"danger":"secondary"), flex:1, padding:12, fontSize:13}} onClick={() => setCrearReemplazo(false)}>
- ❌ No, solo anular
- </button>
- </div>
- </div>
-
- {/* Sección de reemplazo con carta completa */}
- {crearReemplazo === true && (
- <div style={{background:"#0a1a0a", border:"1px solid #27ae6044", borderRadius:8, padding:"10px 14px", marginBottom:14}}>
- <div style={{fontSize:11, color:"#27ae60", textTransform:"uppercase", letterSpacing:1, marginBottom:10, fontWeight:800}}>
- ✏️ Ítems del reemplazo
- </div>
-
- {/* Carrito de reemplazo */}
- {repItems.length === 0
- ? <div style={{color:"#555", fontSize:12, textAlign:"center", padding:"6px 0", marginBottom:10}}>Sin ítems — agrega desde la carta abajo</div>
- : <>
- {repItems.map(item => (
- <div key={item.cartId} style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6, background:"#0f2a0f", borderRadius:6, padding:"6px 10px"}}>
- <span style={{fontSize:13, color:"#ccc", flex:1}}>{item.name}</span>
- <div style={{display:"flex", alignItems:"center", gap:6}}>
- <button style={{...s.btn("danger"), padding:"2px 8px", fontSize:13}} onClick={() => changeRepQty(item.cartId, -1)}>−</button>
- <span style={{fontWeight:900, color:Y, minWidth:20, textAlign:"center"}}>{item.qty}</span>
- <button style={{...s.btn(), padding:"2px 8px", fontSize:13}} onClick={() => changeRepQty(item.cartId, 1)}>+</button>
- <span style={{color:"#666", fontSize:11, minWidth:48, textAlign:"right"}}>{fmt(item.price*item.qty)}</span>
- </div>
- </div>
- ))}
- <div style={{display:"flex", justifyContent:"space-between", borderTop:"1px solid #27ae6033", marginTop:6, paddingTop:6, fontWeight:900}}>
- <span style={{color:"#27ae60"}}>Total reemplazo</span>
- <span style={{color:Y}}>{fmt(repTotal)}</span>
- </div>
- </>
- }
-
- {/* Buscador de carta */}
- <div style={{marginTop:10, borderTop:"1px solid #1a3a1a", paddingTop:10}}>
- <div style={{fontSize:11, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>+ Agregar desde la carta</div>
- <input
- style={{...s.input, marginBottom:6, fontSize:12, padding:"6px 10px"}}
- placeholder="Buscar platillo..."
- value={menuSearch}
- onChange={e => setMenuSearch(e.target.value)}
- />
- <div style={{display:"flex", gap:4, flexWrap:"wrap", marginBottom:6}}>
- {["Todos", ...repCats].map(c => (
- <button key={c} style={{...s.btn(menuCat===c?"primary":"secondary"), fontSize:9, padding:"2px 6px"}} onClick={() => setMenuCat(c)}>{c}</button>
- ))}
- </div>
- <div style={{maxHeight:160, overflowY:"auto"}}>
- {filteredRepMenu.map(item => {
- const inCart = repItems.find(i => i.cartId === item.id || i.id === item.id);
- return (
- <div key={item.id}
- onClick={() => addRepItem(item)}
- style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 8px", borderRadius:6, marginBottom:4, background: inCart ? `${Y}15` : "#111", border:`1px solid ${inCart ? Y+"44" : "#1a2a1a"}`, cursor:"pointer"}}>
- <span style={{fontSize:12, color:"#ccc", flex:1}}>{item.name}</span>
- <div style={{display:"flex", alignItems:"center", gap:6}}>
- <span style={{color:Y, fontWeight:900, fontSize:12}}>{fmt(item.price)}</span>
- {inCart
- ? <span style={{background:Y, color:"#111", borderRadius:10, padding:"1px 7px", fontSize:11, fontWeight:900}}>×{inCart.qty}</span>
- : <span style={{background:"#2a3a2a", borderRadius:"50%", width:20, height:20, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, color:"#aaa"}}>+</span>
- }
- </div>
- </div>
- );
- })}
- </div>
- </div>
- </div>
- )}
-
- {crearReemplazo === false && (
- <div style={{background:"#1a0a0a", border:"1px solid #e74c3c33", borderRadius:8, padding:"10px 14px", marginBottom:14, fontSize:12, color:"#e74c3c"}}>
- ⚠️ El pedido quedará anulado sin reemplazo. La cocina no recibirá ningún nuevo pedido.
- </div>
- )}
-
- <button
- style={{...s.btn("danger"), width:"100%", padding:14, fontSize:15, opacity: crearReemplazo === null ? 0.4 : 1}}
- disabled={crearReemplazo === null}
- onClick={() => onConfirm(crearReemplazo ? repItems : [], motivo)}>
- 🚫 Confirmar Anulación{crearReemplazo && repItems.length > 0 ? " y Enviar Reemplazo a Cocina" : ""}
- </button>
- </div>
- );
-
- // ── Paso: no-admin solicita la anulación al admin ──
- if (step === "request") return (
- <div style={s.modal} onClick={e => e.stopPropagation()}>
-  <div style={{...s.row, marginBottom:14}}>
-   <h2 style={{color:"#8e44ad", fontFamily:"'Bebas Neue',cursive", margin:0, fontSize:20, letterSpacing:1}}>📨 SOLICITAR ANULACIÓN</h2>
-   <CloseBtn onClose={onClose} />
-  </div>
-  <div style={{background:"#150a1a", border:"1px solid #8e44ad44", borderRadius:8, padding:"10px 14px", marginBottom:14}}>
-   <div style={{fontWeight:900, fontSize:13, color:"#eee", marginBottom:6}}>
-    {order.orderType==="llevar" ? `🥡 ${order.table||"Sin nombre"}` : `🍽️ Mesa ${order.table}`}
-    <span style={{color:Y, marginLeft:10}}>{fmt(order.total)}</span>
-   </div>
-   {(order.items||[]).map((item,i) => (
-    <div key={i} style={{fontSize:12, color:"#888", display:"flex", justifyContent:"space-between"}}>
-     <span>{item.qty}× {item.name}</span><span>{fmt(item.price*item.qty)}</span>
+  return (
+   <div style={s.modal} onClick={e => e.stopPropagation()}>
+    <div style={{textAlign:"center", padding:"10px 0 20px"}}>
+     <div style={{fontSize:52, marginBottom:10}}>🚫</div>
+     <div style={{color:"#e74c3c", fontFamily:"'Bebas Neue',cursive", fontSize:26, letterSpacing:1, marginBottom:8}}>
+      ¿ANULAR ESTE PEDIDO?
+     </div>
+     <div style={{background:"#1a0a0a", border:"1px solid #e74c3c44", borderRadius:8, padding:"10px 14px", marginBottom:16, textAlign:"left"}}>
+      <div style={{fontWeight:900, fontSize:15, color:"#eee", marginBottom:6}}>
+       {order.orderType==="llevar" ? `🥡 ${order.table||"Sin nombre"}` : `🍽 Mesa ${order.table}`}
+       <span style={{color:Y, marginLeft:10}}>{fmt(order.total)}</span>
+      </div>
+      {(order.items||[]).map((item,i) => (
+       <div key={i} style={{fontSize:12, color:"#888", display:"flex", justifyContent:"space-between"}}>
+        <span>{item.qty}× {item.name}</span><span>{fmt(item.price*item.qty)}</span>
+       </div>
+      ))}
+     </div>
+     <div style={{color:"#888", fontSize:13, marginBottom:20}}>
+      {isAdmin 
+        ? <><b style={{color:"#e74c3c"}}>ANULACIÓN DIRECTA.</b> Esta acción no se puede deshacer.</>
+        : <>Se enviará una <b style={{color:"#8e44ad"}}>SOLICITUD DE ANULACIÓN</b> al administrador para su revisión.</>}
+     </div>
+     <div style={{display:"flex", gap:10}}>
+      <button style={{...s.btn("secondary"), flex:1, padding:14, fontSize:14}} onClick={onClose}>
+       Cancelar
+      </button>
+      <button style={{...s.btn(isAdmin ? "danger" : "blue"), flex:1, padding:14, fontSize:14, fontWeight:900}}
+       onClick={() => setStep("details")}>
+       {isAdmin ? "Sí, ANULAR" : "Configurar Solicitud"}
+      </button>
+     </div>
     </div>
-   ))}
-  </div>
-  <div style={{marginBottom:14}}>
-   <label style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1}}>Motivo (obligatorio)</label>
-   <input style={{...s.input, marginTop:4}} placeholder="Ej: Error en el pedido, cliente canceló..."
-    value={motivo} onChange={e => setMotivo(e.target.value)} spellCheck="false" />
-  </div>
-  <div style={{fontSize:12, color:"#8e44ad", background:"#150a1a", borderRadius:8, padding:"8px 12px", marginBottom:14, border:"1px solid #8e44ad33"}}>
-   📱 La solicitud se enviará al Administrador en tiempo real. El pedido no se modificará hasta que sea aprobada.
-  </div>
-  <div style={{display:"flex", gap:8}}>
-   <button style={{...s.btn("secondary"), flex:1, padding:12}} onClick={onClose}>Cancelar</button>
-   <button style={{...s.btn("blue"), flex:2, padding:12, fontSize:14, fontWeight:900, opacity:!motivo.trim()?0.4:1}}
-    disabled={!motivo.trim()}
+   </div>
+  );
+ }
+
+ // PASO 2: Motivo + Reemplazo (Unificado)
+ const isSubmitDisabled = crearReemplazo === null || (!isAdmin && !motivo.trim());
+
+ return (
+  <div style={s.modal} onClick={e => e.stopPropagation()}>
+   <div style={{...s.row, marginBottom:14}}>
+    <h2 style={{color:isAdmin ? "#e74c3c" : "#8e44ad", fontFamily:"'Bebas Neue',cursive", margin:0, fontSize:22, letterSpacing:1}}>
+      {isAdmin ? " ANULAR PEDIDO" : " SOLICITAR ANULACIÓN"}
+    </h2>
+    <CloseBtn onClose={onClose} />
+   </div>
+
+   {/* Motivo */}
+   <div style={{marginBottom:16}}>
+    <label style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1}}>
+      Motivo de anulación {isAdmin ? "(opcional)" : <span style={{color:"#e67e22"}}>(obligatorio)</span>}
+    </label>
+    <input style={{...s.input, marginTop:4, borderColor: !isAdmin && !motivo.trim() ? "#e67e2255" : "#383838"}} 
+      placeholder="Ej: Error en el pedido, cliente se retiró..." 
+      value={motivo} onChange={e => setMotivo(e.target.value)} spellCheck="false" />
+   </div>
+
+   {/* ¿Agregar reemplazo? */}
+   <div style={{marginBottom:14}}>
+    <div style={{fontSize:12, color:"#aaa", marginBottom:10, fontWeight:700, textTransform:"uppercase", letterSpacing:1}}>¿Agregar pedido de reemplazo?</div>
+    <div style={{display:"flex", gap:8}}>
+     <button style={{...s.btn(crearReemplazo===true?"success":"secondary"), flex:1, padding:12, fontSize:13}} onClick={() => setCrearReemplazo(true)}>
+       Sí, modificar pedido
+     </button>
+     <button style={{...s.btn(crearReemplazo===false?"danger":"secondary"), flex:1, padding:12, fontSize:13}} onClick={() => setCrearReemplazo(false)}>
+       No, anular por completo
+     </button>
+    </div>
+   </div>
+
+   {/* Sección de reemplazo con carta completa */}
+   {crearReemplazo === true && (
+    <div style={{background:"#0a1a0a", border:"1px solid #27ae6044", borderRadius:8, padding:"10px 14px", marginBottom:14}}>
+     <div style={{fontSize:11, color:"#27ae60", textTransform:"uppercase", letterSpacing:1, marginBottom:10, fontWeight:800}}>
+      ✏️ Ítems del reemplazo
+     </div>
+
+     {/* Carrito de reemplazo */}
+     {repItems.length === 0
+      ? <div style={{color:"#555", fontSize:12, textAlign:"center", padding:"6px 0", marginBottom:10}}>Sin ítems — agrega desde la carta abajo</div>
+      : <>
+       {repItems.map(item => (
+        <div key={item.cartId} style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6, background:"#0f2a0f", borderRadius:6, padding:"6px 10px"}}>
+         <span style={{fontSize:13, color:"#ccc", flex:1}}>{item.name}</span>
+         <div style={{display:"flex", alignItems:"center", gap:6}}>
+          <button style={{...s.btn("danger"), padding:"2px 8px", fontSize:13}} onClick={() => changeRepQty(item.cartId, -1)}>−</button>
+          <span style={{fontWeight:900, color:Y, minWidth:20, textAlign:"center"}}>{item.qty}</span>
+          <button style={{...s.btn(), padding:"2px 8px", fontSize:13}} onClick={() => changeRepQty(item.cartId, 1)}>+</button>
+          <span style={{color:"#666", fontSize:11, minWidth:48, textAlign:"right"}}>{fmt(item.price*item.qty)}</span>
+         </div>
+        </div>
+       ))}
+       <div style={{display:"flex", justifyContent:"space-between", borderTop:"1px solid #27ae6033", marginTop:6, paddingTop:6, fontWeight:900}}>
+        <span style={{color:"#27ae60"}}>Total reemplazo</span>
+        <span style={{color:Y}}>{fmt(repTotal)}</span>
+       </div>
+      </>
+     }
+
+     {/* Buscador de carta */}
+     <div style={{marginTop:10, borderTop:"1px solid #1a3a1a", paddingTop:10}}>
+      <div style={{fontSize:11, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>+ Agregar desde la carta</div>
+      <input style={{...s.input, marginBottom:6, fontSize:12, padding:"6px 10px"}} placeholder="Buscar platillo..." value={menuSearch} onChange={e => setMenuSearch(e.target.value)} />
+      <div style={{display:"flex", gap:4, flexWrap:"wrap", marginBottom:6}}>
+       {["Todos", ...repCats].map(c => (
+        <button key={c} style={{...s.btn(menuCat===c?"primary":"secondary"), fontSize:9, padding:"2px 6px"}} onClick={() => setMenuCat(c)}>{c}</button>
+       ))}
+      </div>
+      <div style={{maxHeight:160, overflowY:"auto"}}>
+       {filteredRepMenu.map(item => {
+        const inCart = repItems.find(i => i.cartId === item.id || i.id === item.id);
+        return (
+         <div key={item.id} onClick={() => addRepItem(item)} style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 8px", borderRadius:6, marginBottom:4, background: inCart ? `${Y}15` : "#111", border:`1px solid ${inCart ? Y+"44" : "#1a2a1a"}`, cursor:"pointer"}}>
+          <span style={{fontSize:12, color:"#ccc", flex:1}}>{item.name}</span>
+          <div style={{display:"flex", alignItems:"center", gap:6}}>
+           <span style={{color:Y, fontWeight:900, fontSize:12}}>{fmt(item.price)}</span>
+           {inCart
+            ? <span style={{background:Y, color:"#111", borderRadius:10, padding:"1px 7px", fontSize:11, fontWeight:900}}>×{inCart.qty}</span>
+            : <span style={{background:"#2a3a2a", borderRadius:"50%", width:20, height:20, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, color:"#aaa"}}>+</span>
+           }
+          </div>
+         </div>
+        );
+       })}
+      </div>
+     </div>
+    </div>
+   )}
+
+   {crearReemplazo === false && (
+    <div style={{background:"#1a0a0a", border:"1px solid #e74c3c33", borderRadius:8, padding:"10px 14px", marginBottom:14, fontSize:12, color:"#e74c3c"}}>
+     ⚠️ El pedido se anulará sin reemplazo. La cocina no recibirá ningún nuevo ticket.
+    </div>
+   )}
+
+   {!isAdmin && (
+    <div style={{fontSize:11, color:"#8e44ad", background:"#150a1a", borderRadius:8, padding:"8px 12px", marginBottom:14, border:"1px solid #8e44ad33"}}>
+     📱 La solicitud, junto con el reemplazo, se enviará al Administrador en tiempo real.
+    </div>
+   )}
+
+   <button
+    style={{...s.btn(isAdmin ? "danger" : "blue"), width:"100%", padding:14, fontSize:15, opacity: isSubmitDisabled ? 0.4 : 1}}
+    disabled={isSubmitDisabled}
     onClick={() => {
-     onRequest({
-      type:"anulacion",
-      requestedBy: currentUser?.userId || currentUser?.id,
-      requestedByName: currentUser?.name || currentUser?.label,
-      orderId: order.id,
-      orderTable: order.table,
-      orderType: order.orderType,
-      orderTotal: order.total,
-      orderItems: order.items,
-      orderSnapshot: order,
-      motivo,
-      replacementItems: [],
-     });
-     onClose();
+      if (isAdmin) {
+        onConfirm(crearReemplazo ? repItems : [], motivo);
+      } else {
+        onRequest({
+          type: "anulacion",
+          requestedBy: currentUser?.userId || currentUser?.id,
+          requestedByName: currentUser?.name || currentUser?.label,
+          orderId: order.id,
+          orderTable: order.table,
+          orderType: order.orderType,
+          orderTotal: order.total,
+          orderItems: order.items,
+          orderSnapshot: order,
+          motivo,
+          replacementItems: crearReemplazo ? repItems : [],
+        });
+        onClose();
+      }
     }}>
-    📨 Enviar Solicitud al Admin
+    {isAdmin 
+      ? ` Confirmar Anulación${crearReemplazo && repItems.length > 0 ? " y Enviar Reemplazo" : ""}`
+      : "📨 Enviar Solicitud de Anulación"}
    </button>
   </div>
- </div>
  );
 }
 
