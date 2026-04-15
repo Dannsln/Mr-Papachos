@@ -1467,14 +1467,19 @@ function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, set
  );
  const allPaidToday = [...paidArchivedToday, ...paidActiveToday];
  // Total en caja efectivo = fondo inicial + efectivo cobrado
- const totalEnCaja = (caja?.fondoInicial||0) + cashRev;
+ 
+ // 1. Primero declara e inicializa las bases
+const cashRev = allPaidToday.reduce((s,o) => s + getPay(o,"efectivo"), 0);
+const todayRev = allPaidToday.reduce((s,o) => s + o.total, 0);
+const yapeRev = allPaidToday.reduce((s,o) => s + getPay(o,"yape"), 0);
+const cardRev = allPaidToday.reduce((s,o) => s + getPay(o,"tarjeta"), 0);
 
- const todayRev = allPaidToday.reduce((s,o) => s + o.total, 0);
- const totalRev = history.filter(o => o.status==="pagado").reduce((s,o) => s + o.total, 0)
-                + paidActiveToday.reduce((s,o) => s + o.total, 0);
- const cashRev = allPaidToday.reduce((s,o) => s + getPay(o,"efectivo"), 0);
- const yapeRev = allPaidToday.reduce((s,o) => s + getPay(o,"yape"), 0);
- const cardRev = allPaidToday.reduce((s,o) => s + getPay(o,"tarjeta"), 0);
+const totalRev = history.filter(o => o.status==="pagado").reduce((s,o) => s + o.total, 0)
+               + paidActiveToday.reduce((s,o) => s + o.total, 0);
+
+// 2. Luego usa cashRev de forma segura
+// Total en caja efectivo = fondo inicial + efectivo cobrado
+const totalEnCaja = (caja?.fondoInicial||0) + cashRev;
 
  const handleCerrar = async () => {
   const corte = await cerrarCaja();
