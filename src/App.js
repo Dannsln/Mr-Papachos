@@ -3432,15 +3432,6 @@ export default function App() {
  };
  const deleteMenuItem = async (id) => { await saveMenu(menu.filter(i=>i.id!==id)); showToast(" Platillo eliminado","#e74c3c"); };
 
- if (splash) return (
- <ErrorBoundary>
- <>
- <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito:wght@400;700;900&display=swap" rel="stylesheet"/>
- <LandingScreen onEnter={() => setSplash(false)} Y="#FFD700" isMobile={isMobile} />
- </>
- </ErrorBoundary>
- );
-
  const Y = "#FFD700";
  const s = {
  app: {fontFamily:"'Nunito',sans-serif",background:"#0f0f0f",color:"#eee",minHeight:"100vh",display:"flex",flexDirection:"column",overflow:"visible"},
@@ -3463,6 +3454,15 @@ export default function App() {
  overlay: {position:"fixed",inset:0,background:"rgba(0,0,0,.85)",zIndex:200,display:"flex",alignItems:isMobile?"flex-end":"center",justifyContent:"center",padding:isMobile?0:16},
  modal: {background:"#1a1a1a",border:`1px solid ${Y}44`,borderRadius:isMobile?"16px 16px 0 0":14,padding:isMobile?"16px 12px":20,width:"100%",maxWidth:isMobile?"100%":600,maxHeight:isMobile?"92vh":"88vh",overflowY:"auto"},
  };
+
+ if (splash) return (
+ <ErrorBoundary>
+ <>
+ <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito:wght@400;700;900&display=swap" rel="stylesheet"/>
+ <LandingScreen onEnter={() => setSplash(false)} Y={Y} isMobile={isMobile} />
+ </>
+ </ErrorBoundary>
+ );
 
  if (!currentUser) return <ErrorBoundary><LoginScreen onLogin={(user) => {
    setCurrentUser(user);
