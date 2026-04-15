@@ -323,10 +323,10 @@ const DEFAULT_STAFF = [
 ];
 
 const ROLE_INFO = {
- admin:    { label:"Administrador", color:"#FFD700", icon:"👑" },
- cajero:   { label:"Cajero",        color:"#3498db", icon:"💰" },
- mesero:   { label:"Mesero",        color:"#27ae60", icon:"🍽️"  },
- cocinero: { label:"Cocina",        color:"#e67e22", icon:"👨‍🍳" },
+ admin:    { label:"Administrador", color:"#FFD700"},
+ cajero:   { label:"Cajero",        color:"#3498db",},
+ mesero:   { label:"Mesero",        color:"#27ae60",},
+ cocinero: { label:"Cocina",        color:"#e67e22",},
 };
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1149,9 +1149,9 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
  {/* ── Métodos de pago ── */}
  <div style={{display:"flex", flexDirection:"column", gap:10, marginBottom:12}}>
   {[
-   {label:"💵 Efectivo", val:ef, set:setEf, todoFn:()=>{setEf(totalFinal);setYa(0);setTa(0);}},
-   {label:"📱 Yape", val:ya, set:setYa, todoFn:()=>{setEf(0);setYa(totalFinal);setTa(0);}},
-   {label:"💳 Tarjeta", val:ta, set:setTa, todoFn:()=>{setEf(0);setYa(0);setTa(totalFinal);}},
+   {label:"Efectivo", val:ef, set:setEf, todoFn:()=>{setEf(totalFinal);setYa(0);setTa(0);}},
+   {label:"Yape", val:ya, set:setYa, todoFn:()=>{setEf(0);setYa(totalFinal);setTa(0);}},
+   {label:"Tarjeta", val:ta, set:setTa, todoFn:()=>{setEf(0);setYa(0);setTa(totalFinal);}},
   ].map(({label, val, set, todoFn}) => (
    <div key={label} style={{display:"flex", alignItems:"center", gap:10}}>
     <span style={{width:90, fontWeight:700, fontSize:13}}>{label}</span>
@@ -1540,11 +1540,11 @@ const totalEnCaja = (caja?.fondoInicial||0) + cashRev;
       </div>
       <div style={{background:"#1a0f2a", borderRadius:8, padding:"8px 10px", textAlign:"center"}}>
        <div style={{color:"#8e44ad", fontWeight:900, fontSize:16}}>S/.{yapeRev.toFixed(2)}</div>
-       <div style={{fontSize:9, color:"#555", marginTop:2}}>📱 Yape</div>
+       <div style={{fontSize:9, color:"#555", marginTop:2}}>Yape</div>
       </div>
       <div style={{background:"#0f1a2a", borderRadius:8, padding:"8px 10px", textAlign:"center"}}>
        <div style={{color:"#2980b9", fontWeight:900, fontSize:16}}>S/.{cardRev.toFixed(2)}</div>
-       <div style={{fontSize:9, color:"#555", marginTop:2}}>💳 Tarjeta</div>
+       <div style={{fontSize:9, color:"#555", marginTop:2}}>Tarjeta</div>
       </div>
      </div>
     )}
