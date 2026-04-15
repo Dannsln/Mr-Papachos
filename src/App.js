@@ -2771,7 +2771,7 @@ export default function App() {
  setLoaded(false);
  const localFS = FS(currentUser.localId);
  
- let unsubOrders, unsubHistory, unsubMenu, unsubConfig; 
+ let unsubOrders, unsubHistory, unsubMenu, unsubConfig, unsubSolicitudes, unsubStaff; 
 
  const setupListeners = () => {
  unsubOrders = onSnapshot(localFS.ordersRef(), (docSnap) => {
@@ -2789,13 +2789,11 @@ export default function App() {
  else setMesasArr([1, 2, 3, 4, 5, 6]); 
  });
 
- let unsubSolicitudes;
  unsubSolicitudes = onSnapshot(localFS.solicitudesRef(), (docSnap) => {
   if (docSnap.exists()) setSolicitudes(docSnap.data().list || []);
   else setSolicitudes([]);
  });
 
- let unsubStaff;
  unsubStaff = onSnapshot(localFS.staffRef(), (docSnap) => {
   if (docSnap.exists()) setStaff(docSnap.data().users || []);
  });
