@@ -59,6 +59,7 @@ const FS = (localId) => ({
  configRef:      () => doc(db, `mrpapachos_${localId}`, "config"),
  staffRef:       () => doc(db, `mrpapachos_${localId}`, "staff"),
  solicitudesRef: () => doc(db, `mrpapachos_${localId}`, "solicitudes"),
+ cajaRef:        () => doc(db, `mrpapachos_${localId}`, "caja"),
  historyCol:     () => collection(db, `mrpapachos_${localId}_historial`),
  
  async getOrders() {
@@ -1371,17 +1372,19 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
 
 // ── Impresión mejorada — Ticket de Cocina ────────────────────────
 function printOrder(order) {
+ const kitchenMode = !order.isPaid; // ticket cocina = pedido no cobrado; receipt = cobrado
  const items = (order.items||[]).map(i => {
  const validNotes = (i.individualNotes || []).filter(n => n.trim() !== "");
  let notesHtml = "";
  if (validNotes.length > 0) {
- notesHtml = validNotes.map((n, idx) => `<tr><td colspan="3" class="note-cell"> ↳ [${idx+1}]: ${n}</td></tr>`).join("");
+ notesHtml = validNotes.map((n, idx) => `<tr><td colspan="${kitchenMode?2:3}" class="note-cell"> ↳ [${idx+1}]: ${n}</td></tr>`).join("");
  }
  const salsasHtml = i.salsas?.length > 0
- ? `<tr><td colspan="3" class="salsa-cell">   Salsas: ${i.salsas.map(s=>`${s.name} (${s.style})`).join(" · ")}</td></tr>`
+ ? `<tr><td colspan="${kitchenMode?2:3}" class="salsa-cell">   Salsas: ${i.salsas.map(s=>`${s.name} (${s.style})`).join(" · ")}</td></tr>`
  : "";
  const llevarTag = i.isLlevar ? ` <span class="llevar-tag">[LLEVAR]</span>` : "";
- return `<tr class="item-row"><td class="qty">${i.qty}x</td><td class="item">${i.name}${llevarTag}</td><td class="price">S/.${(i.price*i.qty).toFixed(2)}</td></tr>${salsasHtml}${notesHtml}`;
+ const priceCell = kitchenMode ? "" : `<td class="price">S/.${(i.price*i.qty).toFixed(2)}</td>`;
+ return `<tr class="item-row"><td class="qty">${i.qty}x</td><td class="item">${i.name}${llevarTag}</td>${priceCell}</tr>${salsasHtml}${notesHtml}`;
  }).join("");
 
  const notes = order.notes ? `<div class="notes">⚠ NOTA GENERAL: ${order.notes}</div>` : "";
@@ -1433,9 +1436,9 @@ function printOrder(order) {
  <table>${items}</table>
  ${notes}
  <hr class="divider">
- <div class="total-row"><span>TOTAL</span><span>S/.${order.total.toFixed(2)}</span></div>
+ ${kitchenMode ? "" : `<div class="total-row"><span>TOTAL</span><span>S/.${order.total.toFixed(2)}</span></div>`}
  ${paidMarker}
- <div class="footer">— COCINA · MR. PAPACHOS —</div>
+ <div class="footer">${kitchenMode ? "— COCINA · MR. PAPACHOS —" : "— GRACIAS POR SU VISITA —"}</div>
  <script>window.onload=function(){window.print();}<\/script>
 </body></html>`;
 
@@ -1447,38 +1450,179 @@ function printOrder(order) {
 // ═══════════════════════════════════════════════════════════════════
 // COMPONENTES SECUNDARIOS
 // ═══════════════════════════════════════════════════════════════════
-function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, setCobrarTarget, isMobile, s, Y }) {
- const today = new Date().toDateString();
- const paidArchivedToday = history.filter(o => o.status==="pagado" && new Date(o.createdAt).toDateString()===today);
- const paidActiveToday = orders.filter(o => o.isPaid && new Date(o.createdAt).toDateString()===today);
- const allPaidToday = [...paidArchivedToday, ...paidActiveToday];
+function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, setCobrarTarget, isMobile, s, Y, caja, abrirCaja, cerrarCaja, currentUser, getPay }) {
+ const isAdmin = currentUser?.id === "admin";
+ const [fondoInput, setFondoInput] = useState("");
+ const [showCierreModal, setShowCierreModal] = useState(false);
+ const [cierreData, setCierreData] = useState(null);
 
- const todayRev = allPaidToday.reduce((sum,o) => sum + o.total, 0);
- const totalRev = history.filter(o => o.status==="pagado").reduce((sum,o) => sum + o.total, 0) + paidActiveToday.reduce((sum,o) => sum + o.total, 0);
- const cashRev = allPaidToday.reduce((sum,o) => sum + getPay(o,"efectivo"), 0);
- const yapeRev = allPaidToday.reduce((sum,o) => sum + getPay(o,"yape"), 0);
- const cardRev = allPaidToday.reduce((sum,o) => sum + getPay(o,"tarjeta"), 0);
+ // Usar paidAt para agrupar el día (si pagó hoy, cuenta hoy aunque creado ayer)
+ const today = new Date().toDateString();
+ const paidArchivedToday = history.filter(o =>
+  o.status==="pagado" && new Date(o.paidAt || o.createdAt).toDateString()===today
+ );
+ // Only count orders still in active list (not yet archived to history)
+ const paidActiveToday = orders.filter(o =>
+  o.isPaid && new Date(o.paidAt || o.createdAt).toDateString()===today
+ );
+ const allPaidToday = [...paidArchivedToday, ...paidActiveToday];
+ // Total en caja efectivo = fondo inicial + efectivo cobrado
+ const totalEnCaja = (caja?.fondoInicial||0) + cashRev;
+
+ const todayRev = allPaidToday.reduce((s,o) => s + o.total, 0);
+ const totalRev = history.filter(o => o.status==="pagado").reduce((s,o) => s + o.total, 0)
+                + paidActiveToday.reduce((s,o) => s + o.total, 0);
+ const cashRev = allPaidToday.reduce((s,o) => s + getPay(o,"efectivo"), 0);
+ const yapeRev = allPaidToday.reduce((s,o) => s + getPay(o,"yape"), 0);
+ const cardRev = allPaidToday.reduce((s,o) => s + getPay(o,"tarjeta"), 0);
+
+ const handleCerrar = async () => {
+  const corte = await cerrarCaja();
+  if (corte) { setCierreData(corte); setShowCierreModal(true); }
+ };
 
  return (
  <div>
- <div style={s.title}>Estado</div>
- <div style={s.grid(isMobile ? 130 : 140)}>
- <div style={s.statCard}><div style={s.statNum}>{orders.filter(o => o.kitchenStatus !== 'listo').length}</div><div style={s.statLbl}>Activos Cocina</div></div>
- <div style={s.statCard}><div style={s.statNum}>{allPaidToday.length}</div><div style={s.statLbl}>Pagados hoy</div></div>
- <div style={{...s.statCard, border:`1px solid ${Y}55`}}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(todayRev)}</div><div style={s.statLbl}>Recaudado hoy</div></div>
- <div style={s.statCard}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(totalRev)}</div><div style={s.statLbl}>Total</div></div>
- </div>
- {allPaidToday.length > 0 && (
- <div style={{...s.card, marginTop:8}}>
- <div style={s.row}>
- <div style={{textAlign:"center", flex:1}}><div style={{color:"#27ae60", fontWeight:900, fontSize:isMobile?13:16}}> {fmt(cashRev)}</div><div style={{fontSize:10, color:"#666"}}>Efectivo</div></div>
- <div style={{width:1, background:"#333", height:36}}/>
- <div style={{textAlign:"center", flex:1}}><div style={{color:"#8e44ad", fontWeight:900, fontSize:isMobile?13:16}}> {fmt(yapeRev)}</div><div style={{fontSize:10, color:"#666"}}>Yape</div></div>
- <div style={{width:1, background:"#333", height:36}}/>
- <div style={{textAlign:"center", flex:1}}><div style={{color:"#2980b9", fontWeight:900, fontSize:isMobile?13:16}}> {fmt(cardRev)}</div><div style={{fontSize:10, color:"#666"}}>Tarjeta</div></div>
- </div>
- </div>
- )}
+  {/* ── WIDGET CAJA ── */}
+  {isAdmin && (
+   <div style={{...s.card, marginBottom:16, border: caja?.isOpen ? `1px solid #27ae6066` : `1px solid #e74c3c44`, background: caja?.isOpen ? "#0a1f0a" : "#1a0a0a"}}>
+    <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: caja?.isOpen ? 12 : 0}}>
+     <div>
+      <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:18, letterSpacing:1, color: caja?.isOpen ? "#27ae60" : "#e74c3c"}}>
+       {caja?.isOpen ? "🟢 CAJA ABIERTA" : "🔴 CAJA CERRADA"}
+      </div>
+      {caja?.isOpen && (
+       <div style={{fontSize:10, color:"#555", marginTop:2}}>
+        Abierta por {caja.openedBy} · Fondo S/.{(caja.fondoInicial||0).toFixed(2)}
+        {" · "}{new Date(caja.openedAt).toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})}
+       </div>
+      )}
+      {!caja?.isOpen && caja?.ultimoCorte && (
+       <div style={{fontSize:10, color:"#555", marginTop:2}}>
+        Último cierre: {new Date(caja.ultimoCorte.cierreAt).toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})}
+        {" por "}{caja.ultimoCorte.cerradoBy}
+       </div>
+      )}
+     </div>
+     {caja?.isOpen ? (
+      <button style={{...s.btn("danger"), padding:"6px 14px", fontSize:12, fontWeight:900}} onClick={handleCerrar}>
+       🔒 Cerrar Caja
+      </button>
+     ) : (
+      <div style={{display:"flex", gap:6, alignItems:"center"}}>
+       <input
+        type="number" min="0" step="0.5"
+        style={{...s.input, width:110, padding:"6px 10px", fontSize:13}}
+        placeholder="Fondo S/."
+        value={fondoInput}
+        onChange={e => setFondoInput(e.target.value)}
+       />
+       <button style={{...s.btn("success"), padding:"6px 14px", fontSize:12, fontWeight:900}}
+        onClick={() => { abrirCaja(fondoInput); setFondoInput(""); }}>
+        🟢 Abrir Caja
+       </button>
+      </div>
+     )}
+    </div>
+
+    {/* Resumen en caja abierta */}
+    {caja?.isOpen && allPaidToday.length > 0 && (
+     <div style={{display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8}}>
+      <div style={{background:"#0f2a0f", borderRadius:8, padding:"8px 10px", textAlign:"center"}}>
+       <div style={{color:"#27ae60", fontWeight:900, fontSize:16}}>S/.{totalEnCaja.toFixed(2)}</div>
+       <div style={{fontSize:9, color:"#555", marginTop:2}}>💵 Total en caja</div>
+       <div style={{fontSize:10, color:"#444", marginTop:1}}>Fondo {fmt(caja.fondoInicial)} + {fmt(cashRev)} cobrado</div>
+      </div>
+      <div style={{background:"#1a0f2a", borderRadius:8, padding:"8px 10px", textAlign:"center"}}>
+       <div style={{color:"#8e44ad", fontWeight:900, fontSize:16}}>S/.{yapeRev.toFixed(2)}</div>
+       <div style={{fontSize:9, color:"#555", marginTop:2}}>📱 Yape</div>
+      </div>
+      <div style={{background:"#0f1a2a", borderRadius:8, padding:"8px 10px", textAlign:"center"}}>
+       <div style={{color:"#2980b9", fontWeight:900, fontSize:16}}>S/.{cardRev.toFixed(2)}</div>
+       <div style={{fontSize:9, color:"#555", marginTop:2}}>💳 Tarjeta</div>
+      </div>
+     </div>
+    )}
+
+    {/* Historial de cortes */}
+    {isAdmin && caja?.cortes?.length > 0 && (
+     <div style={{marginTop:12, borderTop:"1px solid #2a2a2a", paddingTop:10}}>
+      <div style={{fontSize:10, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>Cortes del día</div>
+      {caja.cortes.slice(-3).reverse().map((c,i) => (
+       <div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:11, color:"#777", padding:"3px 0", borderBottom:"1px solid #1a1a1a"}}>
+        <span>{new Date(c.cierreAt).toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})} · {c.cerradoBy}</span>
+        <span style={{color:"#aaa", fontWeight:700}}>S/.{c.total.toFixed(2)} · {c.pedidosCobrados} pedidos</span>
+       </div>
+      ))}
+     </div>
+    )}
+   </div>
+  )}
+
+  {/* ── STATS ── */}
+  <div style={s.title}>Resumen del Día</div>
+  <div style={s.grid(isMobile ? 130 : 140)}>
+   <div style={s.statCard}><div style={s.statNum}>{orders.filter(o => o.kitchenStatus !== "listo" && !o.anulado).length}</div><div style={s.statLbl}>En Cocina</div></div>
+   <div style={s.statCard}><div style={s.statNum}>{allPaidToday.length}</div><div style={s.statLbl}>Pagados hoy</div></div>
+   <div style={{...s.statCard, border:`1px solid ${Y}55`}}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(todayRev)}</div><div style={s.statLbl}>Recaudado hoy</div></div>
+   <div style={s.statCard}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(totalRev)}</div><div style={s.statLbl}>Total histórico</div></div>
+  </div>
+  {allPaidToday.length > 0 && (
+   <div style={{...s.card, marginTop:8}}>
+    <div style={s.row}>
+     <div style={{textAlign:"center", flex:1}}><div style={{color:"#27ae60", fontWeight:900, fontSize:isMobile?13:16}}>{fmt(cashRev)}</div><div style={{fontSize:10, color:"#666"}}>Efectivo</div></div>
+     <div style={{width:1, background:"#333", height:36}}/>
+     <div style={{textAlign:"center", flex:1}}><div style={{color:"#8e44ad", fontWeight:900, fontSize:isMobile?13:16}}>{fmt(yapeRev)}</div><div style={{fontSize:10, color:"#666"}}>Yape</div></div>
+     <div style={{width:1, background:"#333", height:36}}/>
+     <div style={{textAlign:"center", flex:1}}><div style={{color:"#2980b9", fontWeight:900, fontSize:isMobile?13:16}}>{fmt(cardRev)}</div><div style={{fontSize:10, color:"#666"}}>Tarjeta</div></div>
+    </div>
+   </div>
+  )}
+
+  {/* ── MODAL CIERRE ── */}
+  {showCierreModal && cierreData && (
+   <div style={s.overlay} onClick={() => setShowCierreModal(false)}>
+    <div style={{...s.modal, maxWidth:380}} onClick={e => e.stopPropagation()}>
+     <div style={{textAlign:"center", marginBottom:16}}>
+      <div style={{fontSize:36, marginBottom:6}}>🔒</div>
+      <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:24, color:"#e67e22", letterSpacing:1}}>CIERRE DE CAJA</div>
+      <div style={{fontSize:11, color:"#666"}}>
+       {new Date(cierreData.cierreAt).toLocaleDateString("es-PE")} · Cerrada por {cierreData.cerradoBy}
+      </div>
+     </div>
+     <div style={{background:"#111", borderRadius:10, padding:14, marginBottom:14}}>
+      <div style={{display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid #222"}}>
+       <span style={{color:"#888"}}>Fondo inicial</span>
+       <span style={{fontWeight:700}}>{fmt(cierreData.fondoInicial)}</span>
+      </div>
+      <div style={{display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid #222"}}>
+       <span style={{color:"#27ae60"}}>💵 Efectivo cobrado</span>
+       <span style={{fontWeight:700, color:"#27ae60"}}>{fmt(cierreData.efectivo)}</span>
+      </div>
+      <div style={{display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid #222"}}>
+       <span style={{color:"#8e44ad"}}>📱 Yape</span>
+       <span style={{fontWeight:700, color:"#8e44ad"}}>{fmt(cierreData.yape)}</span>
+      </div>
+      <div style={{display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid #222"}}>
+       <span style={{color:"#2980b9"}}>💳 Tarjeta</span>
+       <span style={{fontWeight:700, color:"#2980b9"}}>{fmt(cierreData.tarjeta)}</span>
+      </div>
+      <div style={{display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:"1px solid #222"}}>
+       <span style={{color:"#aaa"}}>Pedidos cobrados</span>
+       <span style={{fontWeight:700}}>{cierreData.pedidosCobrados}</span>
+      </div>
+      <div style={{display:"flex", justifyContent:"space-between", padding:"8px 0", marginTop:4}}>
+       <span style={{color:"#eee", fontWeight:900, fontSize:15}}>TOTAL EN CAJA</span>
+       <span style={{fontWeight:900, fontSize:18, color:"#27ae60"}}>{fmt(cierreData.totalEnCaja)}</span>
+      </div>
+      <div style={{fontSize:10, color:"#555", textAlign:"right"}}>(Fondo + Efectivo cobrado)</div>
+     </div>
+     <button style={{...s.btn("primary"), width:"100%", padding:12, fontSize:14}} onClick={() => setShowCierreModal(false)}>
+      Aceptar
+     </button>
+    </div>
+   </div>
+  )}
  </div>
  );
 }
@@ -1980,12 +2124,13 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  const notes = (item.individualNotes||[]).filter(n=>n.trim());
  return (
  <div key={i} style={{marginBottom:4}}>
- <div style={{display:"flex", justifyContent:"space-between", fontSize:isMobile?12:13, padding:"3px 0", borderBottom:"1px solid #1e1e1e"}}>
+ <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", fontSize:isMobile?12:13, padding:"3px 0", borderBottom:"1px solid #1e1e1e"}}>
  <span style={{color:"#ccc"}}>
- <span style={{color:"#888", marginRight:4}}>{item.qty}×</span>
- {item.name}
- {item.isLlevar && <span style={{marginLeft:6,background:"#154360",color:"#3498db",borderRadius:4,padding:"1px 5px",fontSize:9,fontWeight:700}}>Llevar</span>}
+  <span style={{color:"#888", marginRight:4}}>{item.qty}×</span>
+  {item.name}
+  {item.isLlevar && <span style={{marginLeft:6,background:"#154360",color:"#3498db",borderRadius:4,padding:"1px 5px",fontSize:9,fontWeight:700}}>Llevar</span>}
  </span>
+ <span style={{color:"#FFD700", fontWeight:900, fontSize:12, marginLeft:8, whiteSpace:"nowrap"}}>{fmt(item.price*item.qty)}</span>
  </div>
  {item.salsas?.length>0 && <div style={{fontSize:10,color:Y,paddingLeft:8,marginTop:1,fontStyle:"italic"}}>↳ {item.salsas.map(sa=>`${sa.name} (${sa.style})`).join(', ')}</div>}
  {item.priceNote && <div style={{fontSize:10,color:"#e67e22",paddingLeft:8,marginTop:1}}>✏️ {item.priceNote}</div>}
@@ -2163,14 +2308,28 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder }
 
  const historyByDay = {};
  history.forEach(o => {
- const dateObj = new Date(o.createdAt);
- const dateStr = dateObj.toLocaleDateString("es-PE");
- const sortKey = dateObj.getFullYear() + "-" + String(dateObj.getMonth()+1).padStart(2,'0') + "-" + String(dateObj.getDate()).padStart(2,'0');
- if (!historyByDay[dateStr]) historyByDay[dateStr] = { date: dateStr, sortKey, orders: [], total: 0, ef: 0, ya: 0, ta: 0, cancelados: 0 };
- historyByDay[dateStr].orders.push(o);
- if (o.status === "pagado") {
- historyByDay[dateStr].total += o.total; historyByDay[dateStr].ef += getPay(o, "efectivo"); historyByDay[dateStr].ya += getPay(o, "yape"); historyByDay[dateStr].ta += getPay(o, "tarjeta");
- } else if (o.status === "cancelado") { historyByDay[dateStr].cancelados += 1; }
+  // Agrupar por fecha de CREACIÓN del pedido (no de pago)
+  // Un pedido creado a las 11:59 y cobrado a las 00:05 sigue siendo del día anterior
+  const dateObj = new Date(o.createdAt);
+  const dateStr = dateObj.toLocaleDateString("es-PE");
+  const sortKey = dateObj.getFullYear() + "-" + String(dateObj.getMonth()+1).padStart(2,'0') + "-" + String(dateObj.getDate()).padStart(2,'0');
+  if (!historyByDay[dateStr]) historyByDay[dateStr] = { date:dateStr, sortKey, orders:[], total:0, ef:0, ya:0, ta:0, cancelados:0 };
+  historyByDay[dateStr].orders.push(o);
+  if (o.status === "pagado") {
+   historyByDay[dateStr].total += o.total;
+   historyByDay[dateStr].ef += getPay(o,"efectivo");
+   historyByDay[dateStr].ya += getPay(o,"yape");
+   historyByDay[dateStr].ta += getPay(o,"tarjeta");
+  } else if (o.status === "cancelado") { historyByDay[dateStr].cancelados += 1; }
+ });
+
+ // Dentro de cada día: el primero en pagarse va AL FONDO (más reciente arriba)
+ Object.values(historyByDay).forEach(d => {
+  d.orders.sort((a,b) => {
+   const ta = new Date(a.paidAt || a.cancelledAt || a.createdAt).getTime();
+   const tb = new Date(b.paidAt || b.cancelledAt || b.createdAt).getTime();
+   return tb - ta; // más reciente primero
+  });
  });
 
  let daysList = Object.values(historyByDay).sort((a,b) => b.sortKey.localeCompare(a.sortKey));
@@ -2603,6 +2762,65 @@ function SolicitudesPanel({ solicitudes, onResolve, currentUser, isMobile, s, Y,
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// EDIT USER INLINE — sub-componente para editar cada usuario
+// ═══════════════════════════════════════════════════════════════════
+function EditUserInline({ user, allRoles, toggleRole, onUpdateRoles, onUpdateName, onResetPin, onDelete, s, Y }) {
+ const [editingName, setEditingName] = useState(false);
+ const [nameVal, setNameVal] = useState(user.name);
+
+ return (
+  <div style={{borderTop:"1px solid #2a2a2a", paddingTop:10}}>
+   {/* Nombre editable */}
+   <div style={{marginBottom:10}}>
+    <div style={{fontSize:11, color:"#888", marginBottom:5, textTransform:"uppercase", letterSpacing:1}}>Nombre</div>
+    {editingName ? (
+     <div style={{display:"flex", gap:6}}>
+      <input style={{...s.input, flex:1, fontSize:13, padding:"6px 10px"}}
+       value={nameVal} onChange={e => setNameVal(e.target.value)}
+       onKeyDown={e => { if(e.key==="Enter"){ onUpdateName(user.id, nameVal.trim()||user.name); setEditingName(false); } if(e.key==="Escape") setEditingName(false); }}
+       autoFocus spellCheck="false" />
+      <button style={{...s.btn("success"), padding:"6px 12px", fontSize:12}}
+       onClick={() => { onUpdateName(user.id, nameVal.trim()||user.name); setEditingName(false); }}>✓</button>
+      <button style={{...s.btn("secondary"), padding:"6px 10px", fontSize:12}}
+       onClick={() => { setNameVal(user.name); setEditingName(false); }}>✕</button>
+     </div>
+    ) : (
+     <div style={{display:"flex", alignItems:"center", gap:8}}>
+      <span style={{fontSize:14, fontWeight:700, color:"#eee"}}>{user.name}</span>
+      <button style={{...s.btn("secondary"), padding:"2px 8px", fontSize:10}}
+       onClick={() => setEditingName(true)}>✏️ Editar</button>
+     </div>
+    )}
+   </div>
+
+   {/* Roles */}
+   <div style={{fontSize:11, color:"#888", marginBottom:5, textTransform:"uppercase", letterSpacing:1}}>Roles</div>
+   <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:10}}>
+    {allRoles.map(role => {
+     const info = ROLE_INFO[role]; const active = user.roles.includes(role);
+     return (
+      <button key={role} onClick={() => onUpdateRoles(user.id, toggleRole(user.roles, role))}
+       style={{...s.btn(active?"primary":"secondary"), fontSize:10, border:active?`1px solid ${info.color}`:"1px solid #333"}}>
+       {info.icon} {info.label}
+      </button>
+     );
+    })}
+   </div>
+
+   {/* Acciones */}
+   <div style={{display:"flex", gap:6}}>
+    <button style={{...s.btn("warn"), flex:1, fontSize:11, padding:"6px 0"}}
+     onClick={onResetPin}>🔑 Resetear PIN</button>
+    {!user.roles.includes("admin") && (
+     <button style={{...s.btn("danger"), flex:1, fontSize:11, padding:"6px 0"}}
+      onClick={onDelete}>🗑 Eliminar</button>
+    )}
+   </div>
+  </div>
+ );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // STAFF MANAGER — Gestión de personal y PINs (solo admin)
 // ═══════════════════════════════════════════════════════════════════
 function StaffManager({ staff, onSaveStaff, isMobile, s, Y }) {
@@ -2692,28 +2910,19 @@ function StaffManager({ staff, onSaveStaff, isMobile, s, Y }) {
        </button>
       </div>
       {isEdit && (
-       <div style={{borderTop:"1px solid #2a2a2a", paddingTop:10}}>
-        <div style={{fontSize:11, color:"#888", marginBottom:6, textTransform:"uppercase", letterSpacing:1}}>Roles</div>
-        <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:10}}>
-         {allRoles.map(role => {
-          const info = ROLE_INFO[role]; const active = user.roles.includes(role);
-          return (
-           <button key={role} onClick={() => handleUpdateRoles(user.id, toggleRole(user.roles, role))}
-            style={{...s.btn(active?"primary":"secondary"), fontSize:10, border:active?`1px solid ${info.color}`:"1px solid #333"}}>
-            {info.icon} {info.label}
-           </button>
-          );
-         })}
-        </div>
-        <div style={{display:"flex", gap:6}}>
-         <button style={{...s.btn("warn"), flex:1, fontSize:11, padding:"6px 0"}}
-          onClick={() => setResetTarget(user.id)}>🔑 Resetear PIN</button>
-         {!user.roles.includes("admin") && (
-          <button style={{...s.btn("danger"), flex:1, fontSize:11, padding:"6px 0"}}
-           onClick={() => handleDelete(user.id)}>🗑 Eliminar</button>
-         )}
-        </div>
-       </div>
+       <EditUserInline
+        user={user}
+        allRoles={allRoles}
+        toggleRole={toggleRole}
+        onUpdateRoles={handleUpdateRoles}
+        onUpdateName={(uid, name) => {
+         onSaveStaff(staff.map(u => u.id===uid ? {...u, name} : u));
+         toast_(`✅ Nombre actualizado`);
+        }}
+        onResetPin={() => setResetTarget(user.id)}
+        onDelete={() => handleDelete(user.id)}
+        s={s} Y={Y}
+       />
       )}
      </div>
     );
@@ -2769,6 +2978,7 @@ export default function App() {
  const [kitchenChecks, setKitchenChecks] = useState({});
  const [solicitudes, setSolicitudes] = useState([]);
  const [staff, setStaff] = useState([]);
+ const [caja, setCaja] = useState(null); // null = no abierta
  const [cobrarTarget, setCobrarTarget] = useState(null);
  const [splitTarget, setSplitTarget] = useState(null); 
  const [mergeModal, setMergeModal] = useState(null);
@@ -2781,7 +2991,7 @@ export default function App() {
  const localFS = FS(currentUser.localId);
  
  // All unsub vars declared in outer scope so cleanup can reference them
- let unsubOrders, unsubHistory, unsubMenu, unsubConfig, unsubSolicitudes, unsubStaff;
+ let unsubOrders, unsubHistory, unsubMenu, unsubConfig, unsubSolicitudes, unsubStaff, unsubCaja;
 
  const setupListeners = () => {
   unsubOrders = onSnapshot(localFS.ordersRef(), (docSnap) => {
@@ -2805,12 +3015,16 @@ export default function App() {
    if (docSnap.exists()) setStaff(docSnap.data().users || []);
    else setStaff([]);
   });
+  unsubCaja = onSnapshot(localFS.cajaRef(), (docSnap) => {
+   if (docSnap.exists()) setCaja(docSnap.data());
+   else setCaja(null);
+  });
   setLoaded(true);
  };
 
  setupListeners();
  return () => {
-  [unsubOrders, unsubHistory, unsubMenu, unsubConfig, unsubSolicitudes, unsubStaff]
+  [unsubOrders, unsubHistory, unsubMenu, unsubConfig, unsubSolicitudes, unsubStaff, unsubCaja]
    .forEach(fn => { try { if (fn) fn(); } catch(e) {} });
  };
  }, [currentUser]);
@@ -2821,10 +3035,62 @@ export default function App() {
  const saveMenu = async (v) => { setMenu(v); await FS(currentUser.localId).saveMenu(v.filter(i=>i.id.startsWith("CUSTOM_")||i.id.startsWith("TP")&&!["TP01","TP02","TP03","TP04","TP05"].includes(i.id))); };
  const addHistory = async (o) => { await FS(currentUser.localId).addHistory(o); };
  const saveSolicitudes = async (list) => {
-  // Auto-limpiar solicitudes resueltas > 48 horas para no acumular indefinidamente
   const threshold = Date.now() - 48 * 60 * 60 * 1000;
   const cleaned = list.filter(s => s.status === "pendiente" || new Date(s.resolvedAt || s.createdAt).getTime() > threshold);
   await FS(currentUser.localId).saveSolicitudes(cleaned);
+ };
+
+ const saveCaja = async (data) => {
+  await setDoc(FS(currentUser.localId).cajaRef(), data);
+ };
+
+ const abrirCaja = async (fondoInicial) => {
+  const data = {
+   isOpen: true,
+   openedAt: new Date().toISOString(),
+   openedBy: currentUser.name,
+   fondoInicial: parseFloat(fondoInicial) || 0,
+   cortes: caja?.cortes || [],
+  };
+  setCaja(data);
+  await saveCaja(data);
+  showToast(`✅ Caja abierta con fondo S/.${(parseFloat(fondoInicial)||0).toFixed(2)}`, "#27ae60");
+ };
+
+ const cerrarCaja = async () => {
+  if (!caja?.isOpen) return;
+  const today = new Date().toDateString();
+  // Usar paidAt para contabilizar correctamente cobros de madrugada
+  const pagadosHoy = history.filter(o => o.status === "pagado" && new Date(o.paidAt || o.createdAt).toDateString() === today);
+  // También sumar pedidos aún activos ya cobrados (no archivados)
+  const activosCobradosHoy = ordersRef.current.filter(o => o.isPaid && new Date(o.paidAt || o.createdAt).toDateString() === today);
+  const todosHoy = [...pagadosHoy, ...activosCobradosHoy];
+  const efectivo  = todosHoy.reduce((s,o) => s + getPay(o,"efectivo"), 0);
+  const yape      = todosHoy.reduce((s,o) => s + getPay(o,"yape"), 0);
+  const tarjeta   = todosHoy.reduce((s,o) => s + getPay(o,"tarjeta"), 0);
+  const total     = todosHoy.reduce((s,o) => s + o.total, 0);
+  const corte = {
+   cierreAt: new Date().toISOString(),
+   cerradoBy: currentUser.name,
+   fondoInicial: caja.fondoInicial,
+   efectivo, yape, tarjeta, total,
+   totalEnCaja: caja.fondoInicial + efectivo,
+   pedidosCobrados: todosHoy.length,
+  };
+  const data = {
+   isOpen: false,
+   openedAt: caja.openedAt,
+   openedBy: caja.openedBy,
+   fondoInicial: caja.fondoInicial,
+   closedAt: corte.cierreAt,
+   closedBy: currentUser.name,
+   cortes: [...(caja.cortes || []), corte],
+   ultimoCorte: corte,
+  };
+  setCaja(data);
+  await saveCaja(data);
+  showToast("🔒 Caja cerrada", "#e67e22");
+  return corte;
  };
  const saveStaff = async (users) => { setStaff(users); await FS(currentUser.localId).saveStaff(users); };
 
@@ -3299,7 +3565,7 @@ export default function App() {
  {confirmDelete&&<div style={s.overlay} onClick={()=>setConfirmDelete(null)}><div style={{...s.modal,maxWidth:340,textAlign:"center"}} onClick={e=>e.stopPropagation()}><div style={{fontSize:42,marginBottom:12}}></div><div style={{fontWeight:900,fontSize:17,marginBottom:8,color:"#eee"}}>¿Eliminar pedido?</div><div style={{color:"#888",fontSize:13,marginBottom:20}}>Esta acción no se puede deshacer.</div><div style={{display:"flex",gap:10}}><button style={{...s.btn("secondary"),flex:1}} onClick={()=>setConfirmDelete(null)}>Cancelar</button><button style={{...s.btn("danger"),flex:1}} onClick={()=>deleteOrderPermanent(confirmDelete)}> Eliminar</button></div></div></div>}
 
  <div style={s.content}>
- {tab==="dashboard" && <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} />}
+ {tab==="dashboard" && <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} caja={caja} abrirCaja={abrirCaja} cerrarCaja={cerrarCaja} currentUser={currentUser} getPay={getPay} />}
  {tab==="mesas" && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setAnulacionModal={setAnulacionModal} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} mesasArr={mesasArr} addMesa={addMesa} removeMesa={removeMesa} currentUser={currentUser} />}
  {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} mesasArr={mesasArr} />}
  {tab==="pedidos" && <PedidosComponent orders={orders} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
