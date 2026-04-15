@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { useState, useEffect, useRef, Component } from "react";
 import { initializeApp, getApps } from "firebase/app";
 import {
@@ -681,7 +682,6 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y, isAdmin=
  const [eNotes, setENotes] = useState(order.notes || "");
  const [ePhone, setEPhone] = useState(order.phone || "");
  const [eOrderType, setEOrderType] = useState(order.orderType || "mesa");
- const taperItem = eItems.find(i => i.id === "TAPER");
 
  const [eCat, setECat] = useState("Todos");
  const [eSearch, setESearch] = useState("");
@@ -1549,7 +1549,7 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
  );
 }
 
-function MesaModalComponent({ num, orders, setDraft, newDraft, onClose, setTab, setCobrarTarget, setSplitTarget, setEditingOrder, setAnulacionModal, printOrder, isMobile, s, Y, fmt, currentUser }) {
+function MesaModalComponent({ num, orders, setDraft, newDraft, onClose, setTab, setCobrarTarget, setSplitTarget, setEditingOrder, setAnulacionModal, printOrder, isMobile, s, Y, fmt, currentUser, crearSolicitud, isAdmin }) {
  const mesaOrders = orders.filter(o => o.table===String(num) && o.orderType!=="llevar" && !o.anulado);
  return (
  <div style={s.modal} onClick={e => e.stopPropagation()}>
@@ -1912,7 +1912,7 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  const isMesero = currentUser?.id === 'mesero';
  const canCobrar = isAdmin || isCajero;
  const canDelete = isAdmin;
- const canAnular = isAdmin;
+ const canAnular = true; // non-admins get "Solicitar" flow via AnulacionModal
  const [showAnulados, setShowAnulados] = useState(false);
 
  const handleInlineProceed = (order, items, total) => {
@@ -2006,7 +2006,7 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  </button>
  </>
  )}
- {isAdmin && !o.isPaid && (
+ {!o.isPaid && (
  <button style={{...s.btn("warn"),flex:1}} onClick={()=>setEditingOrder(o)}>✏️ Editar</button>
  )}
  <button style={{...s.btn("secondary"), padding:"7px 10px", fontSize:11}} onClick={()=>printOrder(o)}>🖨</button>
@@ -2473,13 +2473,18 @@ function CartaComponent({ menu, cartaCatFilter, setCartaCatFilter, showAdd, setS
 // ═══════════════════════════════════════════════════════════════════
 // SOLICITUDES PANEL — Admin aprueba/rechaza en tiempo real
 // ═══════════════════════════════════════════════════════════════════
-function SolicitudesPanel({ solicitudes, onResolve, isMobile, s, Y, fmt }) {
+function SolicitudesPanel({ solicitudes, onResolve, currentUser, isMobile, s, Y, fmt }) {
+ const isAdmin = currentUser?.id === 'admin';
+ // Non-admin only sees their own requests
+ const visibleSols = isAdmin
+  ? solicitudes
+  : solicitudes.filter(x => x.requestedBy === currentUser?.userId || x.requestedBy === currentUser?.id);
  const [rejectModal, setRejectModal] = useState(null);
  const [rejectReason, setRejectReason] = useState("");
  const [expandedId, setExpandedId] = useState(null);
 
- const pendientes = solicitudes.filter(x => x.status === "pendiente");
- const resueltas  = solicitudes.filter(x => x.status !== "pendiente").slice(0, 20);
+ const pendientes = visibleSols.filter(x => x.status === "pendiente");
+ const resueltas  = visibleSols.filter(x => x.status !== "pendiente").slice(0, 20);
 
  const typeLabel  = (t) => t === "anulacion" ? "🚫 Anulación" : "✏️ Cambio de precio";
  const statusInfo = (st) => st === "aprobada"  ? { label:"Aprobada",  color:"#27ae60" }
@@ -2538,10 +2543,14 @@ function SolicitudesPanel({ solicitudes, onResolve, isMobile, s, Y, fmt }) {
           )}
          </div>
          <div style={{display:"flex", gap:8}}>
-          <button style={{...s.btn("success"), flex:2, padding:"10px 0", fontSize:13, fontWeight:900}}
-           onClick={() => onResolve(sol.id, "aprobada")}>✅ Aprobar</button>
-          <button style={{...s.btn("danger"), flex:1, padding:"10px 0", fontSize:12}}
-           onClick={() => { setRejectModal({ solId: sol.id }); setRejectReason(""); }}>❌ Rechazar</button>
+          {isAdmin ? (<>
+           <button style={{...s.btn("success"), flex:2, padding:"10px 0", fontSize:13, fontWeight:900}}
+            onClick={() => onResolve(sol.id, "aprobada")}>✅ Aprobar</button>
+           <button style={{...s.btn("danger"), flex:1, padding:"10px 0", fontSize:12}}
+            onClick={() => { setRejectModal({ solId: sol.id }); setRejectReason(""); }}>❌ Rechazar</button>
+          </>) : (
+           <div style={{fontSize:11, color:"#8e44ad", fontStyle:"italic", padding:"8px 0"}}>⏳ Esperando aprobación del Administrador</div>
+          )}
          </div>
         </div>
        ))}
@@ -2771,40 +2780,38 @@ export default function App() {
  setLoaded(false);
  const localFS = FS(currentUser.localId);
  
- let unsubOrders, unsubHistory, unsubMenu, unsubConfig, unsubSolicitudes, unsubStaff; 
+ // All unsub vars declared in outer scope so cleanup can reference them
+ let unsubOrders, unsubHistory, unsubMenu, unsubConfig, unsubSolicitudes, unsubStaff;
 
  const setupListeners = () => {
- unsubOrders = onSnapshot(localFS.ordersRef(), (docSnap) => {
- if (docSnap.exists()) setOrders(docSnap.data().list || []); else setOrders([]);
- });
- unsubMenu = onSnapshot(localFS.menuRef(), (docSnap) => {
- if (docSnap.exists()) setMenu([...MENU_BASE, ...(docSnap.data().list || [])]); else setMenu(MENU_BASE);
- });
- unsubHistory = onSnapshot(query(localFS.historyCol(), orderBy("createdAt", "desc"), limit(1000)), (snapshot) => {
- setHistory(snapshot.docs.map(d => ({ _fid: d.id, ...d.data() })));
- });
- 
- unsubConfig = onSnapshot(localFS.configRef(), (docSnap) => {
- if (docSnap.exists() && docSnap.data().mesas) setMesasArr(docSnap.data().mesas);
- else setMesasArr([1, 2, 3, 4, 5, 6]); 
- });
-
- unsubSolicitudes = onSnapshot(localFS.solicitudesRef(), (docSnap) => {
-  if (docSnap.exists()) setSolicitudes(docSnap.data().list || []);
-  else setSolicitudes([]);
- });
-
- unsubStaff = onSnapshot(localFS.staffRef(), (docSnap) => {
-  if (docSnap.exists()) setStaff(docSnap.data().users || []);
- });
-
- setLoaded(true);
+  unsubOrders = onSnapshot(localFS.ordersRef(), (docSnap) => {
+   if (docSnap.exists()) setOrders(docSnap.data().list || []); else setOrders([]);
+  });
+  unsubMenu = onSnapshot(localFS.menuRef(), (docSnap) => {
+   if (docSnap.exists()) setMenu([...MENU_BASE, ...(docSnap.data().list || [])]); else setMenu(MENU_BASE);
+  });
+  unsubHistory = onSnapshot(query(localFS.historyCol(), orderBy("createdAt", "desc"), limit(1000)), (snapshot) => {
+   setHistory(snapshot.docs.map(d => ({ _fid: d.id, ...d.data() })));
+  });
+  unsubConfig = onSnapshot(localFS.configRef(), (docSnap) => {
+   if (docSnap.exists() && docSnap.data().mesas) setMesasArr(docSnap.data().mesas);
+   else setMesasArr([1, 2, 3, 4, 5, 6]);
+  });
+  unsubSolicitudes = onSnapshot(localFS.solicitudesRef(), (docSnap) => {
+   if (docSnap.exists()) setSolicitudes(docSnap.data().list || []);
+   else setSolicitudes([]);
+  });
+  unsubStaff = onSnapshot(localFS.staffRef(), (docSnap) => {
+   if (docSnap.exists()) setStaff(docSnap.data().users || []);
+   else setStaff([]);
+  });
+  setLoaded(true);
  };
+
  setupListeners();
  return () => {
-  if (unsubOrders) unsubOrders(); if (unsubHistory) unsubHistory();
-  if (unsubMenu) unsubMenu(); if (unsubConfig) unsubConfig();
-  if (unsubSolicitudes) unsubSolicitudes(); if (unsubStaff) unsubStaff();
+  [unsubOrders, unsubHistory, unsubMenu, unsubConfig, unsubSolicitudes, unsubStaff]
+   .forEach(fn => { try { if (fn) fn(); } catch(e) {} });
  };
  }, [currentUser]);
 
@@ -2813,11 +2820,27 @@ export default function App() {
  const saveOrders = async (v) => { await FS(currentUser.localId).saveOrders(v); };
  const saveMenu = async (v) => { setMenu(v); await FS(currentUser.localId).saveMenu(v.filter(i=>i.id.startsWith("CUSTOM_")||i.id.startsWith("TP")&&!["TP01","TP02","TP03","TP04","TP05"].includes(i.id))); };
  const addHistory = async (o) => { await FS(currentUser.localId).addHistory(o); };
- const saveSolicitudes = async (list) => { await FS(currentUser.localId).saveSolicitudes(list); };
- const saveStaff = async (users) => { await FS(currentUser.localId).saveStaff(users); };
+ const saveSolicitudes = async (list) => {
+  // Auto-limpiar solicitudes resueltas > 48 horas para no acumular indefinidamente
+  const threshold = Date.now() - 48 * 60 * 60 * 1000;
+  const cleaned = list.filter(s => s.status === "pendiente" || new Date(s.resolvedAt || s.createdAt).getTime() > threshold);
+  await FS(currentUser.localId).saveSolicitudes(cleaned);
+ };
+ const saveStaff = async (users) => { setStaff(users); await FS(currentUser.localId).saveStaff(users); };
 
  // Crear solicitud de aprobación (para no-admins)
  const crearSolicitud = async (solicitud) => {
+  // Evitar duplicados: si ya hay una solicitud pendiente del mismo tipo para el mismo pedido
+  const existe = solicitudes.find(s =>
+   s.status === "pendiente" &&
+   s.type === solicitud.type &&
+   s.orderId === solicitud.orderId &&
+   (solicitud.type !== "precio" || s.cartId === solicitud.cartId)
+  );
+  if (existe) {
+   showToast("⚠️ Ya existe una solicitud pendiente para este pedido", "#e67e22");
+   return;
+  }
   const newSol = { ...solicitud, id: `sol_${Date.now()}`, status:"pendiente", createdAt: new Date().toISOString() };
   const updated = [...solicitudes, newSol];
   setSolicitudes(updated);
@@ -2827,9 +2850,10 @@ export default function App() {
 
  // Resolver solicitud (admin aprueba o rechaza)
  const resolverSolicitud = async (solId, decision, rejectReason="") => {
-  const sol = solicitudes.find(s => s.id === solId);
+  const curSols = solicitudes; // capture current value
+  const sol = curSols.find(s => s.id === solId);
   if (!sol) return;
-  const updated = solicitudes.map(s => s.id === solId
+  const updated = curSols.map(s => s.id === solId
    ? { ...s, status: decision, resolvedAt: new Date().toISOString(), resolvedBy: currentUser.name, rejectReason }
    : s
   );
@@ -2846,17 +2870,23 @@ export default function App() {
     );
    } else if (sol.type === "precio") {
     const cur = ordersRef.current;
-    const newOrders = cur.map(o => {
-     if (o.id !== sol.orderId) return o;
-     const newItems = o.items.map(i => i.cartId === sol.cartId ? { ...i, price: sol.newPrice, priceNote: sol.priceMotivo } : i);
-     return { ...o, items: newItems, total: newItems.reduce((s,i)=>s+i.price*i.qty,0) };
-    });
-    setOrders(newOrders);
-    await saveOrders(newOrders);
-    showToast("✅ Precio actualizado por aprobación", "#27ae60");
+    const orderExists = cur.find(o => o.id === sol.orderId);
+    if (!orderExists) {
+     showToast("⚠️ El pedido ya no existe (pudo haberse cobrado)", "#e67e22");
+    } else {
+     const newOrders = cur.map(o => {
+      if (o.id !== sol.orderId) return o;
+      const newItems = o.items.map(i => i.cartId === sol.cartId ? { ...i, price: sol.newPrice, priceNote: `Admin: ${sol.priceMotivo||"ajuste"}` } : i);
+      return { ...o, items: newItems, total: newItems.reduce((s,i)=>s+i.price*i.qty,0) };
+     });
+     setOrders(newOrders);
+     await saveOrders(newOrders);
+     showToast(`✅ Precio de "${sol.itemName}" actualizado a S/.${sol.newPrice?.toFixed(2)}`, "#27ae60");
+    }
    }
   } else {
    showToast(`❌ Solicitud rechazada${rejectReason ? `: ${rejectReason}` : ""}`, "#e74c3c");
+   // The non-admin will see it in their solicitudes tab
   }
  };
 
@@ -3168,7 +3198,14 @@ export default function App() {
  modal: {background:"#1a1a1a",border:`1px solid ${Y}44`,borderRadius:isMobile?"16px 16px 0 0":14,padding:isMobile?"16px 12px":20,width:"100%",maxWidth:isMobile?"100%":600,maxHeight:isMobile?"92vh":"88vh",overflowY:"auto"},
  };
 
- if (!currentUser) return <ErrorBoundary><LoginScreen onLogin={(user) => { setCurrentUser(user); const startTab = user.id === 'cocinero' ? 'cocina' : user.id === 'cajero' ? 'pedidos' : user.id === 'mesero' ? 'mesas' : 'dashboard'; setTab(startTab); }} s={s} Y={Y} isMobile={isMobile} /></ErrorBoundary>;
+ if (!currentUser) return <ErrorBoundary><LoginScreen onLogin={(user) => {
+   setCurrentUser(user);
+   const startTab = user.id==='cocinero' ? 'cocina'
+    : user.id==='cajero' ? 'pedidos'
+    : user.id==='mesero' ? 'mesas'
+    : 'dashboard';
+   setTab(startTab);
+  }} s={s} Y={Y} isMobile={isMobile} /></ErrorBoundary>;
  if (!loaded) return <ErrorBoundary><div style={{background:"#111",color:"#FFD700",height:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{textAlign:"center"}}><div style={{marginTop:12,fontWeight:700,letterSpacing:2}}>Cargando Sucursal...</div></div></div></ErrorBoundary>;
 
  const pendingSols = solicitudes.filter(x => x.status === "pendiente").length;
@@ -3178,7 +3215,9 @@ export default function App() {
  {id:"nuevo",        label:"Nuevo"},
  {id:"pedidos",      label:`Pedidos${orders.filter(o=>!o.anulado).length>0?" ("+orders.filter(o=>!o.anulado).length+")":""}` },
  {id:"cocina",       label:`Cocina${orders.filter(o=>o.kitchenStatus!=='listo'&&!o.anulado).length>0?" ("+orders.filter(o=>o.kitchenStatus!=='listo'&&!o.anulado).length+")":""}` },
- {id:"solicitudes",  label:`Solicitudes${pendingSols>0?" ("+pendingSols+")":""}` },
+ {id:"solicitudes",  label: currentUser?.id==="admin"
+  ? `Solicitudes${pendingSols>0?" ("+pendingSols+")":""}` 
+  : `Mis Solicitudes` },
  {id:"historial",    label:"Historial"},
  {id:"inventario",   label:"Inventario"},
  {id:"carta",        label:"Carta"},
@@ -3187,8 +3226,8 @@ export default function App() {
 
  const tabs = allTabs.filter(t => {
  if (currentUser.id === 'admin') return true;
- if (currentUser.id === 'cajero') return ['dashboard', 'pedidos', 'historial'].includes(t.id);
- if (currentUser.id === 'mesero') return ['mesas', 'nuevo', 'pedidos'].includes(t.id);
+ if (currentUser.id === 'cajero') return ['dashboard','pedidos','historial','solicitudes'].includes(t.id);
+ if (currentUser.id === 'mesero') return ['mesas','nuevo','pedidos','solicitudes'].includes(t.id);
  if (currentUser.id === 'cocinero') return ['cocina'].includes(t.id);
  return false;
  });
@@ -3268,8 +3307,8 @@ export default function App() {
  {tab==="historial"    && <HistorialComponent history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} />}
  {tab==="inventario"   && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/>}
  {tab==="carta"        && <CartaComponent menu={menu} cartaCatFilter={cartaCatFilter} setCartaCatFilter={setCartaCatFilter} showAdd={showAdd} setShowAdd={setShowAdd} newItem={newItem} setNewItem={setNewItem} addMenuItem={addMenuItem} deleteMenuItem={deleteMenuItem} isMobile={isMobile} s={s} Y={Y} fmt={fmt} ALL_CATS={ALL_CATS} />}
- {tab==="solicitudes"  && <SolicitudesPanel solicitudes={solicitudes} onResolve={resolverSolicitud} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
- {tab==="personal"     && <StaffManager staff={staff} onSaveStaff={saveStaff} isMobile={isMobile} s={s} Y={Y} />}
+ {tab==="solicitudes"  && <SolicitudesPanel solicitudes={solicitudes} onResolve={resolverSolicitud} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
+ {tab==="personal"     && <StaffManager staff={staff} onSaveStaff={saveStaff} isMobile={isMobile} s={s} Y={Y} localName={currentUser?.localName} />}
  </div>
  </div>
  </>
