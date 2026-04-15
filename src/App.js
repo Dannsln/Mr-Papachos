@@ -44,12 +44,21 @@ class ErrorBoundary extends Component {
 
 
 
+// ─── SHA-256 helper (Web Crypto API — sin librerías) ─────────────────────────
+async function sha256(str) {
+ if (!str) return "";
+ const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+ return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
+}
+
 // ─── MOTOR MULTI-LOCAL ────────────────────────────────────────────────────────
 const FS = (localId) => ({
- ordersRef: () => doc(db, `mrpapachos_${localId}`, "orders"),
- menuRef: () => doc(db, `mrpapachos_${localId}`, "customMenu"),
- configRef: () => doc(db, `mrpapachos_${localId}`, "config"),
- historyCol: () => collection(db, `mrpapachos_${localId}_historial`),
+ ordersRef:      () => doc(db, `mrpapachos_${localId}`, "orders"),
+ menuRef:        () => doc(db, `mrpapachos_${localId}`, "customMenu"),
+ configRef:      () => doc(db, `mrpapachos_${localId}`, "config"),
+ staffRef:       () => doc(db, `mrpapachos_${localId}`, "staff"),
+ solicitudesRef: () => doc(db, `mrpapachos_${localId}`, "solicitudes"),
+ historyCol:     () => collection(db, `mrpapachos_${localId}_historial`),
  
  async getOrders() {
  try { const s = await getDoc(this.ordersRef()); return s.exists() ? (s.data().list ?? []) : []; } catch { return []; }
@@ -68,6 +77,18 @@ const FS = (localId) => ({
  },
  async addHistory(order) {
  try { await addDoc(this.historyCol(), order); } catch (e) { console.error(e); }
+ },
+ async getStaff() {
+ try { const s = await getDoc(this.staffRef()); return s.exists() ? (s.data().users ?? []) : []; } catch { return []; }
+ },
+ async saveStaff(users) {
+ try { await setDoc(this.staffRef(), { users, ts: new Date().toISOString() }); } catch(e) { console.error(e); }
+ },
+ async getSolicitudes() {
+ try { const s = await getDoc(this.solicitudesRef()); return s.exists() ? (s.data().list ?? []) : []; } catch { return []; }
+ },
+ async saveSolicitudes(list) {
+ try { await setDoc(this.solicitudesRef(), { list, ts: new Date().toISOString() }); } catch(e) { console.error(e); }
  }
 });
 
@@ -290,60 +311,217 @@ const IconoMesa = ({ color, size }) => (
 );
 
 // ═══════════════════════════════════════════════════════════════════
-// LOGIN SCREEN MULTI-LOCAL
+// STAFF POR DEFECTO (primer arranque)
 // ═══════════════════════════════════════════════════════════════════
-function LoginScreen({ onLogin, s, Y }) {
- const [selectedLocal, setSelectedLocal] = useState("amazonas");
+const DEFAULT_STAFF = [
+ { id:"u_admin",   name:"Administrador", roles:["admin"],            pinHash:null },
+ { id:"u_cajero",  name:"Cajero",        roles:["cajero"],           pinHash:null },
+ { id:"u_mesero1", name:"Mesero 1",      roles:["mesero"],           pinHash:null },
+ { id:"u_cocina",  name:"Cocina",        roles:["cocinero"],         pinHash:null },
+];
 
- const roles = [
- { id: 'admin', label: 'Administrador', color: '#ffffff' },
- { id: 'cajero', label: 'Cajero', color: '#ffffff' },
- { id: 'mesero', label: 'Mesero', color: '#ffffff' },
- { id: 'cocinero', label: 'Cocina', color: '#f6f5f4' }
- ];
+const ROLE_INFO = {
+ admin:    { label:"Administrador", color:"#FFD700", icon:"👑" },
+ cajero:   { label:"Cajero",        color:"#3498db", icon:"💰" },
+ mesero:   { label:"Mesero",        color:"#27ae60", icon:"🍽️"  },
+ cocinero: { label:"Cocina",        color:"#e67e22", icon:"👨‍🍳" },
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// LOGIN SCREEN — por usuario con PIN hasheado
+// ═══════════════════════════════════════════════════════════════════
+function LoginScreen({ onLogin, s, Y, isMobile }) {
+ const [step, setStep]               = useState("local");
+ const [selectedLocal, setSelectedLocal] = useState("amazonas");
+ const [staff, setStaff]             = useState([]);
+ const [loadingStaff, setLoadingStaff] = useState(false);
+ const [selectedUser, setSelectedUser] = useState(null);
+ const [pin, setPin]                 = useState("");
+ const [error, setError]             = useState("");
+ const [checking, setChecking]       = useState(false);
 
  const locales = [
- { id: "amazonas", nombre: "Amazonas" },
- { id: "sanmartin", nombre: "San Martín" },
- { id: "belen", nombre: "Belén" }
+  { id:"amazonas",  nombre:"Amazonas"  },
+  { id:"sanmartin", nombre:"San Martín" },
+  { id:"belen",     nombre:"Belén"     },
  ];
 
- return (
- <div style={{background:"#111", height:"100vh", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", color:"#fff"}}>
- <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:32, color:Y, letterSpacing:2, marginBottom:20}}>MR. PAPACHOS</div>
- 
- <div style={{marginBottom:30, textAlign:"center"}}>
- <label style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, display:"block", marginBottom:8}}>Selecciona tu sucursal</label>
- <select 
- style={{...s.input, width:250, textAlign:"center", fontSize:16, fontWeight:700, border:`1px solid ${Y}55`}}
- value={selectedLocal}
- onChange={(e) => setSelectedLocal(e.target.value)}
- >
- {locales.map(loc => (
- <option key={loc.id} value={loc.id}>{loc.nombre}</option>
- ))}
- </select>
- </div>
+ const loadStaff = async (localId) => {
+  setLoadingStaff(true);
+  const fs = FS(localId);
+  let users = await fs.getStaff();
+  if (!users.length) { users = DEFAULT_STAFF; await fs.saveStaff(users); }
+  setStaff(users);
+  setLoadingStaff(false);
+  setStep("user");
+ };
 
- <div style={{fontSize:11, color:"#888", marginBottom:14, textTransform:"uppercase", letterSpacing:1}}>Ingresa tu rol</div>
- <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:16}}>
- {roles.map(r => (
- <button key={r.id} onClick={() => {
- const locName = locales.find(l => l.id === selectedLocal)?.nombre || selectedLocal;
- onLogin({ ...r, localId: selectedLocal, localName: locName });
- }} style={{...s.card, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", padding:20, border:`2px solid ${r.color}`, backgroundColor:`${r.color}15`}}>
- <div style={{fontWeight:800, fontSize:16, color:r.color}}>{r.label}</div>
- </button>
- ))}
- </div>
- </div>
+ const handleSelectUser = (user) => {
+  setSelectedUser(user); setPin(""); setError(""); setStep("pin");
+ };
+
+ const handlePinDigit = (d) => { if (pin.length < 6) setPin(p => p + d); };
+ const handlePinDel   = ()  => setPin(p => p.slice(0, -1));
+
+ const handlePinSubmit = async () => {
+  if (pin.length < 4) return;
+  setChecking(true); setError("");
+  const hash = await sha256(pin);
+  const fs = FS(selectedLocal);
+  if (!selectedUser.pinHash) {
+   // Primera vez: guardar PIN
+   const updated = staff.map(u => u.id === selectedUser.id ? { ...u, pinHash: hash } : u);
+   await fs.saveStaff(updated);
+   setStaff(updated);
+   proceedLogin({ ...selectedUser, pinHash: hash });
+  } else if (hash === selectedUser.pinHash) {
+   proceedLogin(selectedUser);
+  } else {
+   setError("PIN incorrecto — inténtalo de nuevo");
+   setPin("");
+  }
+  setChecking(false);
+ };
+
+ const proceedLogin = (user) => {
+  if (user.roles.length > 1) { setStep("role"); }
+  else { finishLogin(user, user.roles[0]); }
+ };
+
+ const finishLogin = (user, role) => {
+  const locName = locales.find(l => l.id === selectedLocal)?.nombre || selectedLocal;
+  onLogin({
+   id: role, label: ROLE_INFO[role]?.label || role,
+   name: user.name, userId: user.id,
+   activeRole: role, roles: user.roles,
+   localId: selectedLocal, localName: locName,
+  });
+ };
+
+ // Estilos comunes de login
+ const cardBtn = { ...s.btn("secondary"), padding:"14px 20px", fontSize:15, fontWeight:900,
+  textAlign:"left", display:"flex", alignItems:"center", gap:12,
+  border:"1px solid #2a2a2a", width:"100%", cursor:"pointer" };
+
+ return (
+  <div style={{background:"#111",minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:"#fff",padding:20}}>
+   <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:38,color:Y,letterSpacing:3,marginBottom:4}}>MR. PAPACHOS</div>
+   <div style={{fontSize:10,color:"#444",letterSpacing:2,marginBottom:36,textTransform:"uppercase"}}>Sistema de Gestión · Cajamarca</div>
+
+   {/* ── PASO: SUCURSAL ── */}
+   {step === "local" && (
+    <div style={{width:"100%",maxWidth:320}}>
+     <div style={{fontSize:11,color:"#666",textTransform:"uppercase",letterSpacing:1,marginBottom:14,textAlign:"center"}}>Selecciona tu sucursal</div>
+     <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {locales.map(loc => (
+       <button key={loc.id} onClick={() => { setSelectedLocal(loc.id); loadStaff(loc.id); }}
+        style={{...cardBtn, justifyContent:"center", fontSize:17, padding:18}}>
+        {loc.nombre}
+       </button>
+      ))}
+     </div>
+    </div>
+   )}
+
+   {/* ── PASO: USUARIO ── */}
+   {step === "user" && (
+    <div style={{width:"100%",maxWidth:320}}>
+     <button onClick={() => setStep("local")} style={{...s.btn("secondary"),marginBottom:16,fontSize:11,padding:"4px 12px"}}>← Volver</button>
+     <div style={{fontSize:11,color:"#666",textTransform:"uppercase",letterSpacing:1,marginBottom:14,textAlign:"center"}}>¿Quién eres?</div>
+     {loadingStaff
+      ? <div style={{textAlign:"center",color:"#555",padding:20}}>Cargando personal...</div>
+      : <div style={{display:"flex",flexDirection:"column",gap:8}}>
+         {staff.map(user => {
+          const mainRole = ROLE_INFO[user.roles[0]] || {};
+          return (
+           <button key={user.id} onClick={() => handleSelectUser(user)} style={cardBtn}>
+            <span style={{fontSize:22}}>{mainRole.icon}</span>
+            <div>
+             <div style={{fontSize:15,fontWeight:900,color:"#eee"}}>{user.name}</div>
+             <div style={{fontSize:10,color:"#555",marginTop:2}}>
+              {user.roles.map(r => ROLE_INFO[r]?.label || r).join(" · ")}
+              {!user.pinHash && <span style={{color:"#e67e22",marginLeft:6}}>· Sin PIN</span>}
+             </div>
+            </div>
+           </button>
+          );
+         })}
+        </div>
+     }
+    </div>
+   )}
+
+   {/* ── PASO: PIN ── */}
+   {step === "pin" && selectedUser && (
+    <div style={{width:"100%",maxWidth:290,textAlign:"center"}}>
+     <button onClick={() => { setStep("user"); setPin(""); setError(""); }}
+      style={{...s.btn("secondary"),marginBottom:16,fontSize:11,padding:"4px 12px"}}>← Volver</button>
+     <div style={{fontSize:19,fontWeight:900,marginBottom:3}}>{selectedUser.name}</div>
+     <div style={{fontSize:11,color:"#555",marginBottom:!selectedUser.pinHash?8:20}}>
+      {selectedUser.pinHash ? "Ingresa tu PIN" : "🔑 Primera vez — crea tu PIN"}
+     </div>
+     {!selectedUser.pinHash && (
+      <div style={{fontSize:10,color:"#e67e22",marginBottom:18,padding:"6px 12px",background:"#120e00",borderRadius:8,border:"1px solid #e67e2233"}}>
+       Elige un PIN de 4 a 6 dígitos. Lo usarás cada vez que entres.
+      </div>
+     )}
+     {/* Puntos del PIN */}
+     <div style={{display:"flex",justifyContent:"center",gap:10,marginBottom:22}}>
+      {Array.from({length:6}).map((_,i) => (
+       <div key={i} style={{width:13,height:13,borderRadius:"50%",transition:"all .15s",
+        background: i < pin.length ? Y : "transparent",
+        border: `2px solid ${i < pin.length ? Y : "#444"}`}} />
+      ))}
+     </div>
+     {/* Teclado numérico */}
+     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>
+      {["1","2","3","4","5","6","7","8","9","","0","⌫"].map((d,i) => (
+       <button key={i} onClick={() => d === "⌫" ? handlePinDel() : d ? handlePinDigit(d) : null}
+        disabled={!d && d !== "0"}
+        style={{height:54,borderRadius:12,fontSize:d==="⌫"?18:22,fontWeight:700,cursor:d===""?"default":"pointer",
+         background:d==="⌫"?"#222":d===""?"transparent":"#1e1e1e",
+         border:d===""?"none":"1px solid #333",color:"#eee",opacity:d===""?0:1}}>
+        {d}
+       </button>
+      ))}
+     </div>
+     {error && <div style={{color:"#e74c3c",fontSize:12,fontWeight:700,marginBottom:10}}>{error}</div>}
+     <button onClick={handlePinSubmit}
+      disabled={pin.length < 4 || checking}
+      style={{...s.btn("primary"),width:"100%",padding:14,fontSize:16,opacity:pin.length<4?0.4:1}}>
+      {checking ? "Verificando..." : selectedUser.pinHash ? "Entrar" : "Crear PIN y entrar"}
+     </button>
+    </div>
+   )}
+
+   {/* ── PASO: ROL (multi-rol) ── */}
+   {step === "role" && selectedUser && (
+    <div style={{width:"100%",maxWidth:320}}>
+     <div style={{fontSize:17,fontWeight:900,textAlign:"center",marginBottom:4}}>{selectedUser.name}</div>
+     <div style={{fontSize:11,color:"#666",textTransform:"uppercase",letterSpacing:1,marginBottom:20,textAlign:"center"}}>¿Con qué rol entrás hoy?</div>
+     <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {selectedUser.roles.map(role => {
+       const info = ROLE_INFO[role] || { label:role, color:"#fff", icon:"👤" };
+       return (
+        <button key={role} onClick={() => finishLogin(selectedUser, role)}
+         style={{...cardBtn, border:`2px solid ${info.color}33`, padding:"16px 20px"}}>
+         <span style={{fontSize:26}}>{info.icon}</span>
+         <div>
+          <div style={{color:info.color,fontWeight:900,fontSize:15}}>{info.label}</div>
+          <div style={{fontSize:10,color:"#555",marginTop:2}}>
+           {role==="admin" ? "Acceso completo" : "Acceso según rol"}
+          </div>
+         </div>
+        </button>
+       );
+      })}
+     </div>
+    </div>
+   )}
+  </div>
  );
 }
 
-
-// ═══════════════════════════════════════════════════════════════════
-// BOTÓN DE CIERRE UNIVERSAL — visible, hover rojo, fácil de tocar
-// ═══════════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════════
 // BOTÓN DE CIERRE UNIVERSAL — visible, hover rojo, fácil de tocar
 // ═══════════════════════════════════════════════════════════════════
@@ -351,13 +529,14 @@ function CloseBtn({ onClose }) {
  return (
  <button
  onClick={onClose}
- style={{flexShrink:0,width:38,height:38,borderRadius:10,background:"#2a2a2a",border:"2px solid #555",color:"#eee",fontSize:26,fontWeight:900,lineHeight:1,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"background .15s,border-color .15s"}}
+ style={{flexShrink:0,width:38,height:38,borderRadius:10,background:"#2a2a2a",border:"2px solid #555",color:"#eee",fontSize:20,fontWeight:900,lineHeight:1,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"background .15s,border-color .15s"}}
  onMouseEnter={e=>{e.currentTarget.style.background="#c0392b";e.currentTarget.style.borderColor="#e74c3c";}}
  onMouseLeave={e=>{e.currentTarget.style.background="#2a2a2a";e.currentTarget.style.borderColor="#555";}}
  aria-label="Cerrar"
- >-</button>
+ >−</button>
  );
 }
+
 // ═══════════════════════════════════════════════════════════════════
 // MODAL CONFIGURADOR DE SALSAS
 // ═══════════════════════════════════════════════════════════════════
@@ -496,7 +675,7 @@ function SplitBillModal({ order, onProceed, onClose, s, Y, fmt }) {
 // ═══════════════════════════════════════════════════════════════════
 // MODAL DE EDICIÓN
 // ═══════════════════════════════════════════════════════════════════
-function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
+function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y, isAdmin=true, currentUser, onRequestPrecio }) {
  const [eTable, setETable] = useState(order.table);
  const [eItems, setEItems] = useState(order.items.map(i => ({ ...i, individualNotes: i.individualNotes || Array(i.qty).fill("") })));
  const [eNotes, setENotes] = useState(order.notes || "");
@@ -638,11 +817,17 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
  <button style={{ ...s.btn(), padding:"4px 10px", fontSize:14 }} onClick={() => eChangeQty(item.cartId,1)}>+</button>
  <div style={{display:"flex", flexDirection:"column", alignItems:"flex-end", gap:2}}>
  <span style={{ color:Y, fontWeight:900, fontSize:14, minWidth:55, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
- <button
- style={{...s.btn("secondary"), padding:"1px 6px", fontSize:10, opacity:0.8}}
- onClick={() => setEditingPrice({ cartId: item.cartId, value: String(item.price), motivo: "" })}>
- ✏️ precio
- </button>
+ {isAdmin ? (
+  <button style={{...s.btn("secondary"), padding:"1px 6px", fontSize:10, opacity:0.8}}
+   onClick={() => setEditingPrice({ cartId: item.cartId, value: String(item.price), motivo: "" })}>
+   ✏️ precio
+  </button>
+ ) : (
+  <button style={{...s.btn("blue"), padding:"1px 6px", fontSize:10, opacity:0.8}}
+   onClick={() => setEditingPrice({ cartId: item.cartId, value: String(item.price), motivo: "", solicitando: true })}>
+   📨 precio
+  </button>
+ )}
  </div>
  </div>
 
@@ -671,9 +856,30 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y }) {
  spellCheck="false"
  />
  <div style={{display:"flex", gap:6}}>
- <button style={{...s.btn("success"), flex:2, padding:"6px 10px", fontSize:12}}
- onClick={() => eUpdatePrice(item.cartId, editingPrice.value, editingPrice.motivo)}>
- ✅ Aplicar
+ <button style={{...s.btn(isAdmin?"success":"blue"), flex:2, padding:"6px 10px", fontSize:12}}
+ onClick={() => {
+  if (isAdmin) {
+   eUpdatePrice(item.cartId, editingPrice.value, editingPrice.motivo);
+  } else {
+   onRequestPrecio({
+    type: "precio",
+    requestedBy: currentUser?.userId || currentUser?.id,
+    requestedByName: currentUser?.name || currentUser?.label,
+    orderId: order.id,
+    orderTable: order.table,
+    orderType: order.orderType,
+    orderTotal: order.total,
+    orderItems: order.items,
+    cartId: item.cartId,
+    itemName: item.name,
+    oldPrice: item.price,
+    newPrice: parseFloat(editingPrice.value) || item.price,
+    priceMotivo: editingPrice.motivo,
+   });
+   setEditingPrice(null);
+  }
+ }}>
+ {isAdmin ? "✅ Aplicar" : "📨 Solicitar cambio"}
  </button>
  <button style={{...s.btn("secondary"), flex:1, padding:"6px 10px", fontSize:12}}
  onClick={() => setEditingPrice(null)}>
@@ -972,9 +1178,6 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
 // ═══════════════════════════════════════════════════════════════════
 // NUEVO PEDIDO (Carrito)
 // ═══════════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════════
-// NUEVO PEDIDO (Carrito)
-// ═══════════════════════════════════════════════════════════════════
 function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updateIndividualNote, draftTotal, fmt, submitOrder, newDraft, s, Y, isDesktop, isMobile, mesasArr }) {
  const [search, setSearch] = useState("");
  const [catFilter, setCatFilter] = useState("Todos");
@@ -984,106 +1187,181 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  const filteredMenu = menu.filter(i => (catFilter === "Todos" || i.cat === catFilter) && i.name.toLowerCase().includes(search.toLowerCase()));
  const itemCount = draft.items.reduce((sum, i) => sum + i.qty, 0);
 
- // El contenido del carrito ahora es una variable JSX, no una función, 
- // lo que soluciona el problema de perder el foco en las notas.
- const CartContentJSX = (
- <div style={{ ...s.cardHL, display: "flex", flexDirection: "column", height: isDesktop ? "calc(100vh - 120px)" : "auto", background: isMobile ? "#1a1a1a" : "#1c1c1c", border: isMobile ? "none" : `1px solid ${Y}44`, padding: isMobile ? 0 : 14 }}>
-  <div style={{ flex: 1, overflowY: "auto", paddingRight: 4 }}>
-  <div style={{ ...s.title, fontSize:22, marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-  <span>🛒 PEDIDO ACTUAL</span>
-  {isMobile && <CloseBtn onClose={() => setShowCartModal(false)} />}
-  </div>
+ const handleCartaClick = (item) => {
+ if (["Alitas", "Alichaufa", "Rondas"].includes(item.cat)) {
+ setSalsasModal({ itemToAdd: item, salsas: [] });
+ } else {
+ addItem(item);
+ }
+ };
 
-  <div style={{ marginBottom:10 }}>
-  <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Tipo de pedido</label>
-  <div style={{ display:"flex", gap:6, marginTop:4 }}>
-  {["mesa","llevar"].map(t => (
-  <button key={t} style={{ ...s.btn(draft.orderType===t?"primary":"secondary"), flex:1 }}
-  onClick={() => setDraft(d => ({...d, orderType:t, taperCost:0, payTiming: t==="llevar"?"ahora":"despues", table:"", phone:"", deliveryAddress:""}))}>
-  {t==="mesa"?"Mesa":"Para llevar"}
-  </button>
-  ))}
-  </div>
+ const CartContent = () => (
+ <div style={{ ...s.cardHL, position: isDesktop ? "sticky" : "static", top:8, background: isMobile ? "#1a1a1a" : "#1c1c1c", border: isMobile ? "none" : `1px solid ${Y}44`, padding: isMobile ? 0 : 14, display: isDesktop ? "flex" : "block", flexDirection: "column", maxHeight: isDesktop ? "calc(100vh - 120px)" : "none", overflowY: isDesktop ? "hidden" : "auto" }}>
+ {salsasModal && !salsasModal.itemToAdd && (
+ <SalsasModalComponent 
+ initialSalsas={salsasModal.salsas} 
+ onSave={(salsas) => {
+ setDraft(prev => ({...prev, items: prev.items.map(i => i.cartId === salsasModal.cartId ? {...i, salsas} : i)}));
+ setSalsasModal(null);
+ }} 
+ onClose={() => setSalsasModal(null)} s={s} Y={Y} 
+ />
+ )}
 
-  {draft.orderType === "mesa" ? (
-  <select style={{ ...s.input, marginTop:6 }}
-  value={draft.table}
-  onChange={e => setDraft(d => ({...d, table: e.target.value}))}>
-  <option value="">-- Seleccionar Mesa --</option>
-  {(mesasArr||[]).map(n => (
-  <option key={n} value={String(n)}>Mesa {n}</option>
-  ))}
-  </select>
-  ) : (
-  <div style={{marginTop:6, display:"flex", flexDirection:"column", gap:6}}>
-  <input style={s.input} placeholder="Nombre del cliente" value={draft.table || ""} onChange={e => setDraft(d => ({...d, table: e.target.value}))} spellCheck="false" />
-  <input style={s.input} placeholder="Teléfono" value={draft.phone || ""} onChange={e => setDraft(d => ({...d, phone: e.target.value}))} spellCheck="false" />
-  </div>
-  )}
-  </div>
+ <div style={{ flexShrink: 0 }}>
+ <div style={{ ...s.title, fontSize:22, marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+ <span>🛒 PEDIDO ACTUAL</span>
+ {isMobile && <CloseBtn onClose={() => setShowCartModal(false)} />}
+ </div>
 
-  <div style={{ marginBottom:10 }}>
-  <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas Generales</label>
-  <textarea style={{ ...s.input, marginTop:4, resize:"vertical", minHeight:60, fontFamily:"inherit" }} value={draft.notes}
-  onChange={e => setDraft(d => ({...d, notes: e.target.value}))} placeholder="Notas generales..." spellCheck="false" />
-  </div>
+ <div style={{ marginBottom:10 }}>
+ <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Tipo de pedido</label>
+ <div style={{ display:"flex", gap:6, marginTop:4 }}>
+ {["mesa","llevar"].map(t => (
+ <button key={t} style={{ ...s.btn(draft.orderType===t?"primary":"secondary"), flex:1 }}
+ onClick={() => setDraft(d => ({...d, orderType:t, taperCost:0, payTiming: t==="llevar"?"ahora":"despues", table:"", phone:"", deliveryAddress:""}))}>
+ {t==="mesa"?"Mesa":"Para llevar"}
+ </button>
+ ))}
+ </div>
 
-  {draft.items.map(item => (
-  <div key={item.cartId} style={{ marginBottom:10, padding:"10px", background:"#0a0a0a", borderRadius:8, border:"1px solid #222" }}>
-   <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
-   <span style={{fontWeight:700, fontSize:14}}>{item.name}</span>
-   <div style={{display:"flex", alignItems:"center", gap:6}}>
-   <button style={{ ...s.btn("danger"), padding:"2px 8px" }} onClick={() => changeQty(item.cartId,-1)}>−</button>
-   <span style={{ fontWeight:900, minWidth:20, textAlign:"center" }}>{item.qty}</span>
-   <button style={{ ...s.btn(), padding:"2px 8px" }} onClick={() => changeQty(item.cartId,1)}>+</button>
-   </div>
-   </div>
-   {Array.from({ length: item.qty }).map((_, idx) => (
-   <textarea key={idx} style={{ ...s.input, fontSize:13, marginTop: 4, background:"#141414" }} 
-   placeholder={`Nota para el plato ${idx + 1}...`} value={item.individualNotes?.[idx] || ""} spellCheck="false" onChange={e => updateIndividualNote(item.cartId, idx, e.target.value)} />
-   ))}
-  </div>
-  ))}
-  </div>
+ {draft.orderType === "mesa" ? (
+ <select style={{ ...s.input, marginTop:6 }}
+ value={draft.table}
+ onChange={e => setDraft(d => ({...d, table: e.target.value}))}>
+ <option value="">-- Seleccionar Mesa --</option>
+ {(mesasArr||[]).map(n => (
+ <option key={n} value={String(n)}>Mesa {n}</option>
+ ))}
+ </select>
+ ) : (
+ <div style={{marginTop:6, display:"flex", flexDirection:"column", gap:6}}>
+ <input style={s.input}
+ placeholder="Nombre del cliente (opcional)"
+ value={draft.table || ""}
+ onChange={e => setDraft(d => ({...d, table: e.target.value}))}
+ spellCheck="false" />
+ <input style={s.input}
+ placeholder="Número de teléfono (opcional)"
+ value={draft.phone || ""}
+ onChange={e => setDraft(d => ({...d, phone: e.target.value}))}
+ spellCheck="false" />
+ <input style={s.input}
+ placeholder="Dirección de entrega (opcional)"
+ value={draft.deliveryAddress || ""}
+ onChange={e => setDraft(d => ({...d, deliveryAddress: e.target.value}))}
+ spellCheck="false" />
+ </div>
+ )}
+ </div>
 
-  <div style={{ flexShrink: 0, paddingTop: 12, borderTop: `2px solid ${Y}55` }}>
-  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:12 }}><span style={{ fontWeight:900, fontSize:17 }}>TOTAL</span><span style={{ fontWeight:900, fontSize:17, color:Y }}>{fmt(draftTotal)}</span></div>
-  <button style={{ ...s.btn(), width:"100%", padding:16, fontSize:16 }} onClick={() => submitOrder()}>Enviar Pedido</button>
-  </div>
+ <div style={{ marginBottom:10 }}>
+ <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Momento del Cobro</label>
+ <div style={{ display:"flex", gap:6, marginTop:4 }}>
+ <button style={{ ...s.btn(draft.payTiming==="despues"?"primary":"secondary"), flex:1 }} onClick={() => setDraft(d => ({...d,payTiming:"despues"}))}> Pagar después</button>
+ <button style={{ ...s.btn(draft.payTiming==="ahora"?"primary":"secondary"), flex:1 }} onClick={() => setDraft(d => ({...d,payTiming:"ahora"}))}> Pagar ahora</button>
+ </div>
+ </div>
+
+ <div style={{ marginBottom:12 }}>
+ <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas Generales</label>
+ <textarea style={{ ...s.input, marginTop:4, resize:"vertical", minHeight:60, fontFamily:"inherit" }} value={draft.notes}
+ onChange={e => setDraft(d => ({...d, notes: e.target.value}))} placeholder="Sin cebolla en general..." spellCheck="false" />
+ </div>
+ </div>
+
+ {draft.items.length === 0
+ ? <div style={{ textAlign:"center", color:"#444", padding:"20px 0", fontSize:13 }}>Toca un platillo para agregarlo →</div>
+ : <div style={{ flexGrow: isDesktop ? 1 : 0, maxHeight: isDesktop ? "none" : "none", overflowY: "auto", marginBottom:8, minHeight: 0 }}>
+ {draft.items.map(item => (
+ <div key={item.cartId} style={{ marginBottom:10, padding:"10px", background:"#0a0a0a", borderRadius:8, border:"1px solid #222" }}>
+ <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8, paddingBottom:8, borderBottom:"1px solid #252525" }}>
+ <div style={{ flex:1 }}>
+ <div style={{ fontWeight:700, fontSize:14 }}>
+ {item.name} 
+ {["Alitas", "Alichaufa", "Rondas"].includes(item.cat) && (
+ <button style={{...s.btn("secondary"), padding:"2px 6px", fontSize:10, marginLeft:6}} onClick={() => setSalsasModal({cartId: item.cartId, salsas: item.salsas || []})}>
+ Salsas
+ </button>
+ )}
+ </div>
+ </div>
+ <button style={{ ...s.btn("danger"), padding:"4px 10px", fontSize:14 }} onClick={() => changeQty(item.cartId,-1)}>−</button>
+ <span style={{ fontWeight:900, minWidth:20, textAlign:"center", fontSize:14 }}>{item.qty}</span>
+ <button style={{ ...s.btn(), padding:"4px 10px", fontSize:14 }} onClick={() => changeQty(item.cartId,1)}>+</button>
+ <span style={{ color:Y, fontWeight:900, fontSize:14, minWidth:55, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
+ </div>
+ {item.salsas?.length > 0 && <div style={{color:Y, fontSize:11, marginBottom:4, fontStyle:"italic"}}> Salsas: {item.salsas.map(sa => `${sa.name} (${sa.style})`).join(", ")}</div>}
+ {Array.from({ length: item.qty }).map((_, idx) => (
+ <textarea key={idx} style={{ ...s.input, fontSize:13, padding:"6px 10px", marginTop: 4, background:"#141414", resize:"vertical", minHeight:40, fontFamily:"inherit" }} 
+ placeholder={`Nota para el plato ${idx + 1}...`} value={item.individualNotes?.[idx] || ""} spellCheck="false" onChange={e => updateIndividualNote(item.cartId, idx, e.target.value)} />
+ ))}
+ </div>
+ ))}
+ </div>
+ }
+
+ <div style={{ flexShrink: 0 }}>
+ <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderTop:`2px solid ${Y}55`, marginBottom:12 }}><span style={{ fontWeight:900, fontSize:17 }}>TOTAL</span><span style={{ fontWeight:900, fontSize:17, color:Y }}>{fmt(draftTotal)}</span></div>
+
+ <button style={{ ...s.btn(), width:"100%", padding:16, fontSize:16, opacity:(draft.orderType==="mesa" && !draft.table || !draft.items.length)?0.4:1 }}
+ onClick={() => { submitOrder(); if(isMobile) setShowCartModal(false); }} disabled={draft.orderType==="mesa" && !draft.table || !draft.items.length}>
+ {draft.payTiming==="ahora" ? " Continuar al Cobro" : " Enviar a Cocina"}
+ </button>
+ <button style={{ ...s.btn("secondary"), width:"100%", padding:10, marginTop:8, fontSize:13 }}
+ onClick={() => { setDraft(newDraft()); if(isMobile) setShowCartModal(false); }}> Limpiar Pedido</button>
+ </div>
  </div>
  );
 
  return (
- <div style={{ display:"grid", gridTemplateColumns: isDesktop ? "1fr 340px" : "1fr", gap: 14 }}>
+ <div style={{ display:"grid", gridTemplateColumns: isDesktop ? "1fr 340px" : "1fr", gap: isMobile ? 12 : 14, alignItems: "start" }}>
+ {salsasModal && salsasModal.itemToAdd && (
+ <SalsasModalComponent 
+ initialSalsas={[]} 
+ onSave={(salsas) => {
+ const customizedItem = { ...salsasModal.itemToAdd, cartId: `${salsasModal.itemToAdd.id}-${Date.now()}`, salsas };
+ addItem(customizedItem);
+ setSalsasModal(null);
+ }} 
+ onClose={() => setSalsasModal(null)} s={s} Y={Y} 
+ />
+ )}
  <div>
  <div style={s.title}> CARTA</div>
  <input style={{ ...s.input, marginBottom:8 }} placeholder="Buscar platillo..." value={search} onChange={e => setSearch(e.target.value)} />
  <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:10 }}>
- {["Todos",...ALL_CATS].map(c => <button key={c} style={{ ...s.btn(catFilter===c?"primary":"secondary"), fontSize: 10 }} onClick={() => setCatFilter(c)}>{c}</button>)}
+ {["Todos",...ALL_CATS].map(c => <button key={c} style={{ ...s.btn(catFilter===c?"primary":"secondary"), fontSize: isMobile?9:10, padding: isMobile?"3px 6px":"4px 10px" }} onClick={() => setCatFilter(c)}>{c}</button>)}
  </div>
  <div>
- {filteredMenu.map(item => (
- <div key={item.id} onClick={() => addItem(item)} style={{ ...s.card, cursor:"pointer", marginBottom:5 }}>
+ {filteredMenu.length === 0 && <div style={{ color:"#555", textAlign:"center", padding:20 }}>Sin resultados</div>}
+ {filteredMenu.map(item => {
+ const inDraftQty = draft.items.filter(i => i.id === item.id).reduce((s,i) => s + i.qty, 0);
+ return (
+ <div key={item.id} onClick={() => handleCartaClick(item)} style={{ ...s.card, cursor:"pointer", border: inDraftQty > 0 ? `1px solid ${Y}66`:"1px solid #2a2a2a", marginBottom:5, padding: isMobile?"8px 10px":"10px 12px" }}>
  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
- <span style={{ fontWeight:700 }}>{item.name}</span>
- <span style={{ color:Y, fontWeight:900 }}>{fmt(item.price)}</span>
+ <div style={{ flex:1 }}><span style={{ fontWeight:700, fontSize: isMobile?13:14 }}>{item.name}</span></div>
+ <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+ <span style={{ color:Y, fontWeight:900, fontSize: isMobile?13:14 }}>{fmt(item.price)}</span>
+ {inDraftQty > 0 ? <span style={{ background:Y, color:"#111", borderRadius:12, padding:"1px 8px", fontSize:12, fontWeight:900 }}>×{inDraftQty}</span> : <span style={{ background:"#2a2a2a", borderRadius:"50%", width:22, height:22, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:16, color:"#aaa" }}>+</span>}
  </div>
  </div>
- ))}
+ {item.desc && <div style={{ fontSize:10, color:"#555", marginTop:3, paddingLeft:22 }}>{item.desc}</div>}
+ </div>
+ );
+ })}
  </div>
  </div>
- 
- {isDesktop ? (
- <div style={{ position: "sticky", top: 10, alignSelf: "start" }}>{CartContentJSX}</div>
- ) : (
+ {isDesktop ? <div>{CartContent()}</div> : (
  <>
- {showCartModal && <div style={{...s.overlay, zIndex:9999}} onClick={() => setShowCartModal(false)}><div style={s.modal} onClick={e => e.stopPropagation()}>{CartContentJSX}</div></div>}
- <button onClick={() => setShowCartModal(true)} style={{ position: "fixed", bottom: 20, right: 20, width: 66, height: 66, borderRadius: 33, background: Y, border: "none", boxShadow: "0 6px 16px rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
-  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#111" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-  <circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle>
-  <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
-  </svg>
-  {itemCount > 0 && <div style={{ position: "absolute", top: 0, right: 0, background: "#e74c3c", color: "#fff", borderRadius: 12, padding: "2px 7px", fontSize: 13, fontWeight: 900, border: "2px solid #111" }}>{itemCount}</div>}
+ {showCartModal && <div style={{...s.overlay, zIndex:9999}} onClick={() => setShowCartModal(false)}><div style={s.modal} onClick={e => e.stopPropagation()}>{CartContent()}</div></div>}
+ <button onClick={() => setShowCartModal(true)} style={{ position: "fixed", bottom: 20, right: 20, width: 66, height: 66, borderRadius: 33, background: Y, border: "none", boxShadow: "0 6px 16px rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999, cursor: "pointer" }}>
+   <svg width="30" height="30" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+     <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" stroke="#111" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+     <line x1="3" y1="6" x2="21" y2="6" stroke="#111" strokeWidth="2.2" strokeLinecap="round"/>
+     <path d="M16 10a4 4 0 01-8 0" stroke="#111" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+   </svg>
+   {itemCount > 0 && <div style={{ position: "absolute", top: -2, right: -2, background: "#e74c3c", color: "#fff", borderRadius: 12, padding: "2px 7px", fontSize: 13, fontWeight: 900, border: "2px solid #111", minWidth: 22, textAlign: "center" }}>{itemCount}</div>}
  </button>
  </>
  )}
@@ -1091,47 +1369,81 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  );
 }
 
-
+// ── Impresión mejorada — Ticket de Cocina ────────────────────────
 function printOrder(order) {
  const items = (order.items||[]).map(i => {
  const validNotes = (i.individualNotes || []).filter(n => n.trim() !== "");
  let notesHtml = "";
  if (validNotes.length > 0) {
- notesHtml = validNotes.map((n, idx) => `<tr><td colspan="3" style="font-size:11px;color:#000;padding-top:0;padding-bottom:1mm;font-weight:900;">↳ Plato ${idx+1}: ${n}</td></tr>`).join("");
+ notesHtml = validNotes.map((n, idx) => `<tr><td colspan="3" class="note-cell"> ↳ [${idx+1}]: ${n}</td></tr>`).join("");
  }
- const salsasHtml = i.salsas?.length > 0 ? `<tr><td colspan="3" style="font-size:11px;color:#000;padding-top:0;padding-bottom:1mm;font-weight:900;">↳ Salsas: ${i.salsas.map(s=>`${s.name} (${s.style})`).join(', ')}</td></tr>` : "";
- const llevarTag = i.isLlevar ? ` <span style="font-size:11px;font-weight:900;border:1px solid #000;padding:1px;">LLEVAR</span>` : "";
- return `<tr style="border-bottom: 1px solid #000;"><td class="qty">${i.qty}x</td><td class="item">${i.name}${llevarTag}</td><td class="price">S/.${(i.price*i.qty).toFixed(2)}</td></tr>${salsasHtml}${notesHtml}`;
+ const salsasHtml = i.salsas?.length > 0
+ ? `<tr><td colspan="3" class="salsa-cell">   Salsas: ${i.salsas.map(s=>`${s.name} (${s.style})`).join(" · ")}</td></tr>`
+ : "";
+ const llevarTag = i.isLlevar ? ` <span class="llevar-tag">[LLEVAR]</span>` : "";
+ return `<tr class="item-row"><td class="qty">${i.qty}x</td><td class="item">${i.name}${llevarTag}</td><td class="price">S/.${(i.price*i.qty).toFixed(2)}</td></tr>${salsasHtml}${notesHtml}`;
  }).join("");
 
- const notes = order.notes ? `<div class="notes"><strong>NOTAS:</strong> ${order.notes}</div>` : "";
- const tipo = order.orderType==="llevar" ? `PARA LLEVAR<br>${order.table}` : `MESA ${order.table}`;
+ const notes = order.notes ? `<div class="notes">⚠ NOTA GENERAL: ${order.notes}</div>` : "";
+ const tipoBase = order.orderType==="llevar"
+ ? `LLEVAR${order.table ? ` — ${order.table}` : ""}${order.phone ? `<br><span style="font-size:13px">${order.phone}</span>` : ""}`
+ : `MESA ${order.table}`;
+ const hora = new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"});
+ const fecha = new Date().toLocaleDateString("es-PE",{day:"2-digit",month:"2-digit",year:"2-digit"});
+ const paidMarker = order.isPaid ? `<div class="paid-marker">★ PAGADO ★</div>` : "";
+ const totalItems = (order.items||[]).reduce((s,i)=>s+i.qty,0);
  
- const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+ const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Ticket Cocina</title>
 <style>
- @page{size:58mm auto;margin:0}*{box-sizing:border-box;margin:0;padding:0}
- body{font-family:'Courier New',monospace;font-size:12px;width:58mm;padding:4mm 2mm;background:#fff;color:#000;font-weight:bold;}
- .logo{text-align:center;font-size:16px;font-weight:900;border-bottom:2px solid #000;padding-bottom:2mm;margin-bottom:2mm;}
- .mesa{text-align:center;font-size:20px;font-weight:900;margin:2mm 0;background:#000;color:#fff;padding:4px;}
- table{width:100%;border-collapse:collapse;}
- td{padding:1.5mm 0;vertical-align:top;border-bottom:1px solid #000;}
- .qty{width:15%;font-size:14px;}.item{width:60%;}.price{width:25%;text-align:right;}
- .total-row{display:flex;justify-content:space-between;font-size:16px;font-weight:900;margin-top:2mm;border-top:2px solid #000;padding-top:2mm;}
- .notes{font-size:12px;margin-top:2mm;padding:1mm;border:2px dashed #000;}
+ @page{size:58mm auto;margin:0}
+ *{box-sizing:border-box;margin:0;padding:0}
+ body{font-family:'Courier New',Courier,monospace;font-size:12px;width:58mm;padding:4mm 3mm 8mm;background:#fff;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+ .logo{text-align:center;font-size:15px;font-weight:900;letter-spacing:2px;margin-bottom:1mm;text-transform:uppercase}
+ .sub{text-align:center;font-size:9px;margin-bottom:2mm}
+ .divider{border:none;border-top:1.5px dashed #000;margin:2.5mm 0}
+ .divider-solid{border:none;border-top:2.5px solid #000;margin:2mm 0}
+ .mesa{text-align:center;font-size:19px;font-weight:900;margin:2mm 0 1mm;letter-spacing:1px;line-height:1.3}
+ .hora{text-align:center;font-size:11px;margin-bottom:0.5mm;font-weight:700}
+ .fecha{text-align:center;font-size:9px;margin-bottom:1.5mm}
+ .items-count{text-align:center;font-size:9px;margin-bottom:2mm;font-style:italic}
+ table{width:100%;border-collapse:collapse}
+ td{padding:1.5mm 0;vertical-align:top}
+ .qty{width:8mm;font-weight:900;font-size:13px}
+ .item{width:auto;font-weight:700;font-size:12px;padding-right:1mm}
+ .price{width:18mm;text-align:right;white-space:nowrap;font-weight:700;font-size:12px}
+ .item-row td{border-bottom:1px dotted #999;padding-bottom:1.5mm}
+ .note-cell{font-size:9.5px;font-style:italic;padding-top:0;padding-bottom:1.5mm;padding-left:8mm;color:#000;font-weight:600}
+ .salsa-cell{font-size:9.5px;padding-top:0;padding-bottom:1.5mm;padding-left:8mm;font-weight:700;color:#000}
+ .llevar-tag{font-size:8px;font-weight:900;border:1px solid #000;padding:0 2px;margin-left:2px;vertical-align:middle}
+ .total-row{display:flex;justify-content:space-between;font-size:15px;font-weight:900;margin-top:2.5mm;padding-top:2mm;border-top:2.5px solid #000}
+ .notes{font-size:10.5px;font-style:italic;margin-top:2.5mm;padding:2mm;border:2px solid #000;font-weight:700;text-align:center;text-transform:uppercase;letter-spacing:0.5px}
+ .paid-marker{text-align:center;font-weight:900;font-size:13px;margin-top:2.5mm;border:2px solid #000;padding:2mm;letter-spacing:2px}
+ .footer{text-align:center;font-size:9px;margin-top:4mm;letter-spacing:2px;font-weight:700}
+ .cocina-header{text-align:center;background:#000;color:#fff;font-size:11px;font-weight:900;padding:2mm;margin-bottom:2mm;letter-spacing:2px}
 </style></head><body>
+ <div class="cocina-header">▶ TICKET DE COCINA ◀</div>
  <div class="logo">MR. PAPACHOS</div>
- <div class="mesa">${tipo}</div>
- <div style="text-align:center;font-size:10px;margin-bottom:2mm;">${new Date().toLocaleString()}</div>
+ <div class="sub">¡Sabe a Cajacho! · Cajamarca</div>
+ <hr class="divider-solid">
+ <div class="mesa">${tipoBase}</div>
+ <div class="hora">${hora} hs</div>
+ <div class="fecha">${fecha}</div>
+ <div class="items-count">(${totalItems} ítem${totalItems!==1?"s":""})</div>
+ <hr class="divider">
  <table>${items}</table>
  ${notes}
+ <hr class="divider">
  <div class="total-row"><span>TOTAL</span><span>S/.${order.total.toFixed(2)}</span></div>
- <script>window.onload=function(){window.print();window.close();}<\/script>
+ ${paidMarker}
+ <div class="footer">— COCINA · MR. PAPACHOS —</div>
+ <script>window.onload=function(){window.print();}<\/script>
 </body></html>`;
 
  const blob = new Blob([htmlContent], { type: 'text/html' });
  const url = URL.createObjectURL(blob);
  window.open(url, '_blank');
 }
+
 // ═══════════════════════════════════════════════════════════════════
 // COMPONENTES SECUNDARIOS
 // ═══════════════════════════════════════════════════════════════════
@@ -1356,8 +1668,8 @@ function InlineSplit({ order, onProceed, onClose, s, Y, fmt }) {
 // ═══════════════════════════════════════════════════════════════════
 // MODAL DE ANULACIÓN CON REEMPLAZO (solo Admin)
 // ═══════════════════════════════════════════════════════════════════
-function AnulacionModal({ order, onConfirm, onClose, menu, s, Y, fmt }) {
- const [step, setStep] = useState("confirm"); // "confirm" | "details"
+function AnulacionModal({ order, onConfirm, onRequest, onClose, menu, s, Y, fmt, isAdmin=true, currentUser }) {
+ const [step, setStep] = useState("confirm"); // "confirm" | "details" | "request"
  const [motivo, setMotivo] = useState("");
  const [crearReemplazo, setCrearReemplazo] = useState(null);
  const [repItems, setRepItems] = useState(
@@ -1422,8 +1734,9 @@ function AnulacionModal({ order, onConfirm, onClose, menu, s, Y, fmt }) {
  <button style={{...s.btn("secondary"), flex:1, padding:14, fontSize:14}} onClick={onClose}>
  No, mantener pedido
  </button>
- <button style={{...s.btn("danger"), flex:1, padding:14, fontSize:14, fontWeight:900}} onClick={() => setStep("details")}>
- Sí, ANULAR
+ <button style={{...s.btn("danger"), flex:1, padding:14, fontSize:14, fontWeight:900}}
+  onClick={() => isAdmin ? setStep("details") : setStep("request")}>
+  {isAdmin ? "Sí, ANULAR" : "Solicitar Anulación"}
  </button>
  </div>
  </div>
@@ -1536,6 +1849,58 @@ function AnulacionModal({ order, onConfirm, onClose, menu, s, Y, fmt }) {
  onClick={() => onConfirm(crearReemplazo ? repItems : [], motivo)}>
  🚫 Confirmar Anulación{crearReemplazo && repItems.length > 0 ? " y Enviar Reemplazo a Cocina" : ""}
  </button>
+ </div>
+ );
+
+ // ── Paso: no-admin solicita la anulación al admin ──
+ if (step === "request") return (
+ <div style={s.modal} onClick={e => e.stopPropagation()}>
+  <div style={{...s.row, marginBottom:14}}>
+   <h2 style={{color:"#8e44ad", fontFamily:"'Bebas Neue',cursive", margin:0, fontSize:20, letterSpacing:1}}>📨 SOLICITAR ANULACIÓN</h2>
+   <CloseBtn onClose={onClose} />
+  </div>
+  <div style={{background:"#150a1a", border:"1px solid #8e44ad44", borderRadius:8, padding:"10px 14px", marginBottom:14}}>
+   <div style={{fontWeight:900, fontSize:13, color:"#eee", marginBottom:6}}>
+    {order.orderType==="llevar" ? `🥡 ${order.table||"Sin nombre"}` : `🍽️ Mesa ${order.table}`}
+    <span style={{color:Y, marginLeft:10}}>{fmt(order.total)}</span>
+   </div>
+   {(order.items||[]).map((item,i) => (
+    <div key={i} style={{fontSize:12, color:"#888", display:"flex", justifyContent:"space-between"}}>
+     <span>{item.qty}× {item.name}</span><span>{fmt(item.price*item.qty)}</span>
+    </div>
+   ))}
+  </div>
+  <div style={{marginBottom:14}}>
+   <label style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1}}>Motivo (obligatorio)</label>
+   <input style={{...s.input, marginTop:4}} placeholder="Ej: Error en el pedido, cliente canceló..."
+    value={motivo} onChange={e => setMotivo(e.target.value)} spellCheck="false" />
+  </div>
+  <div style={{fontSize:12, color:"#8e44ad", background:"#150a1a", borderRadius:8, padding:"8px 12px", marginBottom:14, border:"1px solid #8e44ad33"}}>
+   📱 La solicitud se enviará al Administrador en tiempo real. El pedido no se modificará hasta que sea aprobada.
+  </div>
+  <div style={{display:"flex", gap:8}}>
+   <button style={{...s.btn("secondary"), flex:1, padding:12}} onClick={onClose}>Cancelar</button>
+   <button style={{...s.btn("blue"), flex:2, padding:12, fontSize:14, fontWeight:900, opacity:!motivo.trim()?0.4:1}}
+    disabled={!motivo.trim()}
+    onClick={() => {
+     onRequest({
+      type:"anulacion",
+      requestedBy: currentUser?.userId || currentUser?.id,
+      requestedByName: currentUser?.name || currentUser?.label,
+      orderId: order.id,
+      orderTable: order.table,
+      orderType: order.orderType,
+      orderTotal: order.total,
+      orderItems: order.items,
+      orderSnapshot: order,
+      motivo,
+      replacementItems: [],
+     });
+     onClose();
+    }}>
+    📨 Enviar Solicitud al Admin
+   </button>
+  </div>
  </div>
  );
 }
@@ -2106,6 +2471,263 @@ function CartaComponent({ menu, cartaCatFilter, setCartaCatFilter, showAdd, setS
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// SOLICITUDES PANEL — Admin aprueba/rechaza en tiempo real
+// ═══════════════════════════════════════════════════════════════════
+function SolicitudesPanel({ solicitudes, onResolve, isMobile, s, Y, fmt }) {
+ const [rejectModal, setRejectModal] = useState(null);
+ const [rejectReason, setRejectReason] = useState("");
+ const [expandedId, setExpandedId] = useState(null);
+
+ const pendientes = solicitudes.filter(x => x.status === "pendiente");
+ const resueltas  = solicitudes.filter(x => x.status !== "pendiente").slice(0, 20);
+
+ const typeLabel  = (t) => t === "anulacion" ? "🚫 Anulación" : "✏️ Cambio de precio";
+ const statusInfo = (st) => st === "aprobada"  ? { label:"Aprobada",  color:"#27ae60" }
+                           : st === "rechazada" ? { label:"Rechazada", color:"#e74c3c" }
+                           : { label:"Pendiente", color:"#f39c12" };
+
+ return (
+  <div>
+   <div style={s.title}>📨 SOLICITUDES DE APROBACIÓN</div>
+
+   {pendientes.length === 0
+    ? <div style={{...s.card, textAlign:"center", color:"#444", padding:"24px 0", fontSize:13}}>✅ No hay solicitudes pendientes</div>
+    : <>
+       <div style={{fontSize:11, color:"#f39c12", textTransform:"uppercase", letterSpacing:1, marginBottom:10, fontWeight:800}}>
+        {pendientes.length} pendiente{pendientes.length>1?"s":""} — requieren tu aprobación
+       </div>
+       {pendientes.map(sol => (
+        <div key={sol.id} style={{...s.card, border:"1px solid #f39c1255", marginBottom:10, padding:isMobile?10:14}}>
+         <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8}}>
+          <div>
+           <div style={{fontWeight:900, fontSize:14, color:"#eee"}}>{typeLabel(sol.type)}</div>
+           <div style={{fontSize:11, color:"#888", marginTop:2}}>
+            Solicitado por <b style={{color:"#ddd"}}>{sol.requestedByName}</b>
+            {" · "}{new Date(sol.createdAt).toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})}
+           </div>
+          </div>
+          <button style={{...s.btn("secondary"), fontSize:10, padding:"3px 8px"}}
+           onClick={() => setExpandedId(expandedId === sol.id ? null : sol.id)}>
+           {expandedId === sol.id ? "Ocultar" : "Ver detalle"}
+          </button>
+         </div>
+         <div style={{background:"#111", borderRadius:8, padding:"8px 10px", marginBottom:10, border:"1px solid #2a2a2a"}}>
+          <div style={{fontWeight:900, fontSize:13, marginBottom:4}}>
+           {sol.orderType==="llevar" ? `🥡 ${sol.orderTable}` : `🍽️ Mesa ${sol.orderTable}`}
+           <span style={{color:Y, marginLeft:8}}>{fmt(sol.orderTotal)}</span>
+          </div>
+          {sol.type === "anulacion" && sol.motivo && (
+           <div style={{fontSize:11, color:"#e67e22", fontStyle:"italic", marginBottom:4}}>Motivo: "{sol.motivo}"</div>
+          )}
+          {sol.type === "precio" && (
+           <div style={{fontSize:12, color:"#aaa"}}>
+            <b style={{color:"#eee"}}>{sol.itemName}</b>:
+            <span style={{textDecoration:"line-through", color:"#888", marginLeft:6}}>{fmt(sol.oldPrice)}</span>
+            <span style={{color:Y, fontWeight:900, marginLeft:6}}>→ {fmt(sol.newPrice)}</span>
+            {sol.priceMotivo && <span style={{color:"#e67e22", fontStyle:"italic", marginLeft:6}}>"{sol.priceMotivo}"</span>}
+           </div>
+          )}
+          {expandedId === sol.id && sol.orderItems && (
+           <div style={{marginTop:8, borderTop:"1px solid #2a2a2a", paddingTop:8}}>
+            {sol.orderItems.map((it,i) => (
+             <div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:11, color:"#777", padding:"1px 0"}}>
+              <span>{it.qty}× {it.name}</span><span>{fmt(it.price*it.qty)}</span>
+             </div>
+            ))}
+           </div>
+          )}
+         </div>
+         <div style={{display:"flex", gap:8}}>
+          <button style={{...s.btn("success"), flex:2, padding:"10px 0", fontSize:13, fontWeight:900}}
+           onClick={() => onResolve(sol.id, "aprobada")}>✅ Aprobar</button>
+          <button style={{...s.btn("danger"), flex:1, padding:"10px 0", fontSize:12}}
+           onClick={() => { setRejectModal({ solId: sol.id }); setRejectReason(""); }}>❌ Rechazar</button>
+         </div>
+        </div>
+       ))}
+      </>
+   }
+
+   {resueltas.length > 0 && (
+    <div style={{marginTop:16}}>
+     <div style={{fontSize:11, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:8}}>Historial reciente</div>
+     {resueltas.map(sol => {
+      const si = statusInfo(sol.status);
+      return (
+       <div key={sol.id} style={{...s.card, marginBottom:6, padding:"8px 12px", opacity:0.65}}>
+        <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+         <div>
+          <span style={{fontSize:12, fontWeight:700}}>{typeLabel(sol.type)}</span>
+          <span style={{fontSize:10, color:"#666", marginLeft:8}}>por {sol.requestedByName}</span>
+         </div>
+         <span style={{...s.tag(si.color+"22", si.color), fontSize:10}}>{si.label}</span>
+        </div>
+        {sol.rejectReason && <div style={{fontSize:10, color:"#e74c3c", marginTop:3, fontStyle:"italic"}}>Motivo: {sol.rejectReason}</div>}
+       </div>
+      );
+     })}
+    </div>
+   )}
+
+   {rejectModal && (
+    <div style={s.overlay} onClick={() => setRejectModal(null)}>
+     <div style={{...s.modal, maxWidth:360}} onClick={e => e.stopPropagation()}>
+      <div style={{...s.row, marginBottom:14}}>
+       <div style={{color:"#e74c3c", fontFamily:"'Bebas Neue',cursive", fontSize:20, letterSpacing:1}}>RECHAZAR SOLICITUD</div>
+       <CloseBtn onClose={() => setRejectModal(null)} />
+      </div>
+      <div style={{fontSize:12, color:"#aaa", marginBottom:12}}>Motivo del rechazo (opcional):</div>
+      <input style={{...s.input, marginBottom:14}} placeholder="Ej: No autorizado..."
+       value={rejectReason} onChange={e => setRejectReason(e.target.value)} spellCheck="false" />
+      <div style={{display:"flex", gap:8}}>
+       <button style={{...s.btn("secondary"), flex:1, padding:12}} onClick={() => setRejectModal(null)}>Cancelar</button>
+       <button style={{...s.btn("danger"), flex:2, padding:12, fontSize:14, fontWeight:900}}
+        onClick={() => { onResolve(rejectModal.solId, "rechazada", rejectReason); setRejectModal(null); }}>
+        ❌ Confirmar Rechazo
+       </button>
+      </div>
+     </div>
+    </div>
+   )}
+  </div>
+ );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// STAFF MANAGER — Gestión de personal y PINs (solo admin)
+// ═══════════════════════════════════════════════════════════════════
+function StaffManager({ staff, onSaveStaff, isMobile, s, Y }) {
+ const [editing, setEditing]   = useState(null);
+ const [showAdd, setShowAdd]   = useState(false);
+ const [newName, setNewName]   = useState("");
+ const [newRoles, setNewRoles] = useState(["mesero"]);
+ const [resetTarget, setResetTarget] = useState(null);
+ const [localToast, setLocalToast]   = useState(null);
+
+ const toast_ = (msg,color="#27ae60") => { setLocalToast({msg,color}); setTimeout(()=>setLocalToast(null),2500); };
+ const allRoles = ["admin","cajero","mesero","cocinero"];
+ const toggleRole = (arr, role) => arr.includes(role) ? arr.filter(r=>r!==role) : [...arr, role];
+
+ const handleAdd = () => {
+  if (!newName.trim() || !newRoles.length) return;
+  const u = { id:`u_${Date.now()}`, name:newName.trim(), roles:newRoles, pinHash:null };
+  onSaveStaff([...staff, u]);
+  setNewName(""); setNewRoles(["mesero"]); setShowAdd(false);
+  toast_(`✅ ${u.name} agregado`);
+ };
+
+ const handleResetPin = (userId) => {
+  onSaveStaff(staff.map(u => u.id===userId ? {...u, pinHash:null} : u));
+  setResetTarget(null);
+  toast_("🔑 PIN reseteado", "#e67e22");
+ };
+
+ const handleDelete = (userId) => {
+  onSaveStaff(staff.filter(u => u.id !== userId));
+  toast_("🗑 Usuario eliminado", "#e74c3c");
+ };
+
+ const handleUpdateRoles = (userId, roles) => {
+  if (!roles.length) return;
+  onSaveStaff(staff.map(u => u.id===userId ? {...u, roles} : u));
+ };
+
+ return (
+  <div>
+   <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14}}>
+    <div style={s.title}>👥 GESTIÓN DE PERSONAL</div>
+    <button style={{...s.btn("success"), padding:"6px 14px", fontSize:12}} onClick={() => setShowAdd(v=>!v)}>
+     {showAdd ? "Cancelar" : "+ Agregar"}
+    </button>
+   </div>
+
+   {localToast && <div style={{background:localToast.color,color:"#fff",padding:"8px 14px",borderRadius:8,fontSize:12,fontWeight:800,marginBottom:12}}>{localToast.msg}</div>}
+
+   {showAdd && (
+    <div style={{...s.cardHL, marginBottom:14, padding:isMobile?10:14}}>
+     <div style={{fontWeight:900, color:Y, marginBottom:10}}>Nuevo integrante</div>
+     <input style={{...s.input, marginBottom:8}} placeholder="Nombre (Ej: María, Carlos...)"
+      value={newName} onChange={e => setNewName(e.target.value)} spellCheck="false" />
+     <div style={{fontSize:11, color:"#888", marginBottom:6, textTransform:"uppercase", letterSpacing:1}}>Roles asignados</div>
+     <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:12}}>
+      {allRoles.map(role => {
+       const info = ROLE_INFO[role]; const active = newRoles.includes(role);
+       return (
+        <button key={role} onClick={() => setNewRoles(r => toggleRole(r, role))}
+         style={{...s.btn(active?"primary":"secondary"), fontSize:11, border:active?`1px solid ${info.color}`:"1px solid #333"}}>
+         {info.icon} {info.label}
+        </button>
+       );
+      })}
+     </div>
+     <button style={{...s.btn("success"), width:"100%"}} onClick={handleAdd}
+      disabled={!newName.trim() || !newRoles.length}>Guardar integrante</button>
+    </div>
+   )}
+
+   {staff.map(user => {
+    const isEdit = editing?.id === user.id;
+    return (
+     <div key={user.id} style={{...s.card, marginBottom:8, padding:isMobile?10:12}}>
+      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:isEdit?10:0}}>
+       <div>
+        <div style={{fontWeight:900, fontSize:14}}>{user.name}</div>
+        <div style={{fontSize:10, color:"#555", marginTop:2}}>
+         {user.roles.map(r=>`${ROLE_INFO[r]?.icon} ${ROLE_INFO[r]?.label||r}`).join(" · ")}
+         {" · "}<span style={{color:user.pinHash?"#27ae60":"#e74c3c"}}>{user.pinHash?"PIN activo ✓":"Sin PIN"}</span>
+        </div>
+       </div>
+       <button style={{...s.btn("secondary"), fontSize:11, padding:"4px 10px"}}
+        onClick={() => setEditing(isEdit ? null : user)}>
+        {isEdit ? "Cerrar" : "Editar"}
+       </button>
+      </div>
+      {isEdit && (
+       <div style={{borderTop:"1px solid #2a2a2a", paddingTop:10}}>
+        <div style={{fontSize:11, color:"#888", marginBottom:6, textTransform:"uppercase", letterSpacing:1}}>Roles</div>
+        <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:10}}>
+         {allRoles.map(role => {
+          const info = ROLE_INFO[role]; const active = user.roles.includes(role);
+          return (
+           <button key={role} onClick={() => handleUpdateRoles(user.id, toggleRole(user.roles, role))}
+            style={{...s.btn(active?"primary":"secondary"), fontSize:10, border:active?`1px solid ${info.color}`:"1px solid #333"}}>
+            {info.icon} {info.label}
+           </button>
+          );
+         })}
+        </div>
+        <div style={{display:"flex", gap:6}}>
+         <button style={{...s.btn("warn"), flex:1, fontSize:11, padding:"6px 0"}}
+          onClick={() => setResetTarget(user.id)}>🔑 Resetear PIN</button>
+         {!user.roles.includes("admin") && (
+          <button style={{...s.btn("danger"), flex:1, fontSize:11, padding:"6px 0"}}
+           onClick={() => handleDelete(user.id)}>🗑 Eliminar</button>
+         )}
+        </div>
+       </div>
+      )}
+     </div>
+    );
+   })}
+
+   {resetTarget && (
+    <div style={s.overlay} onClick={() => setResetTarget(null)}>
+     <div style={{...s.modal, maxWidth:300, textAlign:"center"}} onClick={e => e.stopPropagation()}>
+      <div style={{fontSize:36, marginBottom:10}}>🔑</div>
+      <div style={{fontWeight:900, fontSize:16, marginBottom:8}}>¿Resetear PIN?</div>
+      <div style={{color:"#888", fontSize:12, marginBottom:20}}>El usuario creará un nuevo PIN la próxima vez que entre.</div>
+      <div style={{display:"flex", gap:8}}>
+       <button style={{...s.btn("secondary"), flex:1}} onClick={() => setResetTarget(null)}>Cancelar</button>
+       <button style={{...s.btn("warn"), flex:2, fontWeight:900}} onClick={() => handleResetPin(resetTarget)}>Resetear</button>
+      </div>
+     </div>
+    </div>
+   )}
+  </div>
+ );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // APP COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════
 export default function App() {
@@ -2136,6 +2758,8 @@ export default function App() {
  const [anulacionModal, setAnulacionModal] = useState(null); // order to annul
  const [mesaModal, setMesaModal] = useState(null);
  const [kitchenChecks, setKitchenChecks] = useState({});
+ const [solicitudes, setSolicitudes] = useState([]);
+ const [staff, setStaff] = useState([]);
  const [cobrarTarget, setCobrarTarget] = useState(null);
  const [splitTarget, setSplitTarget] = useState(null); 
  const [mergeModal, setMergeModal] = useState(null);
@@ -2165,10 +2789,25 @@ export default function App() {
  else setMesasArr([1, 2, 3, 4, 5, 6]); 
  });
 
+ let unsubSolicitudes;
+ unsubSolicitudes = onSnapshot(localFS.solicitudesRef(), (docSnap) => {
+  if (docSnap.exists()) setSolicitudes(docSnap.data().list || []);
+  else setSolicitudes([]);
+ });
+
+ let unsubStaff;
+ unsubStaff = onSnapshot(localFS.staffRef(), (docSnap) => {
+  if (docSnap.exists()) setStaff(docSnap.data().users || []);
+ });
+
  setLoaded(true);
  };
  setupListeners();
- return () => { if (unsubOrders) unsubOrders(); if (unsubHistory) unsubHistory(); if (unsubMenu) unsubMenu(); if (unsubConfig) unsubConfig(); };
+ return () => {
+  if (unsubOrders) unsubOrders(); if (unsubHistory) unsubHistory();
+  if (unsubMenu) unsubMenu(); if (unsubConfig) unsubConfig();
+  if (unsubSolicitudes) unsubSolicitudes(); if (unsubStaff) unsubStaff();
+ };
  }, [currentUser]);
 
  const showToast = (msg,color="#27ae60") => { setToast({msg,color}); setTimeout(()=>setToast(null),2800); };
@@ -2176,6 +2815,52 @@ export default function App() {
  const saveOrders = async (v) => { await FS(currentUser.localId).saveOrders(v); };
  const saveMenu = async (v) => { setMenu(v); await FS(currentUser.localId).saveMenu(v.filter(i=>i.id.startsWith("CUSTOM_")||i.id.startsWith("TP")&&!["TP01","TP02","TP03","TP04","TP05"].includes(i.id))); };
  const addHistory = async (o) => { await FS(currentUser.localId).addHistory(o); };
+ const saveSolicitudes = async (list) => { await FS(currentUser.localId).saveSolicitudes(list); };
+ const saveStaff = async (users) => { await FS(currentUser.localId).saveStaff(users); };
+
+ // Crear solicitud de aprobación (para no-admins)
+ const crearSolicitud = async (solicitud) => {
+  const newSol = { ...solicitud, id: `sol_${Date.now()}`, status:"pendiente", createdAt: new Date().toISOString() };
+  const updated = [...solicitudes, newSol];
+  setSolicitudes(updated);
+  await saveSolicitudes(updated);
+  showToast("📨 Solicitud enviada al Administrador", "#8e44ad");
+ };
+
+ // Resolver solicitud (admin aprueba o rechaza)
+ const resolverSolicitud = async (solId, decision, rejectReason="") => {
+  const sol = solicitudes.find(s => s.id === solId);
+  if (!sol) return;
+  const updated = solicitudes.map(s => s.id === solId
+   ? { ...s, status: decision, resolvedAt: new Date().toISOString(), resolvedBy: currentUser.name, rejectReason }
+   : s
+  );
+  setSolicitudes(updated);
+  await saveSolicitudes(updated);
+
+  if (decision === "aprobada") {
+   if (sol.type === "anulacion") {
+    await anularPedido(
+     ordersRef.current.find(o => o.id === sol.orderId) || sol.orderSnapshot,
+     sol.replacementItems || [],
+     sol.motivo,
+     true // skipSolicitudUpdate
+    );
+   } else if (sol.type === "precio") {
+    const cur = ordersRef.current;
+    const newOrders = cur.map(o => {
+     if (o.id !== sol.orderId) return o;
+     const newItems = o.items.map(i => i.cartId === sol.cartId ? { ...i, price: sol.newPrice, priceNote: sol.priceMotivo } : i);
+     return { ...o, items: newItems, total: newItems.reduce((s,i)=>s+i.price*i.qty,0) };
+    });
+    setOrders(newOrders);
+    await saveOrders(newOrders);
+    showToast("✅ Precio actualizado por aprobación", "#27ae60");
+   }
+  } else {
+   showToast(`❌ Solicitud rechazada${rejectReason ? `: ${rejectReason}` : ""}`, "#e74c3c");
+  }
+ };
 
  const addMesa = async () => {
  const newMesas = [...mesasArr, mesasArr.length > 0 ? Math.max(...mesasArr) + 1 : 1];
@@ -2418,8 +3103,8 @@ export default function App() {
  setConfirmDelete(null); showToast("🗑 Pedido eliminado","#888");
  };
 
- // Anulación con reemplazo (solo admin)
- const anularPedido = async (originalOrder, replacementItems, motivo) => {
+ // Anulación con reemplazo (solo admin o por solicitud aprobada)
+ const anularPedido = async (originalOrder, replacementItems, motivo, _skip=false) => {
  const cur = ordersRef.current;
  const now = new Date().toISOString();
  const newId = Date.now().toString();
@@ -2464,12 +3149,12 @@ export default function App() {
 
  const Y = "#FFD700";
  const s = {
- app: {fontFamily:"'Nunito',sans-serif",background:"#0f0f0f",color:"#eee",minHeight:"100vh",display:"flex",flexDirection:"column"},
+ app: {fontFamily:"'Nunito',sans-serif",background:"#0f0f0f",color:"#eee",minHeight:"100vh",display:"flex",flexDirection:"column",overflow:"visible"},
  header: {background:`linear-gradient(135deg,${Y} 0%,#e6b800 100%)`,color:"#111",padding:isMobile?"8px 12px":"10px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:"0 2px 12px rgba(255,215,0,.3)"},
  logo: {fontFamily:"'Bebas Neue',cursive",fontSize:isMobile?17:isTablet?22:28,letterSpacing:isMobile?1:3,margin:0,lineHeight:1.1},
  nav: {display:"flex",background:"#1a1a1a",borderBottom:`2px solid ${Y}33`,overflowX:"auto",scrollbarWidth:"none"},
  navBtn: (a)=>({padding:isMobile?"9px 7px":"10px 14px",background:a?Y:"transparent",color:a?"#111":"#999",border:"none",cursor:"pointer",fontFamily:"'Nunito',sans-serif",fontWeight:700,fontSize:isMobile?9:12,whiteSpace:"nowrap",transition:"all .2s",borderBottom:a?`3px solid #e6b800`:"3px solid transparent"}),
- content: {flex:1,padding:isMobile?"10px 8px":isTablet?14:20,maxWidth:isWide?1200:"100%",margin:"0 auto",width:"100%",boxSizing:"border-box"},
+ content: {flex:1,padding:isMobile?"10px 8px":isTablet?14:20,maxWidth:isWide?1200:"100%",margin:"0 auto",width:"100%",boxSizing:"border-box",overflow:"visible"},
  card: {background:"#1c1c1c",borderRadius:isMobile?10:12,padding:isMobile?10:14,marginBottom:10,border:"1px solid #2a2a2a"},
  cardHL: {background:"#1c1c1c",borderRadius:isMobile?10:12,padding:isMobile?10:14,marginBottom:10,border:`1px solid ${Y}44`},
  statCard:{background:"#1c1c1c",borderRadius:isMobile?10:12,padding:isMobile?"12px 8px":"16px 12px",border:"1px solid #2a2a2a",textAlign:"center"},
@@ -2485,14 +3170,21 @@ export default function App() {
  modal: {background:"#1a1a1a",border:`1px solid ${Y}44`,borderRadius:isMobile?"16px 16px 0 0":14,padding:isMobile?"16px 12px":20,width:"100%",maxWidth:isMobile?"100%":600,maxHeight:isMobile?"92vh":"88vh",overflowY:"auto"},
  };
 
- if (!currentUser) return <ErrorBoundary><LoginScreen onLogin={(user) => { setCurrentUser(user); const startTab = user.id === 'cocinero' ? 'cocina' : user.id === 'cajero' ? 'pedidos' : user.id === 'mesero' ? 'mesas' : 'dashboard'; setTab(startTab); }} s={s} Y={Y} /></ErrorBoundary>;
+ if (!currentUser) return <ErrorBoundary><LoginScreen onLogin={(user) => { setCurrentUser(user); const startTab = user.id === 'cocinero' ? 'cocina' : user.id === 'cajero' ? 'pedidos' : user.id === 'mesero' ? 'mesas' : 'dashboard'; setTab(startTab); }} s={s} Y={Y} isMobile={isMobile} /></ErrorBoundary>;
  if (!loaded) return <ErrorBoundary><div style={{background:"#111",color:"#FFD700",height:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{textAlign:"center"}}><div style={{marginTop:12,fontWeight:700,letterSpacing:2}}>Cargando Sucursal...</div></div></div></ErrorBoundary>;
 
+ const pendingSols = solicitudes.filter(x => x.status === "pendiente").length;
  const allTabs = [
- {id:"dashboard", label:"Inicio"}, {id:"mesas", label:"Mesas"}, {id:"nuevo", label:"Nuevo"},
- {id:"pedidos", label:`Pedidos${orders.filter(o=>!o.anulado).length>0?" ("+orders.filter(o=>!o.anulado).length+")":""}` },
- {id:"cocina", label:`Cocina${orders.filter(o=>o.kitchenStatus!=='listo'&&!o.anulado).length>0?" ("+orders.filter(o=>o.kitchenStatus!=='listo'&&!o.anulado).length+")":""}` },
- {id:"historial", label:"Historial"}, {id:"inventario", label:"Inventario"}, {id:"carta", label:"Carta"},
+ {id:"dashboard",    label:"Inicio"},
+ {id:"mesas",        label:"Mesas"},
+ {id:"nuevo",        label:"Nuevo"},
+ {id:"pedidos",      label:`Pedidos${orders.filter(o=>!o.anulado).length>0?" ("+orders.filter(o=>!o.anulado).length+")":""}` },
+ {id:"cocina",       label:`Cocina${orders.filter(o=>o.kitchenStatus!=='listo'&&!o.anulado).length>0?" ("+orders.filter(o=>o.kitchenStatus!=='listo'&&!o.anulado).length+")":""}` },
+ {id:"solicitudes",  label:`Solicitudes${pendingSols>0?" ("+pendingSols+")":""}` },
+ {id:"historial",    label:"Historial"},
+ {id:"inventario",   label:"Inventario"},
+ {id:"carta",        label:"Carta"},
+ {id:"personal",     label:"Personal"},
  ];
 
  const tabs = allTabs.filter(t => {
@@ -2503,6 +3195,14 @@ export default function App() {
  return false;
  });
 
+ // Badge en el tab solicitudes (llamar atención al admin)
+ const myPendingSols = solicitudes.filter(x => x.status === "pendiente" && (x.requestedBy === currentUser.userId || x.requestedBy === currentUser.id)).length;
+ const SolBadge = pendingSols > 0 && currentUser.id === 'admin'
+  ? <div style={{position:"fixed",top:42,right:8,background:"#e74c3c",color:"#fff",borderRadius:12,padding:"2px 8px",fontSize:11,fontWeight:900,zIndex:9990,boxShadow:"0 2px 8px rgba(0,0,0,.5)",cursor:"pointer"}} onClick={()=>setTab("solicitudes")}>{pendingSols} solicitud{pendingSols>1?"es":""} pendiente{pendingSols>1?"s":""}</div>
+  : myPendingSols > 0 && currentUser.id !== 'admin'
+  ? <div style={{position:"fixed",top:42,right:8,background:"#8e44ad",color:"#fff",borderRadius:12,padding:"2px 8px",fontSize:11,fontWeight:900,zIndex:9990,boxShadow:"0 2px 8px rgba(0,0,0,.5)"}}>⏳ {myPendingSols} solicitud{myPendingSols>1?"es":""} en revisión</div>
+  : null;
+
  return (
  <ErrorBoundary>
  <>
@@ -2511,22 +3211,28 @@ export default function App() {
  <header style={s.header}>
  <div>
  <h1 style={s.logo}>MR. PAPACHOS · CAJAMARCA</h1>
- {!isMobile&&<div style={{fontSize:11,color:"#555",fontWeight:700}}>Modo: {currentUser.label} | SUCURSAL: {currentUser.localName.toUpperCase()}</div>}
+ {!isMobile&&<div style={{fontSize:11,color:"#555",fontWeight:700}}>{currentUser.name} · {currentUser.label} | {currentUser.localName.toUpperCase()}</div>}
  </div>
  <div style={{display:"flex", gap:10, alignItems:"center"}}>
  {!isMobile&&<div style={{fontSize:11,color:"#333",fontWeight:700,textAlign:"right"}}>{new Date().toLocaleDateString("es-PE",{weekday:"long",day:"numeric",month:"long"})}</div>}
+ {currentUser?.id==="admin" && pendingSols > 0 && (
+  <button style={{...s.btn("warn"), fontSize:10, padding:"4px 10px", position:"relative"}} onClick={()=>setTab("solicitudes")}>
+   🔔 {pendingSols}
+  </button>
+ )}
  <button style={{...s.btn("danger"), fontSize:10, padding:"4px 8px"}} onClick={()=>setCurrentUser(null)}>Salir</button>
  </div>
  </header>
 
  <nav style={s.nav}>{tabs.map(t=>(<button key={t.id} style={{...s.navBtn(tab===t.id),flex:isMobile?1:"none"}} onClick={()=>setTab(t.id)}>{t.label}</button>))}</nav>
+ {SolBadge}
 
  {toast&&(<div style={{position:"fixed",bottom:isMobile ? 90 : 20,left:"50%",transform:"translateX(-50%)",background:toast.color,color:"#fff",padding:"10px 20px",borderRadius:12,fontWeight:800,zIndex:9999,fontSize:14,boxShadow:"0 4px 20px rgba(0,0,0,.5)",whiteSpace:"nowrap"}}>{toast.msg}</div>)}
 
  {cobrarTarget && <div style={s.overlay} onClick={()=>setCobrarTarget(null)}><CobrarModal orderContext={cobrarTarget.data} total={cobrarTarget.data.total} onConfirm={handleConfirmCobro} onClose={()=>setCobrarTarget(null)} s={s} Y={Y} /></div>}
  {splitTarget && <SplitBillModal order={splitTarget} onProceed={(items, total) => { setCobrarTarget({ type: 'split', data: { originalOrder: splitTarget, splitItems: items, total }}); setSplitTarget(null); }} onClose={() => setSplitTarget(null)} s={s} Y={Y} fmt={fmt} />}
- {editingOrder&&<div style={s.overlay} onClick={()=>setEditingOrder(null)}><EditOrderModal order={editingOrder} onSave={saveEditedOrder} onClose={()=>setEditingOrder(null)} menu={menu} isMobile={isMobile} s={s} Y={Y}/></div>}
- {mesaModal&&<div style={s.overlay} onClick={()=>setMesaModal(null)}><MesaModalComponent num={mesaModal} orders={orders} setDraft={setDraft} newDraft={newDraft} onClose={()=>setMesaModal(null)} setTab={setTab} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} setAnulacionModal={setAnulacionModal} printOrder={printOrder} isMobile={isMobile} s={s} Y={Y} fmt={fmt} currentUser={currentUser} /></div>}
+ {editingOrder&&<div style={s.overlay} onClick={()=>setEditingOrder(null)}><EditOrderModal order={editingOrder} onSave={saveEditedOrder} onClose={()=>setEditingOrder(null)} menu={menu} isMobile={isMobile} s={s} Y={Y} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} onRequestPrecio={crearSolicitud}/></div>}
+ {mesaModal&&<div style={s.overlay} onClick={()=>setMesaModal(null)}><MesaModalComponent num={mesaModal} orders={orders} setDraft={setDraft} newDraft={newDraft} onClose={()=>setMesaModal(null)} setTab={setTab} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} setAnulacionModal={setAnulacionModal} printOrder={printOrder} isMobile={isMobile} s={s} Y={Y} fmt={fmt} currentUser={currentUser} crearSolicitud={crearSolicitud} isAdmin={currentUser?.id==="admin"} /></div>}
  
  {mergeModal && (
  <div style={s.overlay} onClick={() => setMergeModal(null)}>
@@ -2544,7 +3250,12 @@ export default function App() {
 
  {anulacionModal && (
  <div style={s.overlay} onClick={() => setAnulacionModal(null)}>
- <AnulacionModal order={anulacionModal} onConfirm={(items, motivo) => anularPedido(anulacionModal, items, motivo)} onClose={() => setAnulacionModal(null)} menu={menu} s={s} Y={Y} fmt={fmt} />
+ <AnulacionModal order={anulacionModal}
+  isAdmin={currentUser?.id === 'admin'}
+  currentUser={currentUser}
+  onConfirm={(items, motivo) => anularPedido(anulacionModal, items, motivo)}
+  onRequest={(sol) => crearSolicitud(sol)}
+  onClose={() => setAnulacionModal(null)} menu={menu} s={s} Y={Y} fmt={fmt} />
  </div>
  )}
 
@@ -2556,9 +3267,11 @@ export default function App() {
  {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} mesasArr={mesasArr} />}
  {tab==="pedidos" && <PedidosComponent orders={orders} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
  {tab==="cocina" && <CocinaComponent orders={orders} kitchenChecks={kitchenChecks} setKitchenChecks={setKitchenChecks} markKitchenListo={markKitchenListo} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} />}
- {tab==="historial" && <HistorialComponent history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} />}
- {tab==="inventario" && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/>}
- {tab==="carta" && <CartaComponent menu={menu} cartaCatFilter={cartaCatFilter} setCartaCatFilter={setCartaCatFilter} showAdd={showAdd} setShowAdd={setShowAdd} newItem={newItem} setNewItem={setNewItem} addMenuItem={addMenuItem} deleteMenuItem={deleteMenuItem} isMobile={isMobile} s={s} Y={Y} fmt={fmt} ALL_CATS={ALL_CATS} />}
+ {tab==="historial"    && <HistorialComponent history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} />}
+ {tab==="inventario"   && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/>}
+ {tab==="carta"        && <CartaComponent menu={menu} cartaCatFilter={cartaCatFilter} setCartaCatFilter={setCartaCatFilter} showAdd={showAdd} setShowAdd={setShowAdd} newItem={newItem} setNewItem={setNewItem} addMenuItem={addMenuItem} deleteMenuItem={deleteMenuItem} isMobile={isMobile} s={s} Y={Y} fmt={fmt} ALL_CATS={ALL_CATS} />}
+ {tab==="solicitudes"  && <SolicitudesPanel solicitudes={solicitudes} onResolve={resolverSolicitud} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
+ {tab==="personal"     && <StaffManager staff={staff} onSaveStaff={saveStaff} isMobile={isMobile} s={s} Y={Y} />}
  </div>
  </div>
  </>
