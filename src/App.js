@@ -54,6 +54,7 @@ async function sha256(str) {
 
 // ─── MOTOR MULTI-LOCAL ────────────────────────────────────────────────────────
 const FS = (localId) => ({
+ _localId: localId,
  ordersRef:      () => doc(db, `mrpapachos_${localId}`, "orders"),
  menuRef:        () => doc(db, `mrpapachos_${localId}`, "customMenu"),
  configRef:      () => doc(db, `mrpapachos_${localId}`, "config"),
@@ -91,6 +92,9 @@ const FS = (localId) => ({
  },
  async saveSolicitudes(list) {
  try { await setDoc(this.solicitudesRef(), { list, ts: new Date().toISOString() }); } catch(e) { console.error(e); }
+ },
+ async updateHistory(fid, data) {
+ try { await setDoc(doc(db, `mrpapachos_${this._localId}_historial`, fid), data, { merge: true }); } catch(e) { console.error(e); }
  }
 });
 
@@ -812,6 +816,13 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y, isAdmin=
  Salsas
  </button>
  )}
+ {eOrderType === "mesa" && (
+ <button
+  style={{...s.btn(item.isLlevar?"blue":"secondary"), padding:"2px 8px", fontSize:10, marginLeft:6}}
+  onClick={() => setEItems(prev=>prev.map(i=>i.cartId===item.cartId?{...i,isLlevar:!i.isLlevar}:i))}>
+  {item.isLlevar?"🥡 Llevar":"🍽 Mesa"}
+ </button>
+ )}
  </div>
  <button style={{ ...s.btn("danger"), padding:"4px 10px", fontSize:14 }} onClick={() => eChangeQty(item.cartId,-1)}>−</button>
  <span style={{ fontWeight:900, minWidth:20, textAlign:"center", fontSize:14 }}>{item.qty}</span>
@@ -1286,6 +1297,13 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  </button>
  )}
  </div>
+ {draft.orderType === "mesa" && (
+ <button
+  style={{...s.btn(item.isLlevar?"blue":"secondary"), padding:"2px 8px", fontSize:10, marginTop:4}}
+  onClick={() => setDraft(d => ({...d, items: d.items.map(i => i.cartId===item.cartId ? {...i, isLlevar:!i.isLlevar} : i)}))}>
+  {item.isLlevar ? "🥡 Para llevar" : "🍽 Para mesa"}
+ </button>
+ )}
  </div>
  <button style={{ ...s.btn("danger"), padding:"4px 10px", fontSize:14 }} onClick={() => changeQty(item.cartId,-1)}>−</button>
  <span style={{ fontWeight:900, minWidth:20, textAlign:"center", fontSize:14 }}>{item.qty}</span>
@@ -1656,9 +1674,11 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
  const mesaOrders = orders.filter(o => o.table===String(num) && o.orderType!=="llevar");
  const ocupada = mesaOrders.length > 0;
  const total = mesaOrders.reduce((sum,o) => sum + o.total, 0);
+ const hasMixto = mesaOrders.some(o => (o.items||[]).some(i=>i.isLlevar));
  return (
  <div key={num} onClick={() => setMesaModal(num)} style={{ background:ocupada?`${Y}15`:"#1c1c1c", border:`2px solid ${ocupada?Y:"#2a2a2a"}`, borderRadius:14, padding: "24px 16px", minHeight: isMobile ? 140 : isTablet ? "25vh" : 160, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", cursor:"pointer", textAlign:"center", position:"relative" }}>
  {ocupada && <div style={{position:"absolute", top:10, right:10, width:12, height:12, borderRadius:"50%", background:"#27ae60", boxShadow:"0 0 8px #27ae60"}}/>}
+ {hasMixto && <div style={{position:"absolute", top:10, left:10, background:"#154360", color:"#3498db", borderRadius:6, padding:"1px 7px", fontSize:10, fontWeight:800}}>🥡 Mixto</div>}
  <IconoMesa color={ocupada ? Y : "#ffffff"} size={isMobile ? 80 : 100} />
  <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:24, color:ocupada?Y:"#555", letterSpacing:1}}>MESA {num}</div>
  <div style={{fontSize:12, color:ocupada?"#aaa":"#444", marginTop:6}}>{ocupada?`${mesaOrders.length} pedido${mesaOrders.length>1?"s":""} · ${fmt(total)}`:"Libre"}</div>
@@ -2096,6 +2116,9 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  )}
  {o.isPaid && <span style={{...s.tag("#1e5c2e"), fontSize:10}}>Pagado</span>}
  {o.kitchenStatus==='listo' && <span style={{...s.tag("#2980b9"), fontSize:10}}>Listo</span>}
+ {o.orderType==="mesa" && (o.items||[]).some(i=>i.isLlevar) && (
+ <span style={{...s.tag("#154360","#3498db"), fontSize:10}}>🥡 Mixto</span>
+ )}
  </div>
  <div style={{textAlign:"right", flexShrink:0}}>
  <div style={{fontWeight:900, fontSize:isMobile?18:22, color:Y}}>{fmt(o.total)}</div>
@@ -2288,9 +2311,131 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
  );
 }
 
-function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder }) {
+// ═══════════════════════════════════════════════════════════════════
+// MODAL EDITAR COBRO — Admin edita montos directamente en historial
+// ═══════════════════════════════════════════════════════════════════
+function EditCobroModal({ order, onSave, onClose, s, Y, fmt }) {
+ const pe = order.payments?.efectivo || order.splitPayments?.reduce((s,sp)=>s+(sp.payments?.efectivo||0),0) || 0;
+ const py = order.payments?.yape    || order.splitPayments?.reduce((s,sp)=>s+(sp.payments?.yape||0),0)    || 0;
+ const pt = order.payments?.tarjeta || order.splitPayments?.reduce((s,sp)=>s+(sp.payments?.tarjeta||0),0) || 0;
+
+ const [ef, setEf] = useState(String(pe));
+ const [ya, setYa] = useState(String(py));
+ const [ta, setTa] = useState(String(pt));
+ const [newTotal, setNewTotal] = useState(String(order.total));
+ const [motivo, setMotivo] = useState("");
+
+ const sumPagos = (parseFloat(ef)||0) + (parseFloat(ya)||0) + (parseFloat(ta)||0);
+ const totalVal = parseFloat(newTotal) || 0;
+ const diff = Math.abs(sumPagos - totalVal);
+ const ok = diff < 0.01 && totalVal > 0;
+
+ return (
+  <div style={s.modal} onClick={e=>e.stopPropagation()}>
+   <div style={{...s.row, marginBottom:14}}>
+    <div style={{color:Y, fontFamily:"'Bebas Neue',cursive", fontSize:20, letterSpacing:1}}>✏️ EDITAR COBRO</div>
+    <CloseBtn onClose={onClose}/>
+   </div>
+   <div style={{background:"#111", borderRadius:8, padding:"10px 12px", marginBottom:14, fontSize:12, color:"#aaa"}}>
+    <b style={{color:"#eee"}}>{order.orderType==="llevar"?`🥡 ${order.table||"S/nombre"}`:`🍽 Mesa ${order.table}`}</b>
+    <span style={{marginLeft:8, color:"#666"}}>Cobro original: <span style={{color:Y, fontWeight:900}}>{fmt(order.total)}</span></span>
+    {order.splitPayments?.length > 0 && <div style={{fontSize:10, color:"#e67e22", marginTop:4}}>⚠️ Este pedido tiene pagos divididos. Se editará el total consolidado.</div>}
+   </div>
+   <div style={{marginBottom:12}}>
+    <label style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, display:"block", marginBottom:6}}>Nuevo Total</label>
+    <input type="number" style={{...s.input, fontWeight:900, fontSize:16, color:Y}} min="0" step="0.5" value={newTotal} onChange={e=>setNewTotal(e.target.value)}/>
+   </div>
+   <div style={{marginBottom:12}}>
+    <label style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, display:"block", marginBottom:6}}>Distribución de pagos</label>
+    {[{label:"💵 Efectivo", val:ef, set:setEf},{label:"📱 Yape", val:ya, set:setYa},{label:"💳 Tarjeta", val:ta, set:setTa}].map(({label,val,set})=>(
+     <div key={label} style={{display:"flex", alignItems:"center", gap:10, marginBottom:8}}>
+      <span style={{width:100, fontSize:13, fontWeight:700}}>{label}</span>
+      <input type="number" style={s.input} value={val} onChange={e=>set(e.target.value)} min="0" step="0.5"/>
+     </div>
+    ))}
+    {!ok && sumPagos > 0 && <div style={{fontSize:12, color:"#e74c3c", fontWeight:700}}>⚠️ La suma de pagos ({fmt(sumPagos)}) no coincide con el total ({fmt(totalVal)})</div>}
+   </div>
+   <div style={{marginBottom:14}}>
+    <label style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, display:"block", marginBottom:4}}>Motivo de la corrección *</label>
+    <input style={s.input} placeholder="Ej: Error al cobrar, cobro duplicado..." value={motivo} onChange={e=>setMotivo(e.target.value)} spellCheck="false"/>
+   </div>
+   <button style={{...s.btn("success"), width:"100%", padding:14, fontSize:15, opacity:(!ok||!motivo.trim())?0.4:1}}
+    disabled={!ok||!motivo.trim()}
+    onClick={()=>onSave({ payments:{efectivo:parseFloat(ef)||0, yape:parseFloat(ya)||0, tarjeta:parseFloat(ta)||0}, newTotal:totalVal, motivo })}>
+    ✅ Guardar corrección
+   </button>
+  </div>
+ );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MODAL SOLICITAR CORRECCIÓN DE COBRO — Cajero pide corrección
+// ═══════════════════════════════════════════════════════════════════
+function SolicitarCorreccionModal({ order, onSubmit, onClose, s, Y, fmt, getPay }) {
+ const pe = getPay(order,"efectivo");
+ const py = getPay(order,"yape");
+ const pt = getPay(order,"tarjeta");
+
+ const [ef, setEf] = useState(String(pe));
+ const [ya, setYa] = useState(String(py));
+ const [ta, setTa] = useState(String(pt));
+ const [newTotal, setNewTotal] = useState(String(order.total));
+ const [motivo, setMotivo] = useState("");
+
+ const sumPagos = (parseFloat(ef)||0)+(parseFloat(ya)||0)+(parseFloat(ta)||0);
+ const totalVal = parseFloat(newTotal)||0;
+ const diff = Math.abs(sumPagos - totalVal);
+ const ok = diff < 0.01 && totalVal > 0 && motivo.trim();
+
+ return (
+  <div style={s.modal} onClick={e=>e.stopPropagation()}>
+   <div style={{...s.row, marginBottom:14}}>
+    <div style={{color:"#8e44ad", fontFamily:"'Bebas Neue',cursive", fontSize:20, letterSpacing:1}}>📨 SOLICITAR CORRECCIÓN</div>
+    <CloseBtn onClose={onClose}/>
+   </div>
+   <div style={{background:"#111", borderRadius:8, padding:"10px 12px", marginBottom:12, fontSize:12, color:"#aaa"}}>
+    <b style={{color:"#eee"}}>{order.orderType==="llevar"?`🥡 ${order.table||"S/nombre"}`:`🍽 Mesa ${order.table}`}</b>
+    <div style={{marginTop:6, display:"flex", gap:12, flexWrap:"wrap"}}>
+     {pe>0&&<span>💵 Efectivo: <b style={{color:"#eee"}}>{fmt(pe)}</b></span>}
+     {py>0&&<span>📱 Yape: <b style={{color:"#eee"}}>{fmt(py)}</b></span>}
+     {pt>0&&<span>💳 Tarjeta: <b style={{color:"#eee"}}>{fmt(pt)}</b></span>}
+    </div>
+    <div style={{marginTop:4}}>Total actual: <b style={{color:Y}}>{fmt(order.total)}</b></div>
+   </div>
+   <div style={{background:"#1a0a2a", border:"1px solid #8e44ad44", borderRadius:8, padding:"10px 12px", marginBottom:14}}>
+    <div style={{fontSize:11, color:"#8e44ad", fontWeight:800, textTransform:"uppercase", letterSpacing:1, marginBottom:8}}>Montos corregidos</div>
+    <div style={{marginBottom:8}}>
+     <label style={{fontSize:11, color:"#888", display:"block", marginBottom:4}}>Nuevo Total</label>
+     <input type="number" style={{...s.input, fontWeight:900, color:Y}} min="0" step="0.5" value={newTotal} onChange={e=>setNewTotal(e.target.value)}/>
+    </div>
+    {[{label:"💵 Efectivo", val:ef, set:setEf},{label:"📱 Yape", val:ya, set:setYa},{label:"💳 Tarjeta", val:ta, set:setTa}].map(({label,val,set})=>(
+     <div key={label} style={{display:"flex", alignItems:"center", gap:8, marginBottom:6}}>
+      <span style={{width:95, fontSize:12, fontWeight:700}}>{label}</span>
+      <input type="number" style={s.input} value={val} onChange={e=>set(e.target.value)} min="0" step="0.5"/>
+     </div>
+    ))}
+    {!ok && sumPagos>0 && diff>0.01 && <div style={{fontSize:11, color:"#e74c3c", marginTop:4}}>⚠️ Suma ({fmt(sumPagos)}) ≠ total ({fmt(totalVal)})</div>}
+   </div>
+   <div style={{marginBottom:14}}>
+    <label style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, display:"block", marginBottom:4}}>Motivo del error *</label>
+    <input style={s.input} placeholder="Ej: Cobré de más, método incorrecto..." value={motivo} onChange={e=>setMotivo(e.target.value)} spellCheck="false"/>
+   </div>
+   <button style={{...s.btn("blue"), width:"100%", padding:14, fontSize:14, opacity:!ok?0.4:1}} disabled={!ok}
+    onClick={()=>onSubmit({
+     newPayments:{efectivo:parseFloat(ef)||0, yape:parseFloat(ya)||0, tarjeta:parseFloat(ta)||0},
+     newTotal: totalVal, motivo,
+    })}>
+    📨 Enviar solicitud al Administrador
+   </button>
+  </div>
+ );
+}
+
+function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder, isAdmin, currentUser, crearSolicitud, updateHistoryDoc }) {
  const [expandedDays, setExpandedDays] = useState([new Date().toLocaleDateString("es-PE")]);
  const [histDate, setHistDate] = useState("");
+ const [editCobroModal, setEditCobroModal] = useState(null);   // { order }
+ const [correccionModal, setCorreccionModal] = useState(null); // { order }
 
  const historyByDay = {};
  history.forEach(o => {
@@ -2325,6 +2470,42 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder }
 
  return (
  <div>
+ {editCobroModal && (
+  <div style={s.overlay} onClick={()=>setEditCobroModal(null)}>
+   <EditCobroModal order={editCobroModal} onClose={()=>setEditCobroModal(null)} s={s} Y={Y} fmt={fmt}
+    onSave={async ({payments, newTotal, motivo})=>{
+     if (!editCobroModal._fid) return;
+     await updateHistoryDoc(editCobroModal._fid, { payments, total: newTotal, _correctedAt: new Date().toISOString(), _correctedBy: currentUser?.name, _correctedMotivo: motivo, ...(editCobroModal.splitPayments ? { splitPayments: undefined } : {}) });
+     setEditCobroModal(null);
+    }}
+   />
+  </div>
+ )}
+ {correccionModal && (
+  <div style={s.overlay} onClick={()=>setCorreccionModal(null)}>
+   <SolicitarCorreccionModal order={correccionModal} onClose={()=>setCorreccionModal(null)} s={s} Y={Y} fmt={fmt} getPay={getPay}
+    onSubmit={async ({newPayments, newTotal, motivo})=>{
+     const o = correccionModal;
+     await crearSolicitud({
+      type: "cobro",
+      histFid: o._fid,
+      orderId: o.id || o._fid,
+      orderTable: o.table,
+      orderType: o.orderType,
+      orderTotal: o.total,
+      orderItems: o.items,
+      oldPayments: { efectivo: getPay(o,"efectivo"), yape: getPay(o,"yape"), tarjeta: getPay(o,"tarjeta") },
+      newPayments,
+      newTotal,
+      motivo,
+      requestedBy: currentUser?.userId || currentUser?.id,
+      requestedByName: currentUser?.name,
+     });
+     setCorreccionModal(null);
+    }}
+   />
+  </div>
+ )}
  <div style={{...s.row, marginBottom:16}}>
  <div style={{...s.title, marginBottom:0}}> HISTORIAL DE VENTAS</div>
  <div style={{display:"flex", gap:8}}>
@@ -2416,6 +2597,7 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder }
  <div style={{display:"flex", alignItems:"center", gap:10}}>
  <span style={{fontWeight:900, fontSize:16, color: isCanceled ? "#e74c3c" : "#eee"}}>{o.orderType==="llevar" ? `🥡 ${o.table||"Sin nombre"}` : `🍽 Mesa ${o.table}`}</span>
  <span style={{...s.tag(isCanceled ? "#c0392b" : "#1e5c2e"), fontSize:10}}>{isCanceled ? "🚫 Anulado" : o.splitPayments?.length > 0 ? "✂️ Dividido" : "✅ Pagado"}</span>
+ {o._correctedAt && <span style={{...s.tag("#7d3c00", "#e67e22"), fontSize:10}}>✏️ Corregido</span>}
  <span style={{color:"#666", fontSize:12}}>{timeStr(o.paidAt || o.cancelledAt || o.createdAt)}</span>
  </div>
  <div style={{display:"flex", alignItems:"center", gap:12}}>
@@ -2430,7 +2612,15 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder }
  <div style={{fontSize:10, color:"#27ae60", fontWeight:700}}>🏷 −{o.descuentoPct}%</div>
  )}
  </div>
- <button style={{...s.btn("secondary"), padding:"6px 10px", fontSize:11}} onClick={(e) => { e.stopPropagation(); printOrder(o); }}>🖨 Ticket</button>
+ <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
+  <button style={{...s.btn("secondary"), padding:"6px 10px", fontSize:11}} onClick={(e) => { e.stopPropagation(); printOrder(o); }}>🖨 Ticket</button>
+  {!isCanceled && isAdmin && o._fid && (
+   <button style={{...s.btn("warn"), padding:"6px 10px", fontSize:11}} onClick={(e)=>{e.stopPropagation(); setEditCobroModal(o);}}>✏️ Editar cobro</button>
+  )}
+  {!isCanceled && !isAdmin && o._fid && (
+   <button style={{...s.btn("blue"), padding:"6px 10px", fontSize:11}} onClick={(e)=>{e.stopPropagation(); setCorreccionModal(o);}}>📋 Solicitar corrección</button>
+  )}
+ </div>
  </div>
  </div>
 
@@ -2445,6 +2635,12 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder }
  <div style={{marginTop:5, color:"#27ae60", fontWeight:700}}>
  🏷 Descuento {o.descuentoPct}%: −{fmt(o.descuentoAmt)} {o.descuentoMotivo ? `· ${o.descuentoMotivo}` : ""}
  <span style={{color:"#555", marginLeft:6}}>| Precio original: {fmt(o.totalOriginal)}</span>
+ </div>
+ )}
+ {o._correctedAt && (
+ <div style={{marginTop:5, color:"#e67e22", fontWeight:700, display:"flex", alignItems:"center", gap:6}}>
+ ✏️ Cobro corregido por {o._correctedBy}
+ {o._correctedMotivo && <span style={{fontStyle:"italic", color:"#888"}}>· "{o._correctedMotivo}"</span>}
  </div>
  )}
  </div>
@@ -2618,20 +2814,21 @@ function CartaComponent({ menu, cartaCatFilter, setCartaCatFilter, showAdd, setS
 // ═══════════════════════════════════════════════════════════════════
 // SOLICITUDES PANEL — Admin aprueba/rechaza en tiempo real
 // ═══════════════════════════════════════════════════════════════════
-function SolicitudesPanel({ solicitudes, onResolve, currentUser, isMobile, s, Y, fmt }) {
+function SolicitudesPanel({ solicitudes, onResolve, currentUser, isMobile, s, Y, fmt, updateHistoryDoc }) {
  const isAdmin = currentUser?.id === 'admin';
- // Non-admin only sees their own requests
  const visibleSols = isAdmin
   ? solicitudes
   : solicitudes.filter(x => x.requestedBy === currentUser?.userId || x.requestedBy === currentUser?.id);
  const [rejectModal, setRejectModal] = useState(null);
  const [rejectReason, setRejectReason] = useState("");
  const [expandedId, setExpandedId] = useState(null);
+ // Admin can further edit a "cobro" solicitud before approving
+ const [editingSol, setEditingSol] = useState(null); // { sol, ef, ya, ta, total }
 
  const pendientes = visibleSols.filter(x => x.status === "pendiente");
  const resueltas  = visibleSols.filter(x => x.status !== "pendiente").slice(0, 20);
 
- const typeLabel  = (t) => t === "anulacion" ? "🚫 Anulación" : "✏️ Cambio de precio";
+ const typeLabel  = (t) => t === "anulacion" ? "🚫 Anulación" : t === "cobro" ? "💰 Corrección de cobro" : "✏️ Cambio de precio";
  const statusInfo = (st) => st === "aprobada"  ? { label:"Aprobada",  color:"#27ae60" }
                            : st === "rechazada" ? { label:"Rechazada", color:"#e74c3c" }
                            : { label:"Pendiente", color:"#f39c12" };
@@ -2646,7 +2843,9 @@ function SolicitudesPanel({ solicitudes, onResolve, currentUser, isMobile, s, Y,
        <div style={{fontSize:11, color:"#f39c12", textTransform:"uppercase", letterSpacing:1, marginBottom:10, fontWeight:800}}>
         {pendientes.length} pendiente{pendientes.length>1?"s":""} — requieren tu aprobación
        </div>
-       {pendientes.map(sol => (
+       {pendientes.map(sol => {
+        const isEditingThis = editingSol?.sol?.id === sol.id;
+        return (
         <div key={sol.id} style={{...s.card, border:"1px solid #f39c1255", marginBottom:10, padding:isMobile?10:14}}>
          <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8}}>
           <div>
@@ -2661,6 +2860,8 @@ function SolicitudesPanel({ solicitudes, onResolve, currentUser, isMobile, s, Y,
            {expandedId === sol.id ? "Ocultar" : "Ver detalle"}
           </button>
          </div>
+
+         {/* Detalle según tipo */}
          <div style={{background:"#111", borderRadius:8, padding:"8px 10px", marginBottom:10, border:"1px solid #2a2a2a"}}>
           <div style={{fontWeight:900, fontSize:13, marginBottom:4}}>
            {sol.orderType==="llevar" ? `🥡 ${sol.orderTable}` : `🍽️ Mesa ${sol.orderTable}`}
@@ -2677,6 +2878,25 @@ function SolicitudesPanel({ solicitudes, onResolve, currentUser, isMobile, s, Y,
             {sol.priceMotivo && <span style={{color:"#e67e22", fontStyle:"italic", marginLeft:6}}>"{sol.priceMotivo}"</span>}
            </div>
           )}
+          {sol.type === "cobro" && (
+           <div style={{fontSize:12, color:"#aaa"}}>
+            <div style={{marginBottom:4}}>
+             <span style={{color:"#888"}}>Cobro actual:</span>
+             {sol.oldPayments?.efectivo>0&&<span style={{marginLeft:6}}>💵 {fmt(sol.oldPayments.efectivo)}</span>}
+             {sol.oldPayments?.yape>0&&<span style={{marginLeft:6}}>📱 {fmt(sol.oldPayments.yape)}</span>}
+             {sol.oldPayments?.tarjeta>0&&<span style={{marginLeft:6}}>💳 {fmt(sol.oldPayments.tarjeta)}</span>}
+             <span style={{marginLeft:6, color:"#888"}}>= <b style={{color:"#eee"}}>{fmt(sol.orderTotal)}</b></span>
+            </div>
+            <div style={{color:"#27ae60"}}>
+             <span>Corrección solicitada:</span>
+             {sol.newPayments?.efectivo>0&&<span style={{marginLeft:6}}>💵 {fmt(sol.newPayments.efectivo)}</span>}
+             {sol.newPayments?.yape>0&&<span style={{marginLeft:6}}>📱 {fmt(sol.newPayments.yape)}</span>}
+             {sol.newPayments?.tarjeta>0&&<span style={{marginLeft:6}}>💳 {fmt(sol.newPayments.tarjeta)}</span>}
+             <span style={{marginLeft:6}}>= <b style={{color:Y}}>{fmt(sol.newTotal)}</b></span>
+            </div>
+            {sol.motivo && <div style={{fontSize:11, color:"#e67e22", marginTop:4, fontStyle:"italic"}}>Motivo: "{sol.motivo}"</div>}
+           </div>
+          )}
           {expandedId === sol.id && sol.orderItems && (
            <div style={{marginTop:8, borderTop:"1px solid #2a2a2a", paddingTop:8}}>
             {sol.orderItems.map((it,i) => (
@@ -2687,10 +2907,57 @@ function SolicitudesPanel({ solicitudes, onResolve, currentUser, isMobile, s, Y,
            </div>
           )}
          </div>
+
+         {/* Admin: editar montos del cobro antes de aprobar */}
+         {isAdmin && sol.type === "cobro" && isEditingThis && (
+          <div style={{background:"#0d1a0d", border:`1px solid ${Y}44`, borderRadius:8, padding:"10px 12px", marginBottom:10}}>
+           <div style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, marginBottom:8}}>Editar montos antes de aprobar</div>
+           <div style={{marginBottom:8}}>
+            <label style={{fontSize:11, color:"#888", display:"block", marginBottom:3}}>Nuevo Total</label>
+            <input type="number" style={{...s.input, color:Y, fontWeight:900}} min="0" step="0.5"
+             value={editingSol.total} onChange={e=>setEditingSol(p=>({...p,total:e.target.value}))}/>
+           </div>
+           {[{label:"💵 Efectivo", key:"ef"},{label:"📱 Yape", key:"ya"},{label:"💳 Tarjeta", key:"ta"}].map(({label,key})=>(
+            <div key={key} style={{display:"flex", alignItems:"center", gap:8, marginBottom:6}}>
+             <span style={{width:90, fontSize:12, fontWeight:700}}>{label}</span>
+             <input type="number" style={s.input} min="0" step="0.5"
+              value={editingSol[key]} onChange={e=>setEditingSol(p=>({...p,[key]:e.target.value}))}/>
+            </div>
+           ))}
+           {Math.abs((parseFloat(editingSol.ef)||0)+(parseFloat(editingSol.ya)||0)+(parseFloat(editingSol.ta)||0)-(parseFloat(editingSol.total)||0))>0.01 && (
+            <div style={{fontSize:11, color:"#e74c3c", marginTop:4}}>⚠️ La suma de pagos no coincide con el total</div>
+           )}
+          </div>
+         )}
+
          <div style={{display:"flex", gap:8}}>
           {isAdmin ? (<>
+           {sol.type === "cobro" && !isEditingThis && (
+            <button style={{...s.btn("secondary"), padding:"8px 0", fontSize:12, flex:1}}
+             onClick={()=>setEditingSol({sol, ef:String(sol.newPayments?.efectivo||0), ya:String(sol.newPayments?.yape||0), ta:String(sol.newPayments?.tarjeta||0), total:String(sol.newTotal||sol.orderTotal)})}>
+             ✏️ Editar montos
+            </button>
+           )}
            <button style={{...s.btn("success"), flex:2, padding:"10px 0", fontSize:13, fontWeight:900}}
-            onClick={() => onResolve(sol.id, "aprobada")}>✅ Aprobar</button>
+            onClick={async () => {
+             if (sol.type === "cobro") {
+              const finalEf = isEditingThis ? parseFloat(editingSol.ef)||0 : sol.newPayments?.efectivo||0;
+              const finalYa = isEditingThis ? parseFloat(editingSol.ya)||0 : sol.newPayments?.yape||0;
+              const finalTa = isEditingThis ? parseFloat(editingSol.ta)||0 : sol.newPayments?.tarjeta||0;
+              const finalTotal = isEditingThis ? parseFloat(editingSol.total)||sol.newTotal : sol.newTotal;
+              if (sol.histFid && updateHistoryDoc) {
+               await updateHistoryDoc(sol.histFid, {
+                payments: {efectivo:finalEf, yape:finalYa, tarjeta:finalTa},
+                total: finalTotal,
+                _correctedAt: new Date().toISOString(),
+                _correctedBy: currentUser.name,
+                _correctedMotivo: sol.motivo,
+               });
+              }
+              setEditingSol(null);
+             }
+             onResolve(sol.id, "aprobada");
+            }}>✅ Aprobar</button>
            <button style={{...s.btn("danger"), flex:1, padding:"10px 0", fontSize:12}}
             onClick={() => { setRejectModal({ solId: sol.id }); setRejectReason(""); }}>❌ Rechazar</button>
           </>) : (
@@ -2698,7 +2965,8 @@ function SolicitudesPanel({ solicitudes, onResolve, currentUser, isMobile, s, Y,
           )}
          </div>
         </div>
-       ))}
+        );
+       })}
       </>
    }
 
@@ -3026,6 +3294,12 @@ export default function App() {
   await FS(currentUser.localId).saveSolicitudes(cleaned);
  };
 
+ const updateHistoryDoc = async (fid, data) => {
+  try {
+   await setDoc(doc(db, `mrpapachos_${currentUser.localId}_historial`, fid), data, { merge: true });
+  } catch(e) { console.error("updateHistoryDoc error:", e); }
+ };
+
  const saveCaja = async (data) => {
   await setDoc(FS(currentUser.localId).cajaRef(), data);
  };
@@ -3135,6 +3409,9 @@ export default function App() {
      await saveOrders(newOrders);
      showToast(`✅ Precio de "${sol.itemName}" actualizado a S/.${sol.newPrice?.toFixed(2)}`, "#27ae60");
     }
+   } else if (sol.type === "cobro") {
+    // The actual Firestore update is handled inside SolicitudesPanel before calling onResolve
+    showToast(`✅ Corrección de cobro aplicada · Mesa ${sol.orderTable}`, "#27ae60");
    }
   } else {
    showToast(`❌ Solicitud rechazada${rejectReason ? `: ${rejectReason}` : ""}`, "#e74c3c");
@@ -3556,10 +3833,10 @@ export default function App() {
  {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} mesasArr={mesasArr} />}
  {tab==="pedidos" && <PedidosComponent orders={orders} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
  {tab==="cocina" && <CocinaComponent orders={orders} kitchenChecks={kitchenChecks} setKitchenChecks={setKitchenChecks} markKitchenListo={markKitchenListo} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} />}
- {tab==="historial"    && <HistorialComponent history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} />}
+ {tab==="historial"    && <HistorialComponent history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} />}
  {tab==="inventario"   && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/>}
  {tab==="carta"        && <CartaComponent menu={menu} cartaCatFilter={cartaCatFilter} setCartaCatFilter={setCartaCatFilter} showAdd={showAdd} setShowAdd={setShowAdd} newItem={newItem} setNewItem={setNewItem} addMenuItem={addMenuItem} deleteMenuItem={deleteMenuItem} isMobile={isMobile} s={s} Y={Y} fmt={fmt} ALL_CATS={ALL_CATS} />}
- {tab==="solicitudes"  && <SolicitudesPanel solicitudes={solicitudes} onResolve={resolverSolicitud} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
+ {tab==="solicitudes"  && <SolicitudesPanel solicitudes={solicitudes} onResolve={resolverSolicitud} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} updateHistoryDoc={updateHistoryDoc} />}
  {tab==="personal"     && <StaffManager staff={staff} onSaveStaff={saveStaff} isMobile={isMobile} s={s} Y={Y} localName={currentUser?.localName} />}
  </div>
  </div>
