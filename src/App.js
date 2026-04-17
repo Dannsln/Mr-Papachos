@@ -327,10 +327,10 @@ const DEFAULT_STAFF = [
 ];
 
 const ROLE_INFO = {
- admin:    { label:"Administrador", color:"#FFD700", icon:"👑" },
- cajero:   { label:"Cajero",        color:"#3498db", icon:"💰" },
- mesero:   { label:"Mesero",        color:"#27ae60", icon:"🍽" },
- cocinero: { label:"Cocina",        color:"#e67e22", icon:"👨‍🍳" },
+ admin:    { label:"Administrador", color:"#FFD700",},
+ cajero:   { label:"Cajero",        color:"#3498db",},
+ mesero:   { label:"Mesero",        color:"#27ae60",},
+ cocinero: { label:"Cocina",        color:"#e67e22",},
 };
 
 // ═══════════════════════════════════════════════════════════════════
