@@ -110,15 +110,15 @@ const MENU_BASE = [
  { id:"H09", cat:"Hamburguesas", name:"La Porky", price:15, desc:"Carne, huevo, hot dog, chorizo artesanal, tocino, papa frita, ensalada" },
  { id:"H10", cat:"Hamburguesas", name:"La Tazmania", price:14, desc:"Carne, queso, piña, hot dog, jamón, papa frita, ensalada" },
  { id:"H11", cat:"Hamburguesas", name:"La Papachos", price:20, desc:"Doble carne, huevo, doble queso, hot dog, chorizo artesanal, jamón, tocino, papa frita, ensalada" },
- { id:"S01", cat:"Salchipapas", name:"Clásica", price:8, desc:"Papa, hot dog" },
- { id:"S02", cat:"Salchipapas", name:"Sencilla", price:10, desc:"Papa, hot dog, huevo" },
- { id:"S03", cat:"Salchipapas", name:"Cajacha", price:12, desc:"Papa, hot dog, chorizo artesanal, queso" },
- { id:"S04", cat:"Salchipapas", name:"Hawaiana", price:12, desc:"Papa, hot dog, jamón, piña, queso" },
+ { id:"S01", cat:"Salchipapas", name:"Salchipapa Clásica", price:8, desc:"Papa, hot dog" },
+ { id:"S02", cat:"Salchipapas", name:"Salchipapa Sencilla", price:10, desc:"Papa, hot dog, huevo" },
+ { id:"S03", cat:"Salchipapas", name:"Salchipapa Cajacha", price:12, desc:"Papa, hot dog, chorizo artesanal, queso" },
+ { id:"S04", cat:"Salchipapas", name:"Salchipapa Hawaiana", price:12, desc:"Papa, hot dog, jamón, piña, queso" },
  { id:"S05", cat:"Salchipapas", name:"Salchipobre", price:13, desc:"Papa, hot dog, huevo, plátano, jamón" },
- { id:"S06", cat:"Salchipapas", name:"La Piernona", price:15, desc:"Papa, hot dog, pierna broster" },
- { id:"S07", cat:"Salchipapas", name:"Super Cajacha", price:16, desc:"Papa, hot dog, chorizo artesanal, doble queso, tocino" },
+ { id:"S06", cat:"Salchipapas", name:"Salchi Piernona", price:15, desc:"Papa, hot dog, pierna broster" },
+ { id:"S07", cat:"Salchipapas", name:"Salchi Super Cajacha", price:16, desc:"Papa, hot dog, chorizo artesanal, doble queso, tocino" },
  { id:"S08", cat:"Salchipapas", name:"Salchibroster", price:16, desc:"Papa, hot dog, huevo, pollo broaster" },
- { id:"S09", cat:"Salchipapas", name:"La Champi Quesera", price:18, desc:"Papa, hot dog, chorizo artesanal, doble queso, tocino, champiñones" },
+ { id:"S09", cat:"Salchipapas", name:"Salchi Champi Quesera", price:18, desc:"Papa, hot dog, chorizo artesanal, doble queso, tocino, champiñones" },
  { id:"S10", cat:"Salchipapas", name:"Salchi Nuggets", price:20, desc:"Papa, nuggets, hot dog, chorizo artesanal, queso, ensalada" },
  { id:"S11", cat:"Salchipapas", name:"Salchi Porky", price:20, desc:"Papa, chorizo artesanal, hot dog, trozos de chicharrón" },
  { id:"S12", cat:"Salchipapas", name:"La Papacha", price:22, desc:"Papa, hot dog, chorizo artesanal, huevo, queso, tocino, 2 alitas y trozos de pollo broaster" },
@@ -327,30 +327,155 @@ const DEFAULT_STAFF = [
 ];
 
 const ROLE_INFO = {
- admin:    { label:"Administrador", color:"#FFD700"},
- cajero:   { label:"Cajero",        color:"#3498db",},
- mesero:   { label:"Mesero",        color:"#27ae60",},
- cocinero: { label:"Cocina",        color:"#e67e22",},
+ admin:    { label:"Administrador", color:"#FFD700", icon:"👑" },
+ cajero:   { label:"Cajero",        color:"#3498db", icon:"💰" },
+ mesero:   { label:"Mesero",        color:"#27ae60", icon:"🍽" },
+ cocinero: { label:"Cocina",        color:"#e67e22", icon:"👨‍🍳" },
 };
 
 // ═══════════════════════════════════════════════════════════════════
-// LOGIN SCREEN — por usuario con PIN hasheado
+// DEV PANEL — acceso master sin PIN (solo desarrollador)
+// ═══════════════════════════════════════════════════════════════════
+const DEV_SECRET = "dev2024papachos"; // Código secreto del desarrollador
+
+function DevPanel({ onClose, s, Y, isMobile }) {
+ const locales = [
+  { id:"amazonas", nombre:"Amazonas" },
+  { id:"sanmartin", nombre:"San Martín" },
+  { id:"belen", nombre:"Belén" },
+ ];
+ const [selectedLocal, setSelectedLocal] = useState("amazonas");
+ const [staff, setStaff] = useState([]);
+ const [loading, setLoading] = useState(false);
+ const [editingUser, setEditingUser] = useState(null);
+ const [newPin, setNewPin] = useState("");
+ const [localToast, setLocalToast] = useState(null);
+
+ const toast_ = (msg, color="#27ae60") => { setLocalToast({msg,color}); setTimeout(()=>setLocalToast(null),2500); };
+
+ const loadLocal = async (id) => {
+  setLoading(true); setStaff([]); setEditingUser(null);
+  const users = await FS(id).getStaff();
+  setStaff(users.length ? users : DEFAULT_STAFF);
+  setLoading(false);
+ };
+
+ useEffect(() => { loadLocal(selectedLocal); }, [selectedLocal]);
+
+ const handleResetPin = async (userId) => {
+  const updated = staff.map(u => u.id === userId ? {...u, pinHash: null} : u);
+  setStaff(updated);
+  await FS(selectedLocal).saveStaff(updated);
+  toast_("🔑 PIN reseteado", "#e67e22");
+ };
+
+ const handleForcePin = async (userId) => {
+  if (newPin.length < 4) return;
+  const hash = await sha256(newPin);
+  const updated = staff.map(u => u.id === userId ? {...u, pinHash: hash} : u);
+  setStaff(updated);
+  await FS(selectedLocal).saveStaff(updated);
+  setNewPin(""); setEditingUser(null);
+  toast_("✅ PIN actualizado");
+ };
+
+ const handleDeleteUser = async (userId) => {
+  const updated = staff.filter(u => u.id !== userId);
+  setStaff(updated);
+  await FS(selectedLocal).saveStaff(updated);
+  toast_("🗑 Usuario eliminado", "#e74c3c");
+ };
+
+ return (
+  <div style={{background:"#0a0a0a", minHeight:"100vh", padding:20, color:"#eee", fontFamily:"'Nunito',sans-serif"}}>
+   <div style={{maxWidth:700, margin:"0 auto"}}>
+    <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20}}>
+     <div>
+      <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:28, color:"#e74c3c", letterSpacing:2}}>🔧 PANEL DESARROLLADOR</div>
+      <div style={{fontSize:11, color:"#555", marginTop:2}}>Acceso completo · Mr. Papachos</div>
+     </div>
+     <button style={{...s.btn("danger"), padding:"8px 16px"}} onClick={onClose}>✕ Salir</button>
+    </div>
+
+    {localToast && <div style={{background:localToast.color,color:"#fff",padding:"8px 14px",borderRadius:8,fontSize:13,fontWeight:800,marginBottom:12}}>{localToast.msg}</div>}
+
+    <div style={{display:"flex", gap:8, marginBottom:16, flexWrap:"wrap"}}>
+     {locales.map(l => (
+      <button key={l.id} style={{...s.btn(selectedLocal===l.id?"primary":"secondary"), padding:"8px 20px"}}
+       onClick={() => setSelectedLocal(l.id)}>{l.nombre}</button>
+     ))}
+    </div>
+
+    {loading ? <div style={{textAlign:"center", color:"#555", padding:40}}>Cargando...</div> :
+     <div>
+      <div style={{fontSize:12, color:"#555", marginBottom:10, textTransform:"uppercase", letterSpacing:1}}>
+       {staff.length} usuarios en {locales.find(l=>l.id===selectedLocal)?.nombre}
+      </div>
+      {staff.map(user => (
+       <div key={user.id} style={{background:"#1a1a1a", borderRadius:12, padding:"14px 16px", marginBottom:8, border:"1px solid #2a2a2a"}}>
+        <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: editingUser===user.id ? 12 : 0}}>
+         <div>
+          <div style={{fontWeight:900, fontSize:15}}>{user.name}</div>
+          <div style={{fontSize:11, color:"#555", marginTop:2}}>
+           {user.roles.map(r=>`${ROLE_INFO[r]?.label||r}`).join(" · ")}
+           {" · "}<span style={{color:user.pinHash?"#27ae60":"#e74c3c"}}>{user.pinHash?"PIN activo ✓":"Sin PIN"}</span>
+          </div>
+         </div>
+         <div style={{display:"flex", gap:6}}>
+          <button style={{...s.btn("warn"), padding:"5px 10px", fontSize:11}}
+           onClick={() => handleResetPin(user.id)}>Reset PIN</button>
+          <button style={{...s.btn("blue"), padding:"5px 10px", fontSize:11}}
+           onClick={() => setEditingUser(editingUser===user.id ? null : user.id)}>
+           {editingUser===user.id ? "Cancelar" : "Set PIN"}
+          </button>
+          {!user.roles.includes("admin") && (
+           <button style={{...s.btn("danger"), padding:"5px 8px", fontSize:11}}
+            onClick={() => handleDeleteUser(user.id)}>🗑</button>
+          )}
+         </div>
+        </div>
+        {editingUser === user.id && (
+         <div style={{display:"flex", gap:8, alignItems:"center", marginTop:8}}>
+          <input style={{...s.input, flex:1}} type="password" placeholder="Nuevo PIN (4-6 dígitos)"
+           value={newPin} onChange={e=>setNewPin(e.target.value.replace(/\D/g,"").slice(0,6))}
+           onKeyDown={e=>e.key==="Enter"&&handleForcePin(user.id)} />
+          <button style={{...s.btn("success"), padding:"8px 14px"}} onClick={()=>handleForcePin(user.id)}
+           disabled={newPin.length<4}>✓ Guardar</button>
+         </div>
+        )}
+       </div>
+      ))}
+     </div>
+    }
+   </div>
+  </div>
+ );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// LOGIN SCREEN — Flujo: Sucursal → Rol → Usuario → PIN
 // ═══════════════════════════════════════════════════════════════════
 function LoginScreen({ onLogin, s, Y, isMobile }) {
+ const [devInput, setDevInput] = useState("");
+ const [showDev, setShowDev] = useState(false);
  const [step, setStep]               = useState("local");
  const [selectedLocal, setSelectedLocal] = useState("amazonas");
+ const [selectedRole, setSelectedRole] = useState(null);
  const [staff, setStaff]             = useState([]);
  const [loadingStaff, setLoadingStaff] = useState(false);
  const [selectedUser, setSelectedUser] = useState(null);
  const [pin, setPin]                 = useState("");
  const [error, setError]             = useState("");
  const [checking, setChecking]       = useState(false);
+ const [devClickCount, setDevClickCount] = useState(0);
 
  const locales = [
   { id:"amazonas",  nombre:"Amazonas"  },
   { id:"sanmartin", nombre:"San Martín" },
   { id:"belen",     nombre:"Belén"     },
  ];
+
+ const roleOrder = ["admin","cajero","mesero","cocinero"];
 
  const loadStaff = async (localId) => {
   setLoadingStaff(true);
@@ -359,6 +484,16 @@ function LoginScreen({ onLogin, s, Y, isMobile }) {
   if (!users.length) { users = DEFAULT_STAFF; await fs.saveStaff(users); }
   setStaff(users);
   setLoadingStaff(false);
+ };
+
+ const handleSelectLocal = async (localId) => {
+  setSelectedLocal(localId);
+  await loadStaff(localId);
+  setStep("role");
+ };
+
+ const handleSelectRole = (role) => {
+  setSelectedRole(role);
   setStep("user");
  };
 
@@ -375,7 +510,6 @@ function LoginScreen({ onLogin, s, Y, isMobile }) {
   const hash = await sha256(pin);
   const fs = FS(selectedLocal);
   if (!selectedUser.pinHash) {
-   // Primera vez: guardar PIN
    const updated = staff.map(u => u.id === selectedUser.id ? { ...u, pinHash: hash } : u);
    await fs.saveStaff(updated);
    setStaff(updated);
@@ -390,8 +524,14 @@ function LoginScreen({ onLogin, s, Y, isMobile }) {
  };
 
  const proceedLogin = (user) => {
-  if (user.roles.length > 1) { setStep("role"); }
-  else { finishLogin(user, user.roles[0]); }
+  // Si tiene múltiples roles y el rol seleccionado es uno de ellos, usar directo
+  if (user.roles.includes(selectedRole)) {
+   finishLogin(user, selectedRole);
+  } else if (user.roles.length > 1) {
+   setStep("role_final");
+  } else {
+   finishLogin(user, user.roles[0]);
+  }
  };
 
  const finishLogin = (user, role) => {
@@ -404,15 +544,28 @@ function LoginScreen({ onLogin, s, Y, isMobile }) {
   });
  };
 
- // Estilos comunes de login
+ // Usuarios filtrados por el rol seleccionado
+ const filteredStaff = staff.filter(u => u.roles.includes(selectedRole));
+
  const cardBtn = { ...s.btn("secondary"), padding:"14px 20px", fontSize:15, fontWeight:900,
   textAlign:"left", display:"flex", alignItems:"center", gap:12,
   border:"1px solid #2a2a2a", width:"100%", cursor:"pointer" };
 
+ // Hidden dev mode: triple-tap on subtitle
+ const handleDevTap = () => {
+  const next = devClickCount + 1;
+  setDevClickCount(next);
+  if (next >= 7) { setShowDev(true); setDevClickCount(0); }
+ };
+
+ if (showDev) return <DevPanel onClose={() => setShowDev(false)} s={s} Y={Y} isMobile={isMobile} />;
+
  return (
   <div style={{background:"#111",minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:"#fff",padding:20}}>
    <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:38,color:Y,letterSpacing:3,marginBottom:4}}>MR. PAPACHOS</div>
-   <div style={{fontSize:10,color:"#444",letterSpacing:2,marginBottom:36,textTransform:"uppercase"}}>Sistema de Gestión · Cajamarca</div>
+   <div onClick={handleDevTap} style={{fontSize:10,color:"#333",letterSpacing:2,marginBottom:36,textTransform:"uppercase",cursor:"default",userSelect:"none"}}>
+    Sistema de Gestión · Cajamarca
+   </div>
 
    {/* ── PASO: SUCURSAL ── */}
    {step === "local" && (
@@ -420,7 +573,7 @@ function LoginScreen({ onLogin, s, Y, isMobile }) {
      <div style={{fontSize:11,color:"#666",textTransform:"uppercase",letterSpacing:1,marginBottom:14,textAlign:"center"}}>Selecciona tu sucursal</div>
      <div style={{display:"flex",flexDirection:"column",gap:10}}>
       {locales.map(loc => (
-       <button key={loc.id} onClick={() => { setSelectedLocal(loc.id); loadStaff(loc.id); }}
+       <button key={loc.id} onClick={() => handleSelectLocal(loc.id)}
         style={{...cardBtn, justifyContent:"center", fontSize:17, padding:18}}>
         {loc.nombre}
        </button>
@@ -429,31 +582,60 @@ function LoginScreen({ onLogin, s, Y, isMobile }) {
     </div>
    )}
 
-   {/* ── PASO: USUARIO ── */}
-   {step === "user" && (
+   {/* ── PASO: ROL ── */}
+   {step === "role" && (
     <div style={{width:"100%",maxWidth:320}}>
-     <button onClick={() => setStep("local")} style={{...s.btn("secondary"),marginBottom:16,fontSize:11,padding:"4px 12px"}}>← Volver</button>
-     <div style={{fontSize:11,color:"#666",textTransform:"uppercase",letterSpacing:1,marginBottom:14,textAlign:"center"}}>¿Quién eres?</div>
+     <button onClick={() => setStep("local")} style={{...s.btn("secondary"),marginBottom:16,fontSize:11,padding:"4px 12px"}}>← Sucursal</button>
+     <div style={{fontSize:11,color:"#666",textTransform:"uppercase",letterSpacing:1,marginBottom:14,textAlign:"center"}}>
+      ¿Con qué rol ingresas?
+     </div>
      {loadingStaff
-      ? <div style={{textAlign:"center",color:"#555",padding:20}}>Cargando personal...</div>
-      : <div style={{display:"flex",flexDirection:"column",gap:8}}>
-         {staff.map(user => {
-          const mainRole = ROLE_INFO[user.roles[0]] || {};
+      ? <div style={{textAlign:"center",color:"#555",padding:20}}>Cargando...</div>
+      : <div style={{display:"flex",flexDirection:"column",gap:10}}>
+         {roleOrder.filter(role => staff.some(u => u.roles.includes(role))).map(role => {
+          const info = ROLE_INFO[role];
+          const count = staff.filter(u => u.roles.includes(role)).length;
           return (
-           <button key={user.id} onClick={() => handleSelectUser(user)} style={cardBtn}>
-            <span style={{fontSize:22}}>{mainRole.icon}</span>
+           <button key={role} onClick={() => handleSelectRole(role)}
+            style={{...cardBtn, border:`2px solid ${info.color}33`, padding:"16px 20px"}}>
+            <div style={{width:44,height:44,borderRadius:12,background:`${info.color}22`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+             <span style={{fontSize:22}}>{role==="admin"?"👑":role==="cajero"?"💰":role==="mesero"?"🍽":role==="cocinero"?"👨‍🍳":"👤"}</span>
+            </div>
             <div>
-             <div style={{fontSize:15,fontWeight:900,color:"#eee"}}>{user.name}</div>
-             <div style={{fontSize:10,color:"#555",marginTop:2}}>
-              {user.roles.map(r => ROLE_INFO[r]?.label || r).join(" · ")}
-              {!user.pinHash && <span style={{color:"#e67e22",marginLeft:6}}>· Sin PIN</span>}
-             </div>
+             <div style={{color:info.color,fontWeight:900,fontSize:15}}>{info.label}</div>
+             <div style={{fontSize:10,color:"#555",marginTop:2}}>{count} usuario{count!==1?"s":""} disponible{count!==1?"s":""}</div>
             </div>
            </button>
           );
          })}
         </div>
      }
+    </div>
+   )}
+
+   {/* ── PASO: USUARIO (filtrado por rol) ── */}
+   {step === "user" && (
+    <div style={{width:"100%",maxWidth:320}}>
+     <button onClick={() => setStep("role")} style={{...s.btn("secondary"),marginBottom:16,fontSize:11,padding:"4px 12px"}}>← Roles</button>
+     <div style={{fontSize:11,color:"#666",textTransform:"uppercase",letterSpacing:1,marginBottom:14,textAlign:"center"}}>
+      {ROLE_INFO[selectedRole]?.label} — ¿Quién eres?
+     </div>
+     <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {filteredStaff.map(user => (
+       <button key={user.id} onClick={() => handleSelectUser(user)} style={cardBtn}>
+        <div style={{width:38,height:38,borderRadius:10,background:`${ROLE_INFO[selectedRole]?.color}22`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:18}}>
+         {user.name.charAt(0).toUpperCase()}
+        </div>
+        <div>
+         <div style={{fontSize:15,fontWeight:900,color:"#eee"}}>{user.name}</div>
+         <div style={{fontSize:10,color:"#555",marginTop:2}}>
+          {!user.pinHash && <span style={{color:"#e67e22"}}>Sin PIN (primera vez)</span>}
+          {user.pinHash && <span style={{color:"#27ae60"}}>PIN activo ✓</span>}
+         </div>
+        </div>
+       </button>
+      ))}
+     </div>
     </div>
    )}
 
@@ -471,7 +653,6 @@ function LoginScreen({ onLogin, s, Y, isMobile }) {
        Elige un PIN de 4 a 6 dígitos. Lo usarás cada vez que entres.
       </div>
      )}
-     {/* Puntos del PIN */}
      <div style={{display:"flex",justifyContent:"center",gap:10,marginBottom:22}}>
       {Array.from({length:6}).map((_,i) => (
        <div key={i} style={{width:13,height:13,borderRadius:"50%",transition:"all .15s",
@@ -479,7 +660,6 @@ function LoginScreen({ onLogin, s, Y, isMobile }) {
         border: `2px solid ${i < pin.length ? Y : "#444"}`}} />
       ))}
      </div>
-     {/* Teclado numérico */}
      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>
       {["1","2","3","4","5","6","7","8","9","","0","⌫"].map((d,i) => (
        <button key={i} onClick={() => d === "⌫" ? handlePinDel() : d ? handlePinDigit(d) : null}
@@ -497,31 +677,6 @@ function LoginScreen({ onLogin, s, Y, isMobile }) {
       style={{...s.btn("primary"),width:"100%",padding:14,fontSize:16,opacity:pin.length<4?0.4:1}}>
       {checking ? "Verificando..." : selectedUser.pinHash ? "Entrar" : "Crear PIN y entrar"}
      </button>
-    </div>
-   )}
-
-   {/* ── PASO: ROL (multi-rol) ── */}
-   {step === "role" && selectedUser && (
-    <div style={{width:"100%",maxWidth:320}}>
-     <div style={{fontSize:17,fontWeight:900,textAlign:"center",marginBottom:4}}>{selectedUser.name}</div>
-     <div style={{fontSize:11,color:"#666",textTransform:"uppercase",letterSpacing:1,marginBottom:20,textAlign:"center"}}>¿Con qué rol entrás hoy?</div>
-     <div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {selectedUser.roles.map(role => {
-       const info = ROLE_INFO[role] || { label:role, color:"#fff", icon:"👤" };
-       return (
-        <button key={role} onClick={() => finishLogin(selectedUser, role)}
-         style={{...cardBtn, border:`2px solid ${info.color}33`, padding:"16px 20px"}}>
-         <span style={{fontSize:26}}>{info.icon}</span>
-         <div>
-          <div style={{color:info.color,fontWeight:900,fontSize:15}}>{info.label}</div>
-          <div style={{fontSize:10,color:"#555",marginTop:2}}>
-           {role==="admin" ? "Acceso completo" : "Acceso según rol"}
-          </div>
-         </div>
-        </button>
-       );
-      })}
-     </div>
     </div>
    )}
   </div>
@@ -544,7 +699,123 @@ function CloseBtn({ onClose }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// MODAL CONFIGURADOR DE SALSAS
+// MODAL PERSONALIZACIÓN COMBOS / ÍTEMS CON ELECCIÓN OBLIGATORIA
+// ═══════════════════════════════════════════════════════════════════
+const BEBIDAS_SABORES = ["Chicha Morada","Limonada","Maracuyá","Piña","Cebada","Fresa"];
+const BEBIDAS_ESTILOS = ["Normal","Frozen"];
+
+// Ítems que requieren personalización
+const ITEMS_CON_ELECCION = {
+ "H02": { // Hamburguesa Piolín
+  steps: [
+   { key:"proteina", label:"¿Carne o Pollo?", options:["Carne","Pollo"] },
+  ]
+ },
+ "C01": { // Combo Personal
+  steps: [
+   { key:"plato", label:"¿Qué plato deseas?", options:["Hamburguesa Piolín","Salchipapa Sencilla"] },
+   { key:"bebida_sabor", label:"¿Sabor de la bebida (vaso)?", options: BEBIDAS_SABORES },
+  ]
+ },
+ "C02": { // Combo Cajacho
+  steps: [
+   { key:"bebida_sabor", label:"¿Sabor de la bebida (1L)?", options: BEBIDAS_SABORES },
+   { key:"bebida_estilo", label:"¿Normal o Frozen?", options: BEBIDAS_ESTILOS },
+  ]
+ },
+ "C03": { // Combo Familiar
+  steps: [
+   { key:"bebida_sabor", label:"¿Sabor de la bebida (1.5L)?", options: BEBIDAS_SABORES },
+   { key:"bebida_estilo", label:"¿Normal o Frozen?", options: BEBIDAS_ESTILOS },
+  ]
+ },
+ "C04": { // Combo Papachos
+  steps: [
+   { key:"bebida_sabor", label:"¿Sabor de la bebida (2L)?", options: BEBIDAS_SABORES },
+   { key:"bebida_estilo", label:"¿Normal o Frozen?", options: BEBIDAS_ESTILOS },
+  ]
+ },
+ "R01": { // Ronda de Sabores 20pz
+  steps: [
+   { key:"bebida_sabor", label:"¿Sabor de la bebida (1L)?", options: BEBIDAS_SABORES },
+   { key:"bebida_estilo", label:"¿Normal o Frozen?", options: BEBIDAS_ESTILOS },
+  ]
+ },
+ "R02": { // Ronda de Sabores XL 30pz
+  steps: [
+   { key:"bebida_sabor", label:"¿Sabor de la bebida (1.5L)?", options: BEBIDAS_SABORES },
+   { key:"bebida_estilo", label:"¿Normal o Frozen?", options: BEBIDAS_ESTILOS },
+  ]
+ },
+};
+
+function ComboCustomizacionModal({ item, onConfirm, onClose, s, Y }) {
+ const config = ITEMS_CON_ELECCION[item.id];
+ const [stepIdx, setStepIdx] = useState(0);
+ const [selections, setSelections] = useState({});
+
+ if (!config) { onConfirm(item, {}); return null; }
+
+ const step = config.steps[stepIdx];
+ const isLast = stepIdx === config.steps.length - 1;
+
+ const handleSelect = (option) => {
+  const newSel = { ...selections, [step.key]: option };
+  setSelections(newSel);
+  if (isLast) {
+   // Build note string from selections
+   const noteStr = Object.entries(newSel)
+    .map(([k, v]) => {
+     if (k === "proteina") return `Proteína: ${v}`;
+     if (k === "plato") return `Plato: ${v}`;
+     if (k === "bebida_sabor") return `Bebida: ${v}`;
+     if (k === "bebida_estilo") return v;
+     return v;
+    })
+    .join(" · ");
+   onConfirm(item, newSel, noteStr);
+  } else {
+   setStepIdx(i => i + 1);
+  }
+ };
+
+ return (
+  <div style={s.overlay} onClick={onClose}>
+   <div style={{...s.modal, maxWidth:380}} onClick={e=>e.stopPropagation()}>
+    <div style={{...s.row, marginBottom:10}}>
+     <div style={{color:Y, fontFamily:"'Bebas Neue',cursive", fontSize:18, letterSpacing:1}}>
+      {item.name}
+     </div>
+     <CloseBtn onClose={onClose}/>
+    </div>
+    <div style={{fontSize:11, color:"#555", marginBottom:4, textTransform:"uppercase", letterSpacing:1}}>
+     Paso {stepIdx+1} de {config.steps.length}
+    </div>
+    <div style={{fontWeight:900, fontSize:16, color:"#eee", marginBottom:16}}>{step.label}</div>
+    <div style={{display:"flex", flexDirection:"column", gap:8}}>
+     {step.options.map(opt => (
+      <button key={opt}
+       style={{...s.btn("secondary"), padding:"14px 16px", fontSize:14, fontWeight:800,
+        border:"1px solid #333", textAlign:"left",
+        transition:"border-color .15s, background .15s"}}
+       onMouseEnter={e=>{e.currentTarget.style.borderColor=Y;e.currentTarget.style.background=`${Y}18`;}}
+       onMouseLeave={e=>{e.currentTarget.style.borderColor="#333";e.currentTarget.style.background="#2a2a2a";}}
+       onClick={() => handleSelect(opt)}>
+       {opt}
+      </button>
+     ))}
+    </div>
+    {stepIdx > 0 && (
+     <button style={{...s.btn("secondary"), marginTop:12, fontSize:11}} onClick={() => setStepIdx(i=>i-1)}>
+      ← Volver al paso anterior
+     </button>
+    )}
+   </div>
+  </div>
+ );
+}
+
+
 // ═══════════════════════════════════════════════════════════════════
 function SalsasModalComponent({ initialSalsas = [], onSave, onClose, s, Y }) {
  const [selected, setSelected] = useState(initialSalsas);
@@ -744,8 +1015,12 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y, isAdmin=
  onSave({ ...order, table: eTable, items: finalItems, notes: eNotes, phone: ePhone, total: eTotal, orderType: eOrderType, taperCost: 0 });
  };
 
+ const [eComboModal, setEComboModal] = useState(null);
+
  const handleCartaClick = (item) => {
- if (["Alitas", "Alichaufa", "Rondas"].includes(item.cat)) {
+ if (ITEMS_CON_ELECCION[item.id]) {
+ setEComboModal(item);
+ } else if (["Alitas", "Alichaufa", "Rondas"].includes(item.cat)) {
  setSalsasModal({ itemToAdd: item, salsas: [] });
  } else {
  eAddItem(item);
@@ -754,6 +1029,16 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y, isAdmin=
 
  return (
  <div style={s.modal} onClick={e => e.stopPropagation()}>
+ {eComboModal && (
+ <ComboCustomizacionModal item={eComboModal} s={s} Y={Y}
+  onClose={() => setEComboModal(null)}
+  onConfirm={(item, selections, noteStr) => {
+   const cartId = `${item.id}-${Date.now()}`;
+   eAddItem({ ...item, cartId, _comboNote: noteStr });
+   setEComboModal(null);
+  }}
+ />
+ )}
  {salsasModal && (
  <SalsasModalComponent 
  initialSalsas={salsasModal.salsas} 
@@ -909,6 +1194,11 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y, isAdmin=
  {item.priceNote && (
  <div style={{fontSize:11, color:"#e67e22", marginBottom:4}}>
  ✏️ Precio ajustado: {item.priceNote}
+ </div>
+ )}
+ {item._comboNote && (
+ <div style={{fontSize:11, color:"#3498db", marginBottom:4}}>
+ 🎯 {item._comboNote}
  </div>
  )}
 
@@ -1190,17 +1480,20 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
 // ═══════════════════════════════════════════════════════════════════
 // NUEVO PEDIDO (Carrito)
 // ═══════════════════════════════════════════════════════════════════
-function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updateIndividualNote, draftTotal, fmt, submitOrder, newDraft, s, Y, isDesktop, isMobile, mesasArr }) {
+function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updateIndividualNote, draftTotal, fmt, submitOrder, newDraft, s, Y, isDesktop, isMobile, isTablet, mesasArr }) {
  const [search, setSearch] = useState("");
  const [catFilter, setCatFilter] = useState("Todos");
  const [showCartModal, setShowCartModal] = useState(false);
  const [salsasModal, setSalsasModal] = useState(null);
+ const [comboModal, setComboModal] = useState(null); // item requiring customization
 
  const filteredMenu = menu.filter(i => (catFilter === "Todos" || i.cat === catFilter) && i.name.toLowerCase().includes(search.toLowerCase()));
  const itemCount = draft.items.reduce((sum, i) => sum + i.qty, 0);
 
  const handleCartaClick = (item) => {
- if (["Alitas", "Alichaufa", "Rondas"].includes(item.cat)) {
+ if (ITEMS_CON_ELECCION[item.id]) {
+ setComboModal(item);
+ } else if (["Alitas", "Alichaufa", "Rondas"].includes(item.cat)) {
  setSalsasModal({ itemToAdd: item, salsas: [] });
  } else {
  addItem(item);
@@ -1217,6 +1510,16 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  setSalsasModal(null);
  }} 
  onClose={() => setSalsasModal(null)} s={s} Y={Y} 
+ />
+ )}
+ {comboModal && (
+ <ComboCustomizacionModal item={comboModal} s={s} Y={Y}
+  onClose={() => setComboModal(null)}
+  onConfirm={(item, selections, noteStr) => {
+   const cartId = `${item.id}-${Date.now()}`;
+   addItem({ ...item, cartId, _comboNote: noteStr });
+   setComboModal(null);
+  }}
  />
  )}
 
@@ -1311,6 +1614,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  <span style={{ color:Y, fontWeight:900, fontSize:14, minWidth:55, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
  </div>
  {item.salsas?.length > 0 && <div style={{color:Y, fontSize:11, marginBottom:4, fontStyle:"italic"}}> Salsas: {item.salsas.map(sa => `${sa.name} (${sa.style})`).join(", ")}</div>}
+ {item._comboNote && <div style={{color:"#3498db", fontSize:11, marginBottom:4, fontStyle:"italic"}}>🎯 {item._comboNote}</div>}
  {Array.from({ length: item.qty }).map((_, idx) => (
  <textarea key={idx} style={{ ...s.input, fontSize:13, padding:"6px 10px", marginTop: 4, background:"#141414", resize:"vertical", minHeight:40, fontFamily:"inherit" }} 
  placeholder={`Nota para el plato ${idx + 1}...`} value={item.individualNotes?.[idx] || ""} spellCheck="false" onChange={e => updateIndividualNote(item.cartId, idx, e.target.value)} />
@@ -1334,7 +1638,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  );
 
  return (
- <div style={{ display:"grid", gridTemplateColumns: isDesktop ? "1fr 340px" : "1fr", gap: isMobile ? 12 : 14, alignItems: "start" }}>
+ <div style={{ display:"grid", gridTemplateColumns: (isDesktop || isTablet) ? "1fr 340px" : "1fr", gap: isMobile ? 12 : 14, alignItems: "start" }}>
  {salsasModal && salsasModal.itemToAdd && (
  <SalsasModalComponent 
  initialSalsas={[]} 
@@ -1344,6 +1648,16 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  setSalsasModal(null);
  }} 
  onClose={() => setSalsasModal(null)} s={s} Y={Y} 
+ />
+ )}
+ {comboModal && !comboModal._fromCart && (
+ <ComboCustomizacionModal item={comboModal} s={s} Y={Y}
+  onClose={() => setComboModal(null)}
+  onConfirm={(item, selections, noteStr) => {
+   const cartId = `${item.id}-${Date.now()}`;
+   addItem({ ...item, cartId, _comboNote: noteStr });
+   setComboModal(null);
+  }}
  />
  )}
  <div>
@@ -1371,7 +1685,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  })}
  </div>
  </div>
- {isDesktop ? <div>{CartContent()}</div> : (
+ {(isDesktop || isTablet) ? <div>{CartContent()}</div> : (
  <>
  {showCartModal && <div style={{...s.overlay, zIndex:9999}} onClick={() => setShowCartModal(false)}><div style={s.modal} onClick={e => e.stopPropagation()}>{CartContent()}</div></div>}
  <button onClick={() => setShowCartModal(true)} style={{ position: "fixed", bottom: 20, right: 20, width: 66, height: 66, borderRadius: 33, background: Y, border: "none", boxShadow: "0 6px 16px rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999, cursor: "pointer" }}>
@@ -1400,9 +1714,12 @@ function printOrder(order) {
  const salsasHtml = i.salsas?.length > 0
  ? `<tr><td colspan="${kitchenMode?2:3}" class="salsa-cell">   Salsas: ${i.salsas.map(s=>`${s.name} (${s.style})`).join(" · ")}</td></tr>`
  : "";
+ const comboNoteHtml = i._comboNote
+ ? `<tr><td colspan="${kitchenMode?2:3}" class="salsa-cell">   🎯 ${i._comboNote}</td></tr>`
+ : "";
  const llevarTag = i.isLlevar ? ` <span class="llevar-tag">[LLEVAR]</span>` : "";
  const priceCell = kitchenMode ? "" : `<td class="price">S/.${(i.price*i.qty).toFixed(2)}</td>`;
- return `<tr class="item-row"><td class="qty">${i.qty}x</td><td class="item">${i.name}${llevarTag}</td>${priceCell}</tr>${salsasHtml}${notesHtml}`;
+ return `<tr class="item-row"><td class="qty">${i.qty}x</td><td class="item">${i.name}${llevarTag}</td>${priceCell}</tr>${salsasHtml}${comboNoteHtml}${notesHtml}`;
  }).join("");
 
  const notes = order.notes ? `<div class="notes">⚠ NOTA GENERAL: ${order.notes}</div>` : "";
@@ -1719,7 +2036,10 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
 }
 
 function MesaModalComponent({ num, orders, setDraft, newDraft, onClose, setTab, setCobrarTarget, setSplitTarget, setEditingOrder, setAnulacionModal, printOrder, isMobile, s, Y, fmt, currentUser, crearSolicitud, isAdmin }) {
- const mesaOrders = orders.filter(o => o.table===String(num) && o.orderType!=="llevar" && !o.anulado);
+ const mesaOrders = orders.filter(o => o.table===String(num) && o.orderType!=="llevar" && !o.anulado)
+  .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)); // más reciente arriba
+ const isMesero = currentUser?.id === 'mesero';
+ const canCobrar = isAdmin || currentUser?.id === 'cajero';
  return (
  <div style={s.modal} onClick={e => e.stopPropagation()}>
  <div style={{...s.row, marginBottom:14}}>
@@ -1744,18 +2064,27 @@ function MesaModalComponent({ num, orders, setDraft, newDraft, onClose, setTab, 
  <span style={{color:"#888"}}>{fmt(item.price*item.qty)}</span>
  </div>
  {item.salsas?.length > 0 && <div style={{fontSize:11, color:Y, paddingLeft:4, marginTop:2}}> {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>}
+ {item._comboNote && <div style={{fontSize:11, color:"#3498db", paddingLeft:4, marginTop:2}}>🎯 {item._comboNote}</div>}
  {validNotes.map((n, idx) => <div key={idx} style={{fontSize:11, color:"#999", fontStyle:"italic", paddingLeft:4, marginTop:2, whiteSpace:"pre-wrap"}}>└ Plato {idx+1}: {n}</div>)}
  </div>
  )})}
  </div>
  {o.notes && <div style={{fontSize:11, color:"#888", fontStyle:"italic", marginBottom:8, whiteSpace:"pre-wrap"}}> {o.notes}</div>}
+ {!isMesero && (
  <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
- {!o.isPaid && <button style={{...s.btn("success"), flex:1}} onClick={() => { setCobrarTarget({type:'existing', data:o}); onClose(); }}> Cobrar Todo</button>}
- {!o.isPaid && <button style={{...s.btn("secondary"), flex:1}} onClick={() => { setSplitTarget(o); onClose(); }}> Dividir</button>}
- {currentUser?.id === 'admin' && !o.isPaid && <button style={{...s.btn("warn"), flex:1}} onClick={() => { setEditingOrder(o); onClose(); }}> Editar</button>}
+ {canCobrar && !o.isPaid && <button style={{...s.btn("success"), flex:1}} onClick={() => { setCobrarTarget({type:'existing', data:o}); onClose(); }}> Cobrar Todo</button>}
+ {canCobrar && !o.isPaid && <button style={{...s.btn("secondary"), flex:1}} onClick={() => { setSplitTarget(o); onClose(); }}> Dividir</button>}
+ {isAdmin && !o.isPaid && <button style={{...s.btn("warn"), flex:1}} onClick={() => { setEditingOrder(o); onClose(); }}> Editar</button>}
  <button style={s.btn("secondary")} onClick={() => printOrder(o)}> Ticket</button>
- {currentUser?.id === 'admin' && !o.isPaid && <button style={{...s.btn("danger"), padding:"7px 10px", fontSize:11}} onClick={() => { setAnulacionModal(o); onClose(); }}>🚫 Anular</button>}
+ {isAdmin && !o.isPaid && <button style={{...s.btn("danger"), padding:"7px 10px", fontSize:11}} onClick={() => { setAnulacionModal(o); onClose(); }}>🚫 Anular</button>}
  </div>
+ )}
+ {isMesero && (
+ <div style={{display:"flex", gap:6}}>
+ <button style={s.btn("secondary")} onClick={() => printOrder(o)}>🖨 Ver ticket</button>
+ {!o.isPaid && <button style={{...s.btn("danger"), padding:"7px 10px", fontSize:11}} onClick={() => { setAnulacionModal(o); onClose(); }}>📨 Solicitar anulación</button>}
+ </div>
+ )}
  </div>
  ))
  }
@@ -2070,7 +2399,8 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  setCobrarTarget({ type:'split', data: { originalOrder: order, splitItems: items, total } });
  };
 
- const activeOrders = orders.filter(o => !o.anulado);
+ const activeOrders = orders.filter(o => !o.anulado)
+  .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)); // más reciente arriba
  const anuladosOrders = orders.filter(o => o.anulado);
 
  return (
@@ -2142,6 +2472,7 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  <span style={{color:"#FFD700", fontWeight:900, fontSize:12, marginLeft:8, whiteSpace:"nowrap"}}>{fmt(item.price*item.qty)}</span>
  </div>
  {item.salsas?.length>0 && <div style={{fontSize:10,color:Y,paddingLeft:8,marginTop:1,fontStyle:"italic"}}>↳ {item.salsas.map(sa=>`${sa.name} (${sa.style})`).join(', ')}</div>}
+ {item._comboNote && <div style={{fontSize:10,color:"#3498db",paddingLeft:8,marginTop:1,fontStyle:"italic"}}>🎯 {item._comboNote}</div>}
  {item.priceNote && <div style={{fontSize:10,color:"#e67e22",paddingLeft:8,marginTop:1}}>✏️ {item.priceNote}</div>}
  {notes.map((n,idx)=><div key={idx} style={{fontSize:10,color:"#777",fontStyle:"italic",paddingLeft:8,marginTop:1}}>└ Plato {idx+1}: {n}</div>)}
  </div>
@@ -2160,7 +2491,7 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  </button>
  </>
  )}
- {!o.isPaid && (
+ {!o.isPaid && !isMesero && (
  <button style={{...s.btn("warn"),flex:1}} onClick={()=>setEditingOrder(o)}>✏️ Editar</button>
  )}
  <button style={{...s.btn("secondary"), padding:"7px 10px", fontSize:11}} onClick={()=>printOrder(o)}>🖨</button>
@@ -2230,6 +2561,32 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
 function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenListo, isMobile, isDesktop, s, Y }) {
  const sorted = [...orders].sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
  
+ // ── Sonido de nuevo pedido ──────────────────────────────────────
+ const prevOrderIds = useRef(new Set(orders.map(o=>o.id)));
+ useEffect(() => {
+  const currentIds = new Set(orders.filter(o=>!o.anulado&&o.kitchenStatus!=='listo').map(o=>o.id));
+  const hasNew = [...currentIds].some(id => !prevOrderIds.current.has(id));
+  if (hasNew) {
+   try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // Tres pitidos cortos y amigables
+    [0, 0.22, 0.44].forEach(offset => {
+     const osc = ctx.createOscillator();
+     const gain = ctx.createGain();
+     osc.connect(gain); gain.connect(ctx.destination);
+     osc.frequency.value = 880;
+     osc.type = "sine";
+     gain.gain.setValueAtTime(0, ctx.currentTime + offset);
+     gain.gain.linearRampToValueAtTime(0.35, ctx.currentTime + offset + 0.03);
+     gain.gain.linearRampToValueAtTime(0, ctx.currentTime + offset + 0.16);
+     osc.start(ctx.currentTime + offset);
+     osc.stop(ctx.currentTime + offset + 0.2);
+    });
+   } catch(e) { /* audio no disponible */ }
+  }
+  prevOrderIds.current = new Set(orders.map(o=>o.id));
+ }, [orders]);
+ 
  const toggleCheck = (order, itemIdx, maxQty) => { 
  const orderId = order.id;
  setKitchenChecks(prev => { 
@@ -2294,6 +2651,7 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
  <div style={{flex:1}}>
  <span style={{fontWeight:800, fontSize:isMobile?13:15, textDecoration:isDone?"line-through":"none", color:isDone?"#555":"#eee"}}>{item.qty>1&&<span style={{color:Y, marginRight:4}}>{item.qty}×</span>}{item.name} {item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:10}}> Llevar</span>}</span>
  {item.salsas?.length > 0 && <div style={{color:Y, fontSize:11, fontStyle:"italic", marginTop:2}}> {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>}
+ {item._comboNote && <div style={{color:"#3498db", fontSize:11, fontStyle:"italic", marginTop:2}}>🎯 {item._comboNote}</div>}
  {validNotes.map((n, idx) => <div key={idx} style={{fontSize:11, color:"#aaa", marginTop:3, fontStyle:"italic", whiteSpace:"pre-wrap"}}> Plato {idx+1}: {n}</div>)}
  </div>
  </div>
@@ -2689,6 +3047,7 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder, 
   <span style={{color:"#888"}}>{fmt(item.price * item.qty)}</span>
  </div>
  {item.salsas?.length > 0 && <div style={{color:Y, fontSize:10, fontStyle:"italic", marginTop:4}}>🌶 {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>}
+ {item._comboNote && <div style={{color:"#3498db", fontSize:10, fontStyle:"italic", marginTop:4}}>🎯 {item._comboNote}</div>}
  </div>
  ))}
  </div>
@@ -3830,7 +4189,7 @@ export default function App() {
  <div style={s.content}>
  {tab==="dashboard" && <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} caja={caja} abrirCaja={abrirCaja} cerrarCaja={cerrarCaja} currentUser={currentUser} getPay={getPay} />}
  {tab==="mesas" && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setAnulacionModal={setAnulacionModal} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} mesasArr={mesasArr} addMesa={addMesa} removeMesa={removeMesa} currentUser={currentUser} />}
- {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} mesasArr={mesasArr} />}
+ {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} isTablet={isTablet} mesasArr={mesasArr} />}
  {tab==="pedidos" && <PedidosComponent orders={orders} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
  {tab==="cocina" && <CocinaComponent orders={orders} kitchenChecks={kitchenChecks} setKitchenChecks={setKitchenChecks} markKitchenListo={markKitchenListo} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} />}
  {tab==="historial"    && <HistorialComponent history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} />}
