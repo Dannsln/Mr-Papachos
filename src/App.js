@@ -327,10 +327,10 @@ const DEFAULT_STAFF = [
 ];
 
 const ROLE_INFO = {
- admin:    { label:"Administrador", },
- cajero:   { label:"Cajero",   },
- mesero:   { label:"Mesero",    },
- cocinero: { label:"Cocina",      },
+ admin:    { label:"Administrador", color:"#FFD700", icon:"👑" },
+ cajero:   { label:"Cajero",        color:"#3498db", icon:"💰" },
+ mesero:   { label:"Mesero",        color:"#27ae60", icon:"🍽" },
+ cocinero: { label:"Cocina",        color:"#e67e22", icon:"👨‍🍳" },
 };
 
 // ═══════════════════════════════════════════════════════════════════
@@ -598,9 +598,6 @@ function LoginScreen({ onLogin, s, Y, isMobile }) {
           return (
            <button key={role} onClick={() => handleSelectRole(role)}
             style={{...cardBtn, border:`2px solid ${info.color}33`, padding:"16px 20px"}}>
-            <div style={{width:44,height:44,borderRadius:12,background:`${info.color}22`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-             <span style={{fontSize:22}}>{role==="admin"?"👑":role==="cajero"?"💰":role==="mesero"?"🍽":role==="cocinero"?"👨‍🍳":"👤"}</span>
-            </div>
             <div>
              <div style={{color:info.color,fontWeight:900,fontSize:15}}>{info.label}</div>
              <div style={{fontSize:10,color:"#555",marginTop:2}}>{count} usuario{count!==1?"s":""} disponible{count!==1?"s":""}</div>
