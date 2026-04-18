@@ -1305,25 +1305,42 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y, isAdmin=
 // MODAL MULTICOBRO — con descuento por ítem y global
 // ═══════════════════════════════════════════════════════════════════
 function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
+ // ── Descuento global ─────────────────────────────────────────────
  const [descPct, setDescPct] = useState(0);
- const [descSoles, setDescSoles] = useState(0); // descuento directo en soles
+ const [descSoles, setDescSoles] = useState(0);
  const [descMode, setDescMode] = useState("pct"); // "pct" | "soles"
  const [descMotivo, setDescMotivo] = useState("");
  const [showDesc, setShowDesc] = useState(false);
+
+ // ── Descuentos por ítem: { cartId: { mode:"pct"|"soles", value:number } }
  const [itemDiscounts, setItemDiscounts] = useState({});
+ const [itemDiscMode, setItemDiscMode] = useState("pct"); // global toggle for item discount mode
  const [showItemDisc, setShowItemDisc] = useState(false);
 
  const displayItems = orderContext.splitItems
   ? orderContext.splitItems.filter(i => i.splitQty > 0).map(i => ({...i, qty: i.splitQty}))
   : (orderContext.items || []);
 
- const itemsSubtotal = displayItems.reduce((sum, item) => {
-  const disc = Number(itemDiscounts[item.cartId] || 0);
-  const effectivePrice = item.price * (1 - disc / 100);
-  return sum + effectivePrice * item.qty;
- }, 0);
+ // Compute effective price per item based on its own mode
+ const getItemEffective = (item) => {
+  const d = itemDiscounts[item.cartId] || { mode: itemDiscMode, value: 0 };
+  const val = parseFloat(d.value) || 0;
+  const originalTotal = item.price * item.qty;
+  if (d.mode === "soles") {
+   const discAmt = Math.min(val, originalTotal);
+   return { original: originalTotal, effective: originalTotal - discAmt, discAmt };
+  } else {
+   const pct = Math.min(val, 100);
+   const discAmt = Math.round(originalTotal * pct / 100 * 100) / 100;
+   return { original: originalTotal, effective: originalTotal - discAmt, discAmt };
+  }
+ };
 
- const hasItemDiscounts = Object.values(itemDiscounts).some(v => Number(v) > 0);
+ const itemsSubtotal = displayItems.reduce((sum, item) => sum + getItemEffective(item).effective, 0);
+ const hasItemDiscounts = displayItems.some(item => {
+  const d = itemDiscounts[item.cartId] || { value: 0 };
+  return (parseFloat(d.value) || 0) > 0;
+ });
  const totalItemDiscAmt = Math.round((total - itemsSubtotal) * 100) / 100;
 
  // Descuento global — % o soles
@@ -1335,25 +1352,27 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
  const [ef, setEf] = useState(totalFinal);
  const [ya, setYa] = useState(0);
  const [ta, setTa] = useState(0);
-
  useEffect(() => { setEf(totalFinal); setYa(0); setTa(0); }, [totalFinal]);
 
  const sum = Number(ef||0) + Number(ya||0) + Number(ta||0);
  const diff = totalFinal - sum;
-
  const DESCUENTOS_RAPIDOS = [5, 10, 15, 20, 25, 50];
  const totalDescuento = totalItemDiscAmt + descAmt;
 
+ const setItemDisc = (cartId, field, val) => {
+  setItemDiscounts(prev => ({
+   ...prev,
+   [cartId]: { mode: prev[cartId]?.mode || itemDiscMode, value: prev[cartId]?.value || 0, ...prev[cartId], [field]: val }
+  }));
+ };
+
  const handleConfirm = () => {
   onConfirm({
-   efectivo: Number(ef||0),
-   yape: Number(ya||0),
-   tarjeta: Number(ta||0),
-   descuentoPct: Number(descPct)||0,
+   efectivo: Number(ef||0), yape: Number(ya||0), tarjeta: Number(ta||0),
+   descuentoPct: descMode === "pct" ? (Number(descPct)||0) : 0,
    descuentoAmt: totalDescuento,
    descuentoMotivo: descMotivo,
-   totalOriginal: total,
-   totalFinal,
+   totalOriginal: total, totalFinal,
    itemDiscounts: hasItemDiscounts ? itemDiscounts : undefined,
   });
  };
@@ -1368,48 +1387,86 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
  {/* ── Descuentos por ítem ── */}
  {displayItems.length > 0 && (
   <div style={{marginBottom:12}}>
-   <button
-    style={{...s.btn(showItemDisc?"warn":"secondary"), width:"100%", padding:"8px 12px", fontSize:12, marginBottom: showItemDisc ? 10 : 0}}
+   <button style={{...s.btn(showItemDisc?"warn":"secondary"), width:"100%", padding:"8px 12px", fontSize:12, marginBottom: showItemDisc ? 10 : 0}}
     onClick={() => setShowItemDisc(v => !v)}>
     {showItemDisc ? "▲ Ocultar descuentos por ítem" : "🏷 Descuentos por ítem"}
    </button>
    {showItemDisc && (
     <div style={{background:"#111", border:"1px solid #8e5a00", borderRadius:10, padding:"12px 14px"}}>
-     <div style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, marginBottom:10}}>
-      Ingresa el % de descuento para cada ítem
+     {/* Modo global para ítems */}
+     <div style={{display:"flex", gap:6, marginBottom:12}}>
+      <button style={{...s.btn(itemDiscMode==="pct"?"warn":"secondary"), flex:1, fontSize:11, padding:"5px 0"}}
+       onClick={() => { setItemDiscMode("pct"); setItemDiscounts(prev => { const n={}; Object.keys(prev).forEach(k=>{n[k]={...prev[k],mode:"pct"}}); return n; }); }}>
+       % Porcentaje
+      </button>
+      <button style={{...s.btn(itemDiscMode==="soles"?"warn":"secondary"), flex:1, fontSize:11, padding:"5px 0"}}
+       onClick={() => { setItemDiscMode("soles"); setItemDiscounts(prev => { const n={}; Object.keys(prev).forEach(k=>{n[k]={...prev[k],mode:"soles"}}); return n; }); }}>
+       S/. Soles
+      </button>
      </div>
+
      {displayItems.map(item => {
-      const disc = Number(itemDiscounts[item.cartId] || 0);
-      const originalTotal = item.price * item.qty;
-      const effectiveTotal = item.price * (1 - disc / 100) * item.qty;
+      const d = itemDiscounts[item.cartId] || { mode: itemDiscMode, value: 0 };
+      const eff = getItemEffective(item);
+      const hasDisc = (parseFloat(d.value)||0) > 0;
       return (
-       <div key={item.cartId} style={{display:"flex", alignItems:"center", gap:8, marginBottom:8, padding:"8px 10px", background:"#1a1a1a", borderRadius:8, border:`1px solid ${disc > 0 ? "#d35400" : "#2a2a2a"}`}}>
-        <div style={{flex:1, minWidth:0}}>
-         <div style={{fontSize:13, fontWeight:700, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis"}}>{item.qty}× {item.name}</div>
-         <div style={{fontSize:11, marginTop:2}}>
-          {disc > 0
-           ? <><span style={{textDecoration:"line-through", color:"#555"}}>{fmt(originalTotal)}</span> → <span style={{color:"#27ae60", fontWeight:900}}>{fmt(effectiveTotal)}</span> <span style={{color:"#d35400"}}>−{fmt(originalTotal - effectiveTotal)}</span></>
-           : <span style={{color:"#888"}}>{fmt(originalTotal)}</span>
-          }
+       <div key={item.cartId} style={{marginBottom:10, padding:"10px 12px", background:"#1a1a1a", borderRadius:10, border:`1px solid ${hasDisc?"#d35400":"#2a2a2a"}`}}>
+        {/* Nombre + precio */}
+        <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6}}>
+         <div style={{fontSize:13, fontWeight:700, flex:1, minWidth:0, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis"}}>
+          {item.qty}× {item.name}
+         </div>
+         <div style={{fontSize:12, flexShrink:0, marginLeft:8, textAlign:"right"}}>
+          {hasDisc ? (
+           <>
+            <span style={{textDecoration:"line-through", color:"#555", marginRight:6}}>{fmt(eff.original)}</span>
+            <span style={{color:"#27ae60", fontWeight:900}}>{fmt(eff.effective)}</span>
+            <span style={{color:"#d35400", marginLeft:6, fontSize:11}}>−{fmt(eff.discAmt)}</span>
+           </>
+          ) : (
+           <span style={{color:"#888"}}>{fmt(eff.original)}</span>
+          )}
          </div>
         </div>
-        <div style={{display:"flex", alignItems:"center", gap:4, flexShrink:0}}>
-         <input
-          type="number"
-          style={{...s.input, width:60, textAlign:"center", padding:"6px 4px", fontSize:14, fontWeight:900}}
-          min="0" max="100" step="1"
+        {/* Toggle % / S/. por ítem + input */}
+        <div style={{display:"flex", gap:6, alignItems:"center"}}>
+         <button style={{...s.btn(d.mode==="pct"?"primary":"secondary"), padding:"4px 10px", fontSize:11, flexShrink:0}}
+          onClick={() => setItemDisc(item.cartId, "mode", "pct")}>%</button>
+         <button style={{...s.btn(d.mode==="soles"?"primary":"secondary"), padding:"4px 10px", fontSize:11, flexShrink:0}}
+          onClick={() => setItemDisc(item.cartId, "mode", "soles")}>S/.</button>
+         <input type="number"
+          style={{...s.input, flex:1, textAlign:"center", padding:"6px 8px", fontSize:14, fontWeight:900}}
+          min="0" max={d.mode==="pct"?100:eff.original} step={d.mode==="pct"?1:0.5}
           placeholder="0"
-          value={itemDiscounts[item.cartId] || ""}
+          value={d.value || ""}
           onChange={e => {
-           const v = Math.min(100, Math.max(0, Number(e.target.value)||0));
-           setItemDiscounts(prev => ({...prev, [item.cartId]: v || 0}));
+           const raw = parseFloat(e.target.value)||0;
+           const capped = d.mode==="pct" ? Math.min(100, Math.max(0, raw)) : Math.max(0, raw);
+           setItemDisc(item.cartId, "value", capped||0);
           }}
          />
-         <span style={{color:"#888", fontSize:13, fontWeight:700}}>%</span>
+         <span style={{color:"#888", fontSize:13, fontWeight:700, flexShrink:0}}>{d.mode==="pct"?"%":"S/."}</span>
         </div>
+        {/* Atajos rápidos por ítem */}
+        {d.mode === "pct" ? (
+         <div style={{display:"flex", gap:4, flexWrap:"wrap", marginTop:6}}>
+          {[5,10,15,20,25,50].map(p => (
+           <button key={p} style={{...s.btn((d.value||0)===p?"warn":"secondary"), padding:"2px 8px", fontSize:10}}
+            onClick={()=>setItemDisc(item.cartId,"value",(d.value||0)===p?0:p)}>{p}%</button>
+          ))}
+         </div>
+        ) : (
+         <div style={{display:"flex", gap:4, flexWrap:"wrap", marginTop:6}}>
+          {[1,2,3,5,10].map(v => (
+           <button key={v} style={{...s.btn((d.value||0)===v?"warn":"secondary"), padding:"2px 8px", fontSize:10}}
+            onClick={()=>setItemDisc(item.cartId,"value",(d.value||0)===v?0:v)}>S/.{v}</button>
+          ))}
+         </div>
+        )}
        </div>
       );
      })}
+
      {hasItemDiscounts && (
       <div style={{display:"flex", justifyContent:"space-between", padding:"8px 12px", background:"#0d1a0d", borderRadius:8, border:"1px solid #27ae6033", marginTop:4}}>
        <span style={{color:"#27ae60", fontWeight:800, fontSize:13}}>Ahorro por ítems:</span>
