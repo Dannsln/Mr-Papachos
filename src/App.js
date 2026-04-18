@@ -338,7 +338,7 @@ const ROLE_INFO = {
 // ═══════════════════════════════════════════════════════════════════
 const DEV_SECRET = "dev2024papachos"; // Código secreto del desarrollador
 
-function DevPanel({ onClose, s, Y, isMobile }) {
+function DevPanel({ onClose, onDevLogin, s, Y, isMobile }) {
  const locales = [
   { id:"amazonas", nombre:"Amazonas" },
   { id:"sanmartin", nombre:"San Martín" },
@@ -350,6 +350,7 @@ function DevPanel({ onClose, s, Y, isMobile }) {
  const [editingUser, setEditingUser] = useState(null);
  const [newPin, setNewPin] = useState("");
  const [localToast, setLocalToast] = useState(null);
+ const [activeTab, setActiveTab] = useState("acceso"); // "acceso" | "staff"
 
  const toast_ = (msg, color="#27ae60") => { setLocalToast({msg,color}); setTimeout(()=>setLocalToast(null),2500); };
 
@@ -386,6 +387,17 @@ function DevPanel({ onClose, s, Y, isMobile }) {
   toast_("🗑 Usuario eliminado", "#e74c3c");
  };
 
+ const handleDevEnter = (user, role) => {
+  const locName = locales.find(l=>l.id===selectedLocal)?.nombre || selectedLocal;
+  onDevLogin({
+   id: role, label: ROLE_INFO[role]?.label || role,
+   name: `[DEV] ${user.name}`, userId: user.id,
+   activeRole: role, roles: user.roles,
+   localId: selectedLocal, localName: locName,
+   _isDev: true,
+  });
+ };
+
  return (
   <div style={{background:"#0a0a0a", minHeight:"100vh", padding:20, color:"#eee", fontFamily:"'Nunito',sans-serif"}}>
    <div style={{maxWidth:700, margin:"0 auto"}}>
@@ -399,54 +411,89 @@ function DevPanel({ onClose, s, Y, isMobile }) {
 
     {localToast && <div style={{background:localToast.color,color:"#fff",padding:"8px 14px",borderRadius:8,fontSize:13,fontWeight:800,marginBottom:12}}>{localToast.msg}</div>}
 
+    {/* Tabs */}
+    <div style={{display:"flex", gap:6, marginBottom:16}}>
+     {[["acceso","🚀 Acceso rápido"],["staff","👥 Gestión de staff"]].map(([id,label])=>(
+      <button key={id} style={{...s.btn(activeTab===id?"primary":"secondary"), padding:"8px 18px"}}
+       onClick={()=>setActiveTab(id)}>{label}</button>
+     ))}
+    </div>
+
+    {/* Local selector */}
     <div style={{display:"flex", gap:8, marginBottom:16, flexWrap:"wrap"}}>
      {locales.map(l => (
-      <button key={l.id} style={{...s.btn(selectedLocal===l.id?"primary":"secondary"), padding:"8px 20px"}}
+      <button key={l.id} style={{...s.btn(selectedLocal===l.id?"warn":"secondary"), padding:"8px 20px"}}
        onClick={() => setSelectedLocal(l.id)}>{l.nombre}</button>
      ))}
     </div>
 
-    {loading ? <div style={{textAlign:"center", color:"#555", padding:40}}>Cargando...</div> :
-     <div>
-      <div style={{fontSize:12, color:"#555", marginBottom:10, textTransform:"uppercase", letterSpacing:1}}>
-       {staff.length} usuarios en {locales.find(l=>l.id===selectedLocal)?.nombre}
-      </div>
-      {staff.map(user => (
-       <div key={user.id} style={{background:"#1a1a1a", borderRadius:12, padding:"14px 16px", marginBottom:8, border:"1px solid #2a2a2a"}}>
-        <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: editingUser===user.id ? 12 : 0}}>
-         <div>
-          <div style={{fontWeight:900, fontSize:15}}>{user.name}</div>
-          <div style={{fontSize:11, color:"#555", marginTop:2}}>
-           {user.roles.map(r=>`${ROLE_INFO[r]?.label||r}`).join(" · ")}
-           {" · "}<span style={{color:user.pinHash?"#27ae60":"#e74c3c"}}>{user.pinHash?"PIN activo ✓":"Sin PIN"}</span>
-          </div>
-         </div>
-         <div style={{display:"flex", gap:6}}>
-          <button style={{...s.btn("warn"), padding:"5px 10px", fontSize:11}}
-           onClick={() => handleResetPin(user.id)}>Reset PIN</button>
-          <button style={{...s.btn("blue"), padding:"5px 10px", fontSize:11}}
-           onClick={() => setEditingUser(editingUser===user.id ? null : user.id)}>
-           {editingUser===user.id ? "Cancelar" : "Set PIN"}
-          </button>
-          {!user.roles.includes("admin") && (
-           <button style={{...s.btn("danger"), padding:"5px 8px", fontSize:11}}
-            onClick={() => handleDeleteUser(user.id)}>🗑</button>
-          )}
+    {loading ? <div style={{textAlign:"center", color:"#555", padding:40}}>Cargando...</div> : (
+     activeTab === "acceso" ? (
+      // ── ACCESO RÁPIDO ──
+      <div>
+       <div style={{fontSize:12, color:"#555", marginBottom:12, textTransform:"uppercase", letterSpacing:1}}>
+        Entrar como — sin PIN requerido
+       </div>
+       {staff.map(user => (
+        <div key={user.id} style={{background:"#1a1a1a", borderRadius:12, padding:"12px 16px", marginBottom:8, border:"1px solid #2a2a2a"}}>
+         <div style={{fontWeight:900, fontSize:14, marginBottom:8}}>{user.name}</div>
+         <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
+          {user.roles.map(role => {
+           const info = ROLE_INFO[role];
+           return (
+            <button key={role} style={{...s.btn("secondary"), padding:"6px 14px", fontSize:12, border:`1px solid ${info.color}44`, color:info.color, fontWeight:800}}
+             onClick={() => handleDevEnter(user, role)}>
+             → {info.label}
+            </button>
+           );
+          })}
          </div>
         </div>
-        {editingUser === user.id && (
-         <div style={{display:"flex", gap:8, alignItems:"center", marginTop:8}}>
-          <input style={{...s.input, flex:1}} type="password" placeholder="Nuevo PIN (4-6 dígitos)"
-           value={newPin} onChange={e=>setNewPin(e.target.value.replace(/\D/g,"").slice(0,6))}
-           onKeyDown={e=>e.key==="Enter"&&handleForcePin(user.id)} />
-          <button style={{...s.btn("success"), padding:"8px 14px"}} onClick={()=>handleForcePin(user.id)}
-           disabled={newPin.length<4}>✓ Guardar</button>
-         </div>
-        )}
+       ))}
+      </div>
+     ) : (
+      // ── GESTIÓN DE STAFF ──
+      <div>
+       <div style={{fontSize:12, color:"#555", marginBottom:10, textTransform:"uppercase", letterSpacing:1}}>
+        {staff.length} usuarios en {locales.find(l=>l.id===selectedLocal)?.nombre}
        </div>
-      ))}
-     </div>
-    }
+       {staff.map(user => (
+        <div key={user.id} style={{background:"#1a1a1a", borderRadius:12, padding:"14px 16px", marginBottom:8, border:"1px solid #2a2a2a"}}>
+         <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: editingUser===user.id ? 12 : 0}}>
+          <div>
+           <div style={{fontWeight:900, fontSize:15}}>{user.name}</div>
+           <div style={{fontSize:11, color:"#555", marginTop:2}}>
+            {user.roles.map(r=>`${ROLE_INFO[r]?.label||r}`).join(" · ")}
+            {" · "}<span style={{color:user.pinHash?"#27ae60":"#e74c3c"}}>{user.pinHash?"PIN activo ✓":"Sin PIN"}</span>
+           </div>
+          </div>
+          <div style={{display:"flex", gap:6}}>
+           <button style={{...s.btn("warn"), padding:"5px 10px", fontSize:11}}
+            onClick={() => handleResetPin(user.id)}>Reset PIN</button>
+           <button style={{...s.btn("blue"), padding:"5px 10px", fontSize:11}}
+            onClick={() => setEditingUser(editingUser===user.id ? null : user.id)}>
+            {editingUser===user.id ? "Cancelar" : "Set PIN"}
+           </button>
+           {!user.roles.includes("admin") && (
+            <button style={{...s.btn("danger"), padding:"5px 8px", fontSize:11}}
+             onClick={() => handleDeleteUser(user.id)}>🗑</button>
+           )}
+          </div>
+         </div>
+         {editingUser === user.id && (
+          <div style={{display:"flex", gap:8, alignItems:"center", marginTop:8}}>
+           <input style={{...s.input, flex:1}} type="password" placeholder="Nuevo PIN (4-6 dígitos)"
+            value={newPin} onChange={e=>setNewPin(e.target.value.replace(/\D/g,"").slice(0,6))}
+            onKeyDown={e=>e.key==="Enter"&&handleForcePin(user.id)} />
+           <button style={{...s.btn("success"), padding:"8px 14px"}} onClick={()=>handleForcePin(user.id)}
+            disabled={newPin.length<4}>✓ Guardar</button>
+          </div>
+         )}
+        </div>
+       ))}
+      </div>
+     )
+    )}
    </div>
   </div>
  );
@@ -558,7 +605,7 @@ function LoginScreen({ onLogin, s, Y, isMobile }) {
   if (next >= 7) { setShowDev(true); setDevClickCount(0); }
  };
 
- if (showDev) return <DevPanel onClose={() => setShowDev(false)} s={s} Y={Y} isMobile={isMobile} />;
+ if (showDev) return <DevPanel onClose={() => setShowDev(false)} onDevLogin={onLogin} s={s} Y={Y} isMobile={isMobile} />;
 
  return (
   <div style={{background:"#111",minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:"#fff",padding:20}}>
@@ -1782,11 +1829,38 @@ function printOrder(order) {
 // ═══════════════════════════════════════════════════════════════════
 // COMPONENTES SECUNDARIOS
 // ═══════════════════════════════════════════════════════════════════
-function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, setCobrarTarget, isMobile, s, Y, caja, abrirCaja, cerrarCaja, currentUser, getPay }) {
+function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, setCobrarTarget, isMobile, s, Y, caja, abrirCaja, cerrarCaja, currentUser, getPay, soundConfig, setSoundConfig }) {
  const isAdmin = currentUser?.id === "admin";
  const [fondoInput, setFondoInput] = useState("");
  const [showCierreModal, setShowCierreModal] = useState(false);
  const [cierreData, setCierreData] = useState(null);
+ const [showSoundPanel, setShowSoundPanel] = useState(false);
+
+ const testSound = () => {
+  try {
+   const cfg = soundConfig || {};
+   const vol = cfg.volume !== undefined ? cfg.volume : 0.75;
+   const freq = cfg.freq !== undefined ? cfg.freq : 880;
+   const beeps = cfg.beeps !== undefined ? cfg.beeps : 3;
+   const type = cfg.type || "square";
+   const ctx = new (window.AudioContext || window.webkitAudioContext)();
+   const comp = ctx.createDynamicsCompressor();
+   comp.threshold.value = -10; comp.ratio.value = 4;
+   comp.connect(ctx.destination);
+   Array.from({length: beeps}).forEach((_, b) => {
+    const offset = b * 0.28;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(comp);
+    osc.frequency.value = freq; osc.type = type;
+    gain.gain.setValueAtTime(0, ctx.currentTime + offset);
+    gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + offset + 0.02);
+    gain.gain.setValueAtTime(vol, ctx.currentTime + offset + 0.14);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + offset + 0.22);
+    osc.start(ctx.currentTime + offset); osc.stop(ctx.currentTime + offset + 0.26);
+   });
+  } catch(e) {}
+ };
 
  // Usar paidAt para agrupar el día (si pagó hoy, cuenta hoy aunque creado ayer)
  const today = new Date().toDateString();
@@ -1896,13 +1970,60 @@ const totalEnCaja = (caja?.fondoInicial||0) + cashRev;
    </div>
   )}
 
+  {/* ── PANEL SONIDO COCINA (admin) ── */}
+  {isAdmin && (
+   <div style={{...s.card, marginBottom:16, border:"1px solid #333"}}>
+    <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+     <div style={{fontSize:13, fontWeight:800, color:"#aaa"}}>🔔 Sonido de Cocina</div>
+     <div style={{display:"flex", gap:6}}>
+      <button style={{...s.btn("secondary"), padding:"4px 10px", fontSize:11}} onClick={testSound}>▶ Probar</button>
+      <button style={{...s.btn(showSoundPanel?"warn":"secondary"), padding:"4px 10px", fontSize:11}} onClick={()=>setShowSoundPanel(v=>!v)}>⚙ Config</button>
+     </div>
+    </div>
+    {showSoundPanel && (
+     <div style={{marginTop:12, display:"flex", flexDirection:"column", gap:10}}>
+      <div>
+       <div style={{fontSize:11, color:"#666", marginBottom:4}}>Volumen: <b style={{color:Y}}>{Math.round((soundConfig.volume||0.75)*100)}%</b></div>
+       <input type="range" min="0.1" max="1" step="0.05" value={soundConfig.volume||0.75}
+        style={{width:"100%", accentColor:Y}}
+        onChange={e=>setSoundConfig(c=>({...c,volume:parseFloat(e.target.value)}))}/>
+      </div>
+      <div>
+       <div style={{fontSize:11, color:"#666", marginBottom:4}}>Frecuencia: <b style={{color:Y}}>{soundConfig.freq||880} Hz</b></div>
+       <input type="range" min="400" max="1600" step="40" value={soundConfig.freq||880}
+        style={{width:"100%", accentColor:Y}}
+        onChange={e=>setSoundConfig(c=>({...c,freq:parseInt(e.target.value)}))}/>
+      </div>
+      <div>
+       <div style={{fontSize:11, color:"#666", marginBottom:4}}>Pitidos: <b style={{color:Y}}>{soundConfig.beeps||3}</b></div>
+       <div style={{display:"flex", gap:6}}>
+        {[1,2,3,4,5].map(n=>(
+         <button key={n} style={{...s.btn((soundConfig.beeps||3)===n?"primary":"secondary"), flex:1, padding:"6px 0"}}
+          onClick={()=>setSoundConfig(c=>({...c,beeps:n}))}>{n}</button>
+        ))}
+       </div>
+      </div>
+      <div>
+       <div style={{fontSize:11, color:"#666", marginBottom:4}}>Tipo de onda:</div>
+       <div style={{display:"flex", gap:6}}>
+        {[["square","Fuerte"],["sine","Suave"],["sawtooth","Agudo"],["triangle","Redondo"]].map(([t,l])=>(
+         <button key={t} style={{...s.btn((soundConfig.type||"square")===t?"primary":"secondary"), flex:1, padding:"5px 0", fontSize:10}}
+          onClick={()=>setSoundConfig(c=>({...c,type:t}))}>{l}</button>
+        ))}
+       </div>
+      </div>
+     </div>
+    )}
+   </div>
+  )}
+
   {/* ── STATS ── */}
   <div style={s.title}>Resumen del Día</div>
   <div style={s.grid(isMobile ? 130 : 140)}>
    <div style={s.statCard}><div style={s.statNum}>{orders.filter(o => o.kitchenStatus !== "listo" && !o.anulado).length}</div><div style={s.statLbl}>En Cocina</div></div>
    <div style={s.statCard}><div style={s.statNum}>{allPaidToday.length}</div><div style={s.statLbl}>Pagados hoy</div></div>
    <div style={{...s.statCard, border:`1px solid ${Y}55`}}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(todayRev)}</div><div style={s.statLbl}>Recaudado hoy</div></div>
-   <div style={s.statCard}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(totalRev)}</div><div style={s.statLbl}>Total</div></div>
+   <div style={s.statCard}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(totalRev)}</div><div style={s.statLbl}>Total histórico</div></div>
   </div>
   {allPaidToday.length > 0 && (
    <div style={{...s.card, marginTop:8}}>
@@ -2465,6 +2586,7 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
   <span style={{color:"#888", marginRight:4}}>{item.qty}×</span>
   {item.name}
   {item.isLlevar && <span style={{marginLeft:6,background:"#154360",color:"#3498db",borderRadius:4,padding:"1px 5px",fontSize:9,fontWeight:700}}>Llevar</span>}
+  {item._isAdicion && <span style={{marginLeft:6,background:"#2d1a4a",color:"#c39bd3",borderRadius:4,padding:"1px 5px",fontSize:9,fontWeight:900}}>+ADICIONAL</span>}
  </span>
  <span style={{color:"#FFD700", fontWeight:900, fontSize:12, marginLeft:8, whiteSpace:"nowrap"}}>{fmt(item.price*item.qty)}</span>
  </div>
@@ -2555,7 +2677,7 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  );
 }
 
-function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenListo, isMobile, isDesktop, s, Y }) {
+function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenListo, isMobile, isDesktop, s, Y, soundConfig }) {
  const sorted = [...orders].sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
  
  // ── Sonido de nuevo pedido ──────────────────────────────────────
@@ -2565,19 +2687,29 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
   const hasNew = [...currentIds].some(id => !prevOrderIds.current.has(id));
   if (hasNew) {
    try {
+    const cfg = soundConfig || {};
+    const vol   = cfg.volume  !== undefined ? cfg.volume  : 0.75;
+    const freq  = cfg.freq    !== undefined ? cfg.freq    : 880;
+    const beeps = cfg.beeps   !== undefined ? cfg.beeps   : 3;
+    const type  = cfg.type    || "square"; // square = más penetrante
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    // Tres pitidos cortos y amigables
-    [0, 0.22, 0.44].forEach(offset => {
+    Array.from({length: beeps}).forEach((_, b) => {
+     const offset = b * 0.28;
      const osc = ctx.createOscillator();
      const gain = ctx.createGain();
-     osc.connect(gain); gain.connect(ctx.destination);
-     osc.frequency.value = 880;
-     osc.type = "sine";
+     // Compresor para mayor volumen sin distorsión
+     const comp = ctx.createDynamicsCompressor();
+     comp.threshold.value = -10;
+     comp.ratio.value = 4;
+     osc.connect(gain); gain.connect(comp); comp.connect(ctx.destination);
+     osc.frequency.value = freq;
+     osc.type = type;
      gain.gain.setValueAtTime(0, ctx.currentTime + offset);
-     gain.gain.linearRampToValueAtTime(0.35, ctx.currentTime + offset + 0.03);
-     gain.gain.linearRampToValueAtTime(0, ctx.currentTime + offset + 0.16);
+     gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + offset + 0.02);
+     gain.gain.setValueAtTime(vol, ctx.currentTime + offset + 0.14);
+     gain.gain.linearRampToValueAtTime(0, ctx.currentTime + offset + 0.22);
      osc.start(ctx.currentTime + offset);
-     osc.stop(ctx.currentTime + offset + 0.2);
+     osc.stop(ctx.currentTime + offset + 0.26);
     });
    } catch(e) { /* audio no disponible */ }
   }
@@ -2646,7 +2778,7 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
  <div key={i} onClick={() => toggleCheck(order, i, item.qty)} style={{display:"flex", alignItems:"center", gap:10, padding:"9px 10px", marginBottom:5, borderRadius:8, background:isDone?"#0a2a0a":"#252525", border:`1px solid ${isDone?"#27ae6055":"#333"}`, cursor:"pointer", transition:"all .2s", opacity:isDone?0.6:1}}>
  <div style={{minWidth:26, height:26, borderRadius:6, border:`2px solid ${isDone?"#27ae60":"#555"}`, background:isDone?"#27ae60":"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:13, color:isDone?"#fff":"#aaa", fontWeight:"bold"}}>{item.qty > 1 ? `${doneQty}/${item.qty}` : (isDone ? "✓" : "")}</div>
  <div style={{flex:1}}>
- <span style={{fontWeight:800, fontSize:isMobile?13:15, textDecoration:isDone?"line-through":"none", color:isDone?"#555":"#eee"}}>{item.qty>1&&<span style={{color:Y, marginRight:4}}>{item.qty}×</span>}{item.name} {item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:10}}> Llevar</span>}</span>
+ <span style={{fontWeight:800, fontSize:isMobile?13:15, textDecoration:isDone?"line-through":"none", color:isDone?"#555":"#eee"}}>{item.qty>1&&<span style={{color:Y, marginRight:4}}>{item.qty}×</span>}{item.name} {item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:10}}> Llevar</span>}{item._isAdicion && <span style={{marginLeft:6, background:"#2d1a4a", color:"#c39bd3", borderRadius:4, padding:"1px 6px", fontSize:10, fontWeight:900}}>+ ADICIONAL</span>}</span>
  {item.salsas?.length > 0 && <div style={{color:Y, fontSize:11, fontStyle:"italic", marginTop:2}}> {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>}
  {item._comboNote && <div style={{color:"#3498db", fontSize:11, fontStyle:"italic", marginTop:2}}>🎯 {item._comboNote}</div>}
  {validNotes.map((n, idx) => <div key={idx} style={{fontSize:11, color:"#aaa", marginTop:3, fontStyle:"italic", whiteSpace:"pre-wrap"}}> Plato {idx+1}: {n}</div>)}
@@ -2787,41 +2919,65 @@ function SolicitarCorreccionModal({ order, onSubmit, onClose, s, Y, fmt, getPay 
 }
 
 function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder, isAdmin, currentUser, crearSolicitud, updateHistoryDoc }) {
- const [expandedDays, setExpandedDays] = useState([new Date().toLocaleDateString("es-PE")]);
+ const [expandedSessions, setExpandedSessions] = useState(["__today__"]);
  const [histDate, setHistDate] = useState("");
- const [editCobroModal, setEditCobroModal] = useState(null);   // { order }
- const [correccionModal, setCorreccionModal] = useState(null); // { order }
+ const [editCobroModal, setEditCobroModal] = useState(null);
+ const [correccionModal, setCorreccionModal] = useState(null);
 
- const historyByDay = {};
+ // ── Agrupar por sesión de caja (_cajaSessionId) ──────────────────
+ // Pedidos sin sessionId (legacy) se agrupan por fecha de creación
+ const sessionMap = {};
+
  history.forEach(o => {
-  // Agrupar por fecha de CREACIÓN del pedido (no de pago)
-  // Un pedido creado a las 11:59 y cobrado a las 00:05 sigue siendo del día anterior
-  const dateObj = new Date(o.createdAt);
-  const dateStr = dateObj.toLocaleDateString("es-PE");
-  const sortKey = dateObj.getFullYear() + "-" + String(dateObj.getMonth()+1).padStart(2,'0') + "-" + String(dateObj.getDate()).padStart(2,'0');
-  if (!historyByDay[dateStr]) historyByDay[dateStr] = { date:dateStr, sortKey, orders:[], total:0, ef:0, ya:0, ta:0, cancelados:0 };
-  historyByDay[dateStr].orders.push(o);
+  const sid = o._cajaSessionId || ("date_" + (() => {
+   const d = new Date(o.createdAt);
+   return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,'0') + "-" + String(d.getDate()).padStart(2,'0');
+  })());
+
+  if (!sessionMap[sid]) {
+   const isSession = o._cajaSessionId;
+   // Use openedAt stored in order, or fall back to createdAt of first order
+   const refDate = new Date(o._cajaOpenedAt || o.createdAt);
+   const dateStr = refDate.toLocaleDateString("es-PE");
+   const sortKey = refDate.getFullYear() + "-" + String(refDate.getMonth()+1).padStart(2,'0') + "-" + String(refDate.getDate()).padStart(2,'0');
+   sessionMap[sid] = {
+    sid,
+    isSession,
+    date: dateStr,
+    sortKey,
+    openedAt: o._cajaOpenedAt || o.createdAt,
+    orders: [], total: 0, ef: 0, ya: 0, ta: 0, cancelados: 0
+   };
+  }
+  sessionMap[sid].orders.push(o);
   if (o.status === "pagado") {
-   historyByDay[dateStr].total += o.total;
-   historyByDay[dateStr].ef += getPay(o,"efectivo");
-   historyByDay[dateStr].ya += getPay(o,"yape");
-   historyByDay[dateStr].ta += getPay(o,"tarjeta");
-  } else if (o.status === "cancelado") { historyByDay[dateStr].cancelados += 1; }
+   sessionMap[sid].total += o.total;
+   sessionMap[sid].ef += getPay(o,"efectivo");
+   sessionMap[sid].ya += getPay(o,"yape");
+   sessionMap[sid].ta += getPay(o,"tarjeta");
+  } else if (o.status === "cancelado") { sessionMap[sid].cancelados += 1; }
  });
 
- // Dentro de cada día: el primero en pagarse va AL FONDO (más reciente arriba)
- Object.values(historyByDay).forEach(d => {
+ // Sort within each session: most recent first
+ Object.values(sessionMap).forEach(d => {
   d.orders.sort((a,b) => {
    const ta = new Date(a.paidAt || a.cancelledAt || a.createdAt).getTime();
    const tb = new Date(b.paidAt || b.cancelledAt || b.createdAt).getTime();
-   return tb - ta; // más reciente primero
+   return tb - ta;
   });
+  // Update date label from earliest order if openedAt not stamped
+  if (d.orders.length && !d.openedAt) {
+   const earliest = [...d.orders].sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt))[0];
+   const ref = new Date(earliest.createdAt);
+   d.date = ref.toLocaleDateString("es-PE");
+   d.sortKey = ref.getFullYear() + "-" + String(ref.getMonth()+1).padStart(2,'0') + "-" + String(ref.getDate()).padStart(2,'0');
+  }
  });
 
- let daysList = Object.values(historyByDay).sort((a,b) => b.sortKey.localeCompare(a.sortKey));
- if (histDate) daysList = daysList.filter(d => d.sortKey === histDate);
+ let sessionList = Object.values(sessionMap).sort((a,b) => b.sortKey.localeCompare(a.sortKey) || b.sid.localeCompare(a.sid));
+ if (histDate) sessionList = sessionList.filter(d => d.sortKey === histDate);
 
- const toggleDay = (dateStr) => setExpandedDays(prev => prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]);
+ const toggleSession = (sid) => setExpandedSessions(prev => prev.includes(sid) ? prev.filter(s => s !== sid) : [...prev, sid]);
 
  return (
  <div>
@@ -2879,40 +3035,37 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder, 
  </div>
  </div>
 
- {daysList.length === 0 ? (
+ {sessionList.length === 0 ? (
  <div style={{textAlign:"center", padding:60, color:"#444", background:"#1a1a1a", borderRadius:12}}>
  <div style={{fontSize:48, marginBottom:10}}></div>
  <div style={{fontSize:16, fontWeight:700}}>No hay registros para mostrar</div>
  </div>
  ) : (
- daysList.map(d => {
- const isExpanded = expandedDays.includes(d.date); 
+ sessionList.map(d => {
+ const isExpanded = expandedSessions.includes(d.sid);
+ // Label: date + "Sesión de caja" if session-tagged
+ const sessionLabel = d.isSession
+  ? `${d.date} · Sesión ${new Date(d.openedAt).toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})}`
+  : d.date;
  return (
- <div key={d.date} style={{background:"#1c1c1c", borderRadius:12, marginBottom:16, border:"1px solid #2a2a2a", overflow:"hidden", boxShadow:"0 4px 6px rgba(0,0,0,0.3)"}}>
- 
- {/* CABECERA DEL ACORDEÓN (Click para mostrar/ocultar) */}
+ <div key={d.sid} style={{background:"#1c1c1c", borderRadius:12, marginBottom:16, border:"1px solid #2a2a2a", overflow:"hidden", boxShadow:"0 4px 6px rgba(0,0,0,0.3)"}}>
  <div 
- style={{
- padding:"16px 20px", display:"flex", justifyContent:"space-between", alignItems:"center", 
- cursor:"pointer", background: isExpanded ? `linear-gradient(90deg, #1f1a00 0%, #1c1c1c 100%)` : "#1c1c1c", 
- borderBottom: isExpanded ? `2px solid ${Y}55` : "none", transition:"all 0.2s"
- }} 
- onClick={() => toggleDay(d.date)}
+ style={{padding:"16px 20px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", background: isExpanded ? `linear-gradient(90deg, #1f1a00 0%, #1c1c1c 100%)` : "#1c1c1c", borderBottom: isExpanded ? `2px solid ${Y}55` : "none", transition:"all 0.2s"}} 
+ onClick={() => toggleSession(d.sid)}
  >
  <div style={{display:"flex", alignItems:"center", gap:12}}>
- <div style={{fontSize:24}}></div>
+ <div style={{fontSize:24}}>{d.isSession ? "🗂" : ""}</div>
  <div>
- <div style={{fontWeight:900, fontSize:18, color: isExpanded ? Y : "#eee", letterSpacing:0.5}}>{d.date}</div>
+ <div style={{fontWeight:900, fontSize:18, color: isExpanded ? Y : "#eee", letterSpacing:0.5}}>{sessionLabel}</div>
  <div style={{fontSize:12, color:"#888", marginTop:2}}>
- {d.orders.filter(x => x.status==="pagado").length} pedidos cobrados {d.cancelados > 0 && <span style={{color:"#e74c3c"}}> • {d.cancelados} anulados</span>}
+  {d.orders.filter(x => x.status==="pagado").length} pedidos cobrados {d.cancelados > 0 && <span style={{color:"#e74c3c"}}> • {d.cancelados} anulados</span>}
+  {d.isSession && <span style={{color:"#555", marginLeft:6}}>· Sesión de caja</span>}
  </div>
  </div>
  </div>
  <div style={{textAlign:"right", display:"flex", alignItems:"center", gap:16}}>
  <div style={{fontWeight:900, fontSize:22, color:"#27ae60"}}>{fmt(d.total)}</div>
- <div style={{background:"#2a2a2a", borderRadius:"50%", width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", color:Y, transition:"transform 0.3s", transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)"}}>
- ▼
- </div>
+ <div style={{background:"#2a2a2a", borderRadius:"50%", width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", color:Y, transition:"transform 0.3s", transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)"}}>▼</div>
  </div>
  </div>
 
@@ -3593,7 +3746,8 @@ export default function App() {
  const [splitTarget, setSplitTarget] = useState(null); 
  const [mergeModal, setMergeModal] = useState(null);
  const [mergeName, setMergeName] = useState("");
- const [mesasArr, setMesasArr] = useState([]); 
+ const [mesasArr, setMesasArr] = useState([]);
+ const [soundConfig, setSoundConfig] = useState({ volume:0.75, freq:880, beeps:3, type:"square" });
 
  useEffect(() => {
  if (!currentUser) return;
@@ -3656,13 +3810,18 @@ export default function App() {
   } catch(e) { console.error("updateHistoryDoc error:", e); }
  };
 
+ const cajaRef2 = useRef(null); // mirror of caja state for sync access in async closures
+ useEffect(() => { cajaRef2.current = caja; }, [caja]);
+
  const saveCaja = async (data) => {
   await setDoc(FS(currentUser.localId).cajaRef(), data);
  };
 
  const abrirCaja = async (fondoInicial) => {
+  const sessionId = `caja_${Date.now()}`;
   const data = {
    isOpen: true,
+   sessionId,
    openedAt: new Date().toISOString(),
    openedBy: currentUser.name,
    fondoInicial: parseFloat(fondoInicial) || 0,
@@ -3675,26 +3834,32 @@ export default function App() {
 
  const cerrarCaja = async () => {
   if (!caja?.isOpen) return;
-  const today = new Date().toDateString();
-  // Usar paidAt para contabilizar correctamente cobros de madrugada
-  const pagadosHoy = history.filter(o => o.status === "pagado" && new Date(o.paidAt || o.createdAt).toDateString() === today);
-  // También sumar pedidos aún activos ya cobrados (no archivados)
-  const activosCobradosHoy = ordersRef.current.filter(o => o.isPaid && new Date(o.paidAt || o.createdAt).toDateString() === today);
-  const todosHoy = [...pagadosHoy, ...activosCobradosHoy];
-  const efectivo  = todosHoy.reduce((s,o) => s + getPay(o,"efectivo"), 0);
-  const yape      = todosHoy.reduce((s,o) => s + getPay(o,"yape"), 0);
-  const tarjeta   = todosHoy.reduce((s,o) => s + getPay(o,"tarjeta"), 0);
-  const total     = todosHoy.reduce((s,o) => s + o.total, 0);
+  const sessionId = caja.sessionId;
+  // Todos los pedidos de esta sesión de caja (con _cajaSessionId)
+  const pagadosSesion = sessionId
+   ? history.filter(o => o.status === "pagado" && o._cajaSessionId === sessionId)
+   : history.filter(o => o.status === "pagado" && new Date(o.paidAt || o.createdAt).toDateString() === new Date(caja.openedAt).toDateString());
+  const activosSesion = sessionId
+   ? ordersRef.current.filter(o => o.isPaid && o._cajaSessionId === sessionId)
+   : ordersRef.current.filter(o => o.isPaid && new Date(o.paidAt || o.createdAt).toDateString() === new Date(caja.openedAt).toDateString());
+  const todosSesion = [...pagadosSesion, ...activosSesion];
+  const efectivo  = todosSesion.reduce((s,o) => s + getPay(o,"efectivo"), 0);
+  const yape      = todosSesion.reduce((s,o) => s + getPay(o,"yape"), 0);
+  const tarjeta   = todosSesion.reduce((s,o) => s + getPay(o,"tarjeta"), 0);
+  const total     = todosSesion.reduce((s,o) => s + o.total, 0);
   const corte = {
    cierreAt: new Date().toISOString(),
    cerradoBy: currentUser.name,
    fondoInicial: caja.fondoInicial,
+   openedAt: caja.openedAt,
+   sessionId,
    efectivo, yape, tarjeta, total,
    totalEnCaja: caja.fondoInicial + efectivo,
-   pedidosCobrados: todosHoy.length,
+   pedidosCobrados: todosSesion.length,
   };
   const data = {
    isOpen: false,
+   sessionId,
    openedAt: caja.openedAt,
    openedBy: caja.openedBy,
    fondoInicial: caja.fondoInicial,
@@ -3863,7 +4028,7 @@ export default function App() {
  const isLlevarDraft = mergeModal.newDraftData.orderType === "llevar";
  const newItems = finalItems.map(i => {
  let nameTag = mergeName.trim() ? `[Llevar: ${mergeName.trim()}]` : "";
- return { ...i, ...(isLlevarDraft ? { isLlevar: true } : {}), individualNotes: isLlevarDraft && nameTag ? i.individualNotes.map(n => n ? `${nameTag} ${n}` : nameTag) : i.individualNotes }
+ return { ...i, _isAdicion: true, ...(isLlevarDraft ? { isLlevar: true } : {}), individualNotes: isLlevarDraft && nameTag ? i.individualNotes.map(n => n ? `${nameTag} ${n}` : nameTag) : i.individualNotes }
  });
  const mergedItems = [...existing.items];
  newItems.forEach(newItem => {
@@ -3874,7 +4039,7 @@ export default function App() {
  else { mergedItems.push(newItem); }
  }
  });
- const updated = { ...existing, items: mergedItems, total: mergedItems.reduce((s, i) => s + i.price * i.qty, 0), notes: [existing.notes, mergeModal.newDraftData.notes].filter(Boolean).join(" | "), taperCost: 0, kitchenStatus: 'pendiente' };
+ const updated = { ...existing, items: mergedItems, total: mergedItems.reduce((s, i) => s + i.price * i.qty, 0), notes: [existing.notes, mergeModal.newDraftData.notes].filter(Boolean).join(" | "), taperCost: 0, kitchenStatus: 'pendiente', _cajaSessionId: existing._cajaSessionId || cajaRef2.current?.sessionId || null };
  const mergedList = ordersRef.current.map(o => o.id === existing.id ? updated : o);
  setOrders(mergedList);
  await saveOrders(mergedList);
@@ -3885,9 +4050,9 @@ export default function App() {
  const finalDraft = { ...draft, items: finalItems, taperCost: 0 }; 
 
  if (draft.payTiming === "ahora") {
- setCobrarTarget({ type: 'new', data: { id:Date.now().toString(), ...finalDraft, total, createdAt:new Date().toISOString() } });
+ setCobrarTarget({ type: 'new', data: { id:Date.now().toString(), ...finalDraft, total, createdAt:new Date().toISOString(), _cajaSessionId: cajaRef2.current?.sessionId || null } });
  } else {
- const order = { id:Date.now().toString(), ...finalDraft, total, isPaid: false, status:"pendiente", kitchenStatus:"pendiente", createdAt:new Date().toISOString() };
+ const order = { id:Date.now().toString(), ...finalDraft, total, isPaid: false, status:"pendiente", kitchenStatus:"pendiente", createdAt:new Date().toISOString(), _cajaSessionId: cajaRef2.current?.sessionId || null };
  const newOrders = [...ordersRef.current, order];
  setOrders(newOrders); await saveOrders(newOrders);
  setDraft(newDraft()); showToast(` Pedido enviado a cocina`); setTab("pedidos");
@@ -3937,7 +4102,9 @@ export default function App() {
  paidAt: new Date().toISOString(),
  total: totalCobrado,
  items: allItems,
- ...descuentoData
+ ...descuentoData,
+ _cajaSessionId: originalOrder._cajaSessionId || cajaRef2.current?.sessionId || null,
+ _cajaOpenedAt: originalOrder._cajaOpenedAt || cajaRef2.current?.openedAt || null,
  };
  const newOrders = cur.filter(x => x.id !== originalOrder.id);
  setOrders(newOrders);
@@ -3963,6 +4130,8 @@ export default function App() {
  payments, paidAt:new Date().toISOString(),
  ...descuentoData,
  ...(paymentData.descuentoPct > 0 ? { total: paymentData.totalFinal } : {}),
+ _cajaSessionId: target.data._cajaSessionId || cajaRef2.current?.sessionId || null,
+ _cajaOpenedAt: target.data._cajaOpenedAt || cajaRef2.current?.openedAt || null,
  };
  const newOrders = [...cur, order];
  setOrders(newOrders); await saveOrders(newOrders);
@@ -3971,6 +4140,7 @@ export default function App() {
  const o = target.data;
  const hasSplits = o.splitPayments && o.splitPayments.length > 0;
  let finished;
+ const sessionStamp = { _cajaSessionId: o._cajaSessionId || cajaRef2.current?.sessionId || null, _cajaOpenedAt: o._cajaOpenedAt || cajaRef2.current?.openedAt || null };
  if (hasSplits) {
  const thisFinalRecord = { items: o.items, total: paymentData.totalFinal, payments, paidAt: new Date().toISOString() };
  const allSplits = [...o.splitPayments, thisFinalRecord];
@@ -3979,9 +4149,9 @@ export default function App() {
  const totalTa = allSplits.reduce((s, sp) => s + (sp.payments?.tarjeta || 0), 0);
  const totalCobrado = allSplits.reduce((s, sp) => s + (sp.total || 0), 0);
  const allItems = o.originalItems || o.items;
- finished = { ...o, isPaid: true, status: "pagado", payments: { efectivo: totalEf, yape: totalYa, tarjeta: totalTa }, splitPayments: allSplits, paidAt: new Date().toISOString(), total: totalCobrado, items: allItems, ...descuentoData };
+ finished = { ...o, isPaid: true, status: "pagado", payments: { efectivo: totalEf, yape: totalYa, tarjeta: totalTa }, splitPayments: allSplits, paidAt: new Date().toISOString(), total: totalCobrado, items: allItems, ...descuentoData, ...sessionStamp };
  } else {
- finished = { ...o, isPaid:true, status:"pagado", payments, paidAt:new Date().toISOString(), ...descuentoData, ...(paymentData.totalFinal !== undefined ? { total: paymentData.totalFinal } : {}) };
+ finished = { ...o, isPaid:true, status:"pagado", payments, paidAt:new Date().toISOString(), ...descuentoData, ...(paymentData.totalFinal !== undefined ? { total: paymentData.totalFinal } : {}), ...sessionStamp };
  }
  const newOrders = cur.filter(x => x.id !== o.id);
  setOrders(newOrders);
@@ -4184,11 +4354,11 @@ export default function App() {
  {confirmDelete&&<div style={s.overlay} onClick={()=>setConfirmDelete(null)}><div style={{...s.modal,maxWidth:340,textAlign:"center"}} onClick={e=>e.stopPropagation()}><div style={{fontSize:42,marginBottom:12}}></div><div style={{fontWeight:900,fontSize:17,marginBottom:8,color:"#eee"}}>¿Eliminar pedido?</div><div style={{color:"#888",fontSize:13,marginBottom:20}}>Esta acción no se puede deshacer.</div><div style={{display:"flex",gap:10}}><button style={{...s.btn("secondary"),flex:1}} onClick={()=>setConfirmDelete(null)}>Cancelar</button><button style={{...s.btn("danger"),flex:1}} onClick={()=>deleteOrderPermanent(confirmDelete)}> Eliminar</button></div></div></div>}
 
  <div style={s.content}>
- {tab==="dashboard" && <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} caja={caja} abrirCaja={abrirCaja} cerrarCaja={cerrarCaja} currentUser={currentUser} getPay={getPay} />}
+ {tab==="dashboard" && <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} caja={caja} abrirCaja={abrirCaja} cerrarCaja={cerrarCaja} currentUser={currentUser} getPay={getPay} soundConfig={soundConfig} setSoundConfig={setSoundConfig} />}
  {tab==="mesas" && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setAnulacionModal={setAnulacionModal} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} mesasArr={mesasArr} addMesa={addMesa} removeMesa={removeMesa} currentUser={currentUser} />}
  {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} isTablet={isTablet} mesasArr={mesasArr} />}
  {tab==="pedidos" && <PedidosComponent orders={orders} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
- {tab==="cocina" && <CocinaComponent orders={orders} kitchenChecks={kitchenChecks} setKitchenChecks={setKitchenChecks} markKitchenListo={markKitchenListo} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} />}
+ {tab==="cocina" && <CocinaComponent orders={orders} kitchenChecks={kitchenChecks} setKitchenChecks={setKitchenChecks} markKitchenListo={markKitchenListo} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} soundConfig={soundConfig} />}
  {tab==="historial"    && <HistorialComponent history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} />}
  {tab==="inventario"   && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/>}
  {tab==="carta"        && <CartaComponent menu={menu} cartaCatFilter={cartaCatFilter} setCartaCatFilter={setCartaCatFilter} showAdd={showAdd} setShowAdd={setShowAdd} newItem={newItem} setNewItem={setNewItem} addMenuItem={addMenuItem} deleteMenuItem={deleteMenuItem} isMobile={isMobile} s={s} Y={Y} fmt={fmt} ALL_CATS={ALL_CATS} />}
