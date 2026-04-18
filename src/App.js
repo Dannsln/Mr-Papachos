@@ -1306,17 +1306,17 @@ function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y, isAdmin=
 // ═══════════════════════════════════════════════════════════════════
 function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
  const [descPct, setDescPct] = useState(0);
+ const [descSoles, setDescSoles] = useState(0); // descuento directo en soles
+ const [descMode, setDescMode] = useState("pct"); // "pct" | "soles"
  const [descMotivo, setDescMotivo] = useState("");
  const [showDesc, setShowDesc] = useState(false);
- const [itemDiscounts, setItemDiscounts] = useState({}); // cartId -> %
+ const [itemDiscounts, setItemDiscounts] = useState({});
  const [showItemDisc, setShowItemDisc] = useState(false);
 
- // Obtener items a mostrar (split o pedido normal)
  const displayItems = orderContext.splitItems
   ? orderContext.splitItems.filter(i => i.splitQty > 0).map(i => ({...i, qty: i.splitQty}))
   : (orderContext.items || []);
 
- // Subtotal aplicando descuentos por ítem
  const itemsSubtotal = displayItems.reduce((sum, item) => {
   const disc = Number(itemDiscounts[item.cartId] || 0);
   const effectivePrice = item.price * (1 - disc / 100);
@@ -1326,8 +1326,10 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
  const hasItemDiscounts = Object.values(itemDiscounts).some(v => Number(v) > 0);
  const totalItemDiscAmt = Math.round((total - itemsSubtotal) * 100) / 100;
 
- // Descuento global sobre el subtotal con descuentos por ítem
- const descAmt = Math.round((itemsSubtotal * (Number(descPct)||0) / 100) * 100) / 100;
+ // Descuento global — % o soles
+ const descAmt = descMode === "soles"
+  ? Math.min(Math.max(0, parseFloat(descSoles)||0), itemsSubtotal)
+  : Math.round((itemsSubtotal * (Number(descPct)||0) / 100) * 100) / 100;
  const totalFinal = Math.max(0, itemsSubtotal - descAmt);
 
  const [ef, setEf] = useState(totalFinal);
@@ -1436,7 +1438,7 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
   )}
   {descAmt > 0 && (
    <div style={{fontSize:12, color:"#27ae60", marginTop:2, fontWeight:700}}>
-    🏷 Descuento global {descPct}%: −{fmt(descAmt)}{descMotivo ? ` · ${descMotivo}` : ""}
+    🏷 Descuento {descMode==="soles" ? `S/.${descAmt.toFixed(2)}` : `${descPct}%`}: −{fmt(descAmt)}{descMotivo ? ` · ${descMotivo}` : ""}
    </div>
   )}
   {totalDescuento > 0 && (
@@ -1451,42 +1453,61 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
   <button
    style={{...s.btn(showDesc?"warn":"secondary"), width:"100%", padding:"8px 12px", fontSize:12, marginBottom: showDesc ? 10 : 0}}
    onClick={()=>setShowDesc(v=>!v)}>
-   {showDesc ? "▲ Ocultar descuento global" : "🏷 Descuento global (% sobre total)"}
+   {showDesc ? "▲ Ocultar descuento global" : "🏷 Descuento global"}
   </button>
 
   {showDesc && (
    <div style={{background:"#111", border:"1px solid #d35400", borderRadius:10, padding:"12px 14px"}}>
-    <div style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, marginBottom:8}}>Porcentaje sobre subtotal con descuentos</div>
-    <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:10}}>
-     {DESCUENTOS_RAPIDOS.map(p => (
-      <button key={p}
-       style={{...s.btn(Number(descPct)===p?"warn":"secondary"), padding:"5px 10px", fontSize:12}}
-       onClick={()=>setDescPct(Number(descPct)===p ? 0 : p)}>
-       {p}%
-      </button>
-     ))}
+    {/* Toggle % / Soles */}
+    <div style={{display:"flex", gap:6, marginBottom:12}}>
+     <button style={{...s.btn(descMode==="pct"?"warn":"secondary"), flex:1, fontSize:12}}
+      onClick={()=>{ setDescMode("pct"); setDescSoles(0); }}>% Porcentaje</button>
+     <button style={{...s.btn(descMode==="soles"?"warn":"secondary"), flex:1, fontSize:12}}
+      onClick={()=>{ setDescMode("soles"); setDescPct(0); }}>S/. Soles</button>
     </div>
-    <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:10}}>
-     <input
-      type="number"
-      style={{...s.input, flex:1}}
-      min="0" max="100" step="1"
-      placeholder="% personalizado"
-      value={descPct||""}
-      onChange={e => {
-       const v = Math.min(100, Math.max(0, Number(e.target.value)||0));
-       setDescPct(v);
-      }}
-     />
-     <span style={{color:"#888", fontWeight:700, whiteSpace:"nowrap"}}>% = −{fmt(descAmt)}</span>
-    </div>
-    <input
-     style={s.input}
-     placeholder="Motivo (opcional)"
-     value={descMotivo}
-     onChange={e => setDescMotivo(e.target.value)}
-     spellCheck="false"
-    />
+
+    {descMode === "pct" ? (
+     <>
+      <div style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, marginBottom:8}}>Porcentaje sobre subtotal con descuentos</div>
+      <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:10}}>
+       {DESCUENTOS_RAPIDOS.map(p => (
+        <button key={p}
+         style={{...s.btn(Number(descPct)===p?"warn":"secondary"), padding:"5px 10px", fontSize:12}}
+         onClick={()=>setDescPct(Number(descPct)===p ? 0 : p)}>
+         {p}%
+        </button>
+       ))}
+      </div>
+      <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:10}}>
+       <input type="number" style={{...s.input, flex:1}} min="0" max="100" step="1"
+        placeholder="% personalizado" value={descPct||""}
+        onChange={e => setDescPct(Math.min(100,Math.max(0,Number(e.target.value)||0)))} />
+       <span style={{color:"#888", fontWeight:700, whiteSpace:"nowrap"}}>% = −{fmt(descAmt)}</span>
+      </div>
+     </>
+    ) : (
+     <>
+      <div style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, marginBottom:8}}>Monto a descontar en soles</div>
+      <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:10}}>
+       {[1,2,5,10,20,50].map(s_ => (
+        <button key={s_}
+         style={{...s.btn(Number(descSoles)===s_?"warn":"secondary"), padding:"5px 10px", fontSize:12}}
+         onClick={()=>setDescSoles(Number(descSoles)===s_ ? 0 : s_)}>
+         S/.{s_}
+        </button>
+       ))}
+      </div>
+      <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:10}}>
+       <span style={{color:"#aaa", fontWeight:700}}>S/.</span>
+       <input type="number" style={{...s.input, flex:1}} min="0" step="0.5"
+        placeholder="Monto personalizado" value={descSoles||""}
+        onChange={e => setDescSoles(Math.max(0, parseFloat(e.target.value)||0))} />
+       <span style={{color:"#888", fontWeight:700, whiteSpace:"nowrap"}}>= −{fmt(descAmt)}</span>
+      </div>
+     </>
+    )}
+    <input style={s.input} placeholder="Motivo (opcional)" value={descMotivo}
+     onChange={e => setDescMotivo(e.target.value)} spellCheck="false" />
    </div>
   )}
  </div>
@@ -1524,7 +1545,7 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
 // ═══════════════════════════════════════════════════════════════════
 // NUEVO PEDIDO (Carrito)
 // ═══════════════════════════════════════════════════════════════════
-function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updateIndividualNote, draftTotal, fmt, submitOrder, newDraft, s, Y, isDesktop, isMobile, isTablet, mesasArr }) {
+function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updateIndividualNote, draftTotal, fmt, submitOrder, newDraft, s, Y, isDesktop, isMobile, isTablet, mesasArr, cajaAbierta }) {
  const [search, setSearch] = useState("");
  const [catFilter, setCatFilter] = useState("Todos");
  const [showCartModal, setShowCartModal] = useState(false);
@@ -1671,9 +1692,9 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  <div style={{ flexShrink: 0 }}>
  <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderTop:`2px solid ${Y}55`, marginBottom:12 }}><span style={{ fontWeight:900, fontSize:17 }}>TOTAL</span><span style={{ fontWeight:900, fontSize:17, color:Y }}>{fmt(draftTotal)}</span></div>
 
- <button style={{ ...s.btn(), width:"100%", padding:16, fontSize:16, opacity:(draft.orderType==="mesa" && !draft.table || !draft.items.length)?0.4:1 }}
- onClick={() => { submitOrder(); if(isMobile) setShowCartModal(false); }} disabled={draft.orderType==="mesa" && !draft.table || !draft.items.length}>
- {draft.payTiming==="ahora" ? " Continuar al Cobro" : " Enviar a Cocina"}
+ <button style={{ ...s.btn(), width:"100%", padding:16, fontSize:16, opacity:((!cajaAbierta) || (draft.orderType==="mesa" && !draft.table || !draft.items.length))?0.4:1 }}
+ onClick={() => { submitOrder(); if(isMobile) setShowCartModal(false); }} disabled={!cajaAbierta || (draft.orderType==="mesa" && !draft.table) || !draft.items.length}>
+ {!cajaAbierta ? "🔴 Caja cerrada" : draft.payTiming==="ahora" ? " Continuar al Cobro" : " Enviar a Cocina"}
  </button>
  <button style={{ ...s.btn("secondary"), width:"100%", padding:10, marginTop:8, fontSize:13 }}
  onClick={() => { setDraft(newDraft()); if(isMobile) setShowCartModal(false); }}> Limpiar Pedido</button>
@@ -1683,6 +1704,15 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
 
  return (
  <div style={{ display:"grid", gridTemplateColumns: (isDesktop || isTablet) ? "1fr 340px" : "1fr", gap: isMobile ? 12 : 14, alignItems: "start" }}>
+ {!cajaAbierta && (
+ <div style={{gridColumn:"1/-1", background:"#1a0505", border:"2px solid #e74c3c", borderRadius:12, padding:"14px 18px", display:"flex", alignItems:"center", gap:12, marginBottom:4}}>
+  <span style={{fontSize:28}}>🔴</span>
+  <div>
+   <div style={{fontWeight:900, fontSize:15, color:"#e74c3c"}}>Caja cerrada — no se pueden tomar pedidos</div>
+   <div style={{fontSize:12, color:"#888", marginTop:2}}>El administrador debe abrir la caja desde el Dashboard antes de continuar.</div>
+  </div>
+ </div>
+ )}
  {salsasModal && salsasModal.itemToAdd && (
  <SalsasModalComponent 
  initialSalsas={[]} 
@@ -1836,31 +1866,7 @@ function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, set
  const [cierreData, setCierreData] = useState(null);
  const [showSoundPanel, setShowSoundPanel] = useState(false);
 
- const testSound = () => {
-  try {
-   const cfg = soundConfig || {};
-   const vol = cfg.volume !== undefined ? cfg.volume : 0.75;
-   const freq = cfg.freq !== undefined ? cfg.freq : 880;
-   const beeps = cfg.beeps !== undefined ? cfg.beeps : 3;
-   const type = cfg.type || "square";
-   const ctx = new (window.AudioContext || window.webkitAudioContext)();
-   const comp = ctx.createDynamicsCompressor();
-   comp.threshold.value = -10; comp.ratio.value = 4;
-   comp.connect(ctx.destination);
-   Array.from({length: beeps}).forEach((_, b) => {
-    const offset = b * 0.28;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(comp);
-    osc.frequency.value = freq; osc.type = type;
-    gain.gain.setValueAtTime(0, ctx.currentTime + offset);
-    gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + offset + 0.02);
-    gain.gain.setValueAtTime(vol, ctx.currentTime + offset + 0.14);
-    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + offset + 0.22);
-    osc.start(ctx.currentTime + offset); osc.stop(ctx.currentTime + offset + 0.26);
-   });
-  } catch(e) {}
- };
+ const testSound = () => { playBeeps(soundConfig); speak("Prueba de sonido"); };
 
  // Usar paidAt para agrupar el día (si pagó hoy, cuenta hoy aunque creado ayer)
  const today = new Date().toDateString();
@@ -2677,123 +2683,247 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  );
 }
 
+// ── Audio/Speech helper ───────────────────────────────────────────
+function playBeeps(cfg) {
+ try {
+  const vol   = cfg?.volume  !== undefined ? cfg.volume  : 0.75;
+  const freq  = cfg?.freq    !== undefined ? cfg.freq    : 880;
+  const beeps = cfg?.beeps   !== undefined ? cfg.beeps   : 3;
+  const type  = cfg?.type    || "square";
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -10; comp.ratio.value = 4; comp.connect(ctx.destination);
+  Array.from({length: beeps}).forEach((_, b) => {
+   const offset = b * 0.28;
+   const osc = ctx.createOscillator(); const gain = ctx.createGain();
+   osc.connect(gain); gain.connect(comp);
+   osc.frequency.value = freq; osc.type = type;
+   gain.gain.setValueAtTime(0, ctx.currentTime + offset);
+   gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + offset + 0.02);
+   gain.gain.setValueAtTime(vol, ctx.currentTime + offset + 0.14);
+   gain.gain.linearRampToValueAtTime(0, ctx.currentTime + offset + 0.22);
+   osc.start(ctx.currentTime + offset); osc.stop(ctx.currentTime + offset + 0.26);
+  });
+ } catch(e) {}
+}
+
+function speak(text) {
+ try {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.lang = "es-PE"; utt.rate = 0.95; utt.pitch = 1.1; utt.volume = 1;
+  window.speechSynthesis.speak(utt);
+ } catch(e) {}
+}
+
 function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenListo, isMobile, isDesktop, s, Y, soundConfig }) {
  const sorted = [...orders].sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
- 
- // ── Sonido de nuevo pedido ──────────────────────────────────────
- const prevOrderIds = useRef(new Set(orders.map(o=>o.id)));
+
+ // ── Track previous state for change detection ─────────────────────
+ const prevOrdersRef = useRef({});        // id -> { status, itemCount, kitchenStatus, isAnulado }
+ const [anuladoFlash, setAnuladoFlash] = useState([]); // [{ id, order, expiresAt }]
+
  useEffect(() => {
-  const currentIds = new Set(orders.filter(o=>!o.anulado&&o.kitchenStatus!=='listo').map(o=>o.id));
-  const hasNew = [...currentIds].some(id => !prevOrderIds.current.has(id));
-  if (hasNew) {
-   try {
-    const cfg = soundConfig || {};
-    const vol   = cfg.volume  !== undefined ? cfg.volume  : 0.75;
-    const freq  = cfg.freq    !== undefined ? cfg.freq    : 880;
-    const beeps = cfg.beeps   !== undefined ? cfg.beeps   : 3;
-    const type  = cfg.type    || "square"; // square = más penetrante
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    Array.from({length: beeps}).forEach((_, b) => {
-     const offset = b * 0.28;
-     const osc = ctx.createOscillator();
-     const gain = ctx.createGain();
-     // Compresor para mayor volumen sin distorsión
-     const comp = ctx.createDynamicsCompressor();
-     comp.threshold.value = -10;
-     comp.ratio.value = 4;
-     osc.connect(gain); gain.connect(comp); comp.connect(ctx.destination);
-     osc.frequency.value = freq;
-     osc.type = type;
-     gain.gain.setValueAtTime(0, ctx.currentTime + offset);
-     gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + offset + 0.02);
-     gain.gain.setValueAtTime(vol, ctx.currentTime + offset + 0.14);
-     gain.gain.linearRampToValueAtTime(0, ctx.currentTime + offset + 0.22);
-     osc.start(ctx.currentTime + offset);
-     osc.stop(ctx.currentTime + offset + 0.26);
-    });
-   } catch(e) { /* audio no disponible */ }
-  }
-  prevOrderIds.current = new Set(orders.map(o=>o.id));
+  const now = Date.now();
+  const prev = prevOrdersRef.current;
+  const next = {};
+
+  orders.forEach(o => {
+   next[o.id] = { status: o.status, kitchenStatus: o.kitchenStatus, isAnulado: !!o.anulado, itemCount: (o.items||[]).length };
+   const p = prev[o.id];
+
+   if (!p) {
+    // Brand new order
+    if (!o.anulado && o.kitchenStatus !== 'listo') {
+     const waiter = o._mesero || "Mesero";
+     playBeeps(soundConfig);
+     setTimeout(() => speak(`Nuevo pedido de ${waiter}`), 200);
+    }
+   } else {
+    // Additional items added (merge) — item count grew
+    if (!o.anulado && o._adicionPor && (o.items||[]).length > p.itemCount) {
+     const waiter = o._adicionPor || "Mesero";
+     playBeeps({ ...(soundConfig||{}), freq: 660, beeps: 2 });
+     setTimeout(() => speak(`Pedido adicional de ${waiter}`), 200);
+    }
+    // Order became ready
+    if (p.kitchenStatus !== 'listo' && o.kitchenStatus === 'listo') {
+     const waiter = o._mesero || "Mesero";
+     playBeeps({ ...(soundConfig||{}), freq: 1100, beeps: 2, type:"sine" });
+     setTimeout(() => speak(`Listo para ${waiter}`), 200);
+    }
+    // Order anulado
+    if (!p.isAnulado && o.anulado) {
+     playBeeps({ ...(soundConfig||{}), freq: 300, beeps: 3, type:"sawtooth", volume: 0.9 });
+     setTimeout(() => speak("Pedido anulado"), 200);
+     // Show flash for 25 seconds
+     setAnuladoFlash(prev2 => [...prev2.filter(x=>x.id!==o.id), { id: o.id, order: o, expiresAt: now + 25000 }]);
+     setTimeout(() => setAnuladoFlash(p2 => p2.filter(x => x.id !== o.id)), 25000);
+    }
+   }
+  });
+
+  prevOrdersRef.current = next;
  }, [orders]);
- 
- const toggleCheck = (order, itemIdx, maxQty) => { 
- const orderId = order.id;
- setKitchenChecks(prev => { 
- const oc = prev[orderId] || {}; 
- let valAnterior = oc[itemIdx];
- if (valAnterior === true) valAnterior = maxQty; 
- let next = (Number(valAnterior) || 0) + 1; 
- if (next > maxQty) next = 0;
- 
- const newOrderChecks = {...oc, [itemIdx]: next};
- const kitchenItems = (order.items || []).filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
 
- const isFullyDone = kitchenItems.length > 0 && kitchenItems.every((item, i) => { 
- let val = (i === itemIdx) ? next : newOrderChecks[i];
- if (val === true) val = item.qty;
- return Number(val || 0) === item.qty; 
- });
+ // Clean expired flashes
+ useEffect(() => {
+  const timer = setInterval(() => {
+   setAnuladoFlash(p => p.filter(x => x.expiresAt > Date.now()));
+  }, 1000);
+  return () => clearInterval(timer);
+ }, []);
 
- if (isFullyDone) {
- setTimeout(() => markKitchenListo(orderId), 500); 
- }
- return {...prev, [orderId]: newOrderChecks};
- }); 
+ const toggleCheck = (order, itemIdx, maxQty) => {
+  const orderId = order.id;
+  setKitchenChecks(prev => {
+   const oc = prev[orderId] || {};
+   let valAnterior = oc[itemIdx];
+   if (valAnterior === true) valAnterior = maxQty;
+   let next = (Number(valAnterior) || 0) + 1;
+   if (next > maxQty) next = 0;
+   const newOrderChecks = {...oc, [itemIdx]: next};
+   const kitchenItems = (order.items || []).filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
+   const isFullyDone = kitchenItems.length > 0 && kitchenItems.every((item, i) => {
+    let val = (i === itemIdx) ? next : newOrderChecks[i];
+    if (val === true) val = item.qty;
+    return Number(val || 0) === item.qty;
+   });
+   if (isFullyDone) { setTimeout(() => markKitchenListo(orderId), 500); }
+   return {...prev, [orderId]: newOrderChecks};
+  });
  };
 
  const activeOrders = sorted.filter(order => order.kitchenStatus !== 'listo' && !order.anulado);
- if(activeOrders.length === 0) return <div style={{textAlign:"center", padding:60, color:"#444"}}><div style={{fontSize:56}}></div><div style={{marginTop:12, fontSize:16}}>Sin pedidos pendientes en cocina</div></div>;
- 
+
  return (
  <div>
- <div style={{...s.row, marginBottom:14}}><div style={s.title}> COCINA — {activeOrders.length} pendiente{activeOrders.length!==1?"s":""}</div></div>
- <div style={{display:"grid", gridTemplateColumns:isDesktop?"1fr 1fr":"1fr", gap:12}}>
- {activeOrders.map((order,priority) => {
- const checks = kitchenChecks[order.id] || {};
- const mins = Math.floor((Date.now() - new Date(order.createdAt))/60000);
- 
- return (
- <div key={order.id} style={{background:mins>=15?"#1f0d0d":mins>=8?"#1f180d":"#1c1c1c", borderRadius:14, border:`2px solid ${mins>=15?"#e74c3c":mins>=8?"#e67e22":order.replacesId?"#27ae60":Y}`, padding:14, position:"relative", transition:"all .3s"}}>
- <div style={{position:"absolute", top:-10, left:14, background:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y, color:mins>=8?"#fff":"#111", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:900}}>{`#${priority+1} · ${mins<1?"ahora":`${mins}m`}`}</div>
- {order.replacesId && (
- <div style={{background:"#0a1f0a", border:"1px solid #27ae6044", borderRadius:6, padding:"3px 10px", marginBottom:8, marginTop:6, fontSize:10, color:"#27ae60", fontWeight:800}}>
- 🔄 REEMPLAZO de pedido anulado
- </div>
- )}
- <div style={{...s.row, marginBottom:10, marginTop:6}}><span style={{fontFamily:"'Bebas Neue',cursive", fontSize:22, color:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y}}>{order.orderType==="llevar"?`🥡 ${order.table||"Sin nombre"}`:`Mesa ${order.table}`}</span>{order.orderType==="llevar"&&(order.phone||order.deliveryAddress)&&<span style={{fontSize:10,color:"#888"}}>{[order.phone,order.deliveryAddress].filter(Boolean).join(" · ")}</span>}</div>
- {(() => {
- const kitchenItems = (order.items || []).filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
- const totalPortions = kitchenItems.reduce((sum, item) => sum + item.qty, 0);
- const donePortions = kitchenItems.reduce((sum, item, i) => sum + (Number(checks[i]===true?item.qty:checks[i]) || 0), 0);
- return (
- <>
- <div style={{background:"#2a2a2a", borderRadius:4, height:5, marginBottom:12, overflow:"hidden"}}><div style={{background:Y, height:"100%", width:`${totalPortions > 0 ? (donePortions/totalPortions)*100 : 0}%`, transition:"width .3s"}}/></div>
- {kitchenItems.map((item,i) => {
- let doneQty = checks[i];
- if (doneQty === true) doneQty = item.qty;
- doneQty = Number(doneQty) || 0;
- const isDone = doneQty === item.qty;
- const validNotes = (item.individualNotes || []).filter(n => n.trim() !== "");
- return (
- <div key={i} onClick={() => toggleCheck(order, i, item.qty)} style={{display:"flex", alignItems:"center", gap:10, padding:"9px 10px", marginBottom:5, borderRadius:8, background:isDone?"#0a2a0a":"#252525", border:`1px solid ${isDone?"#27ae6055":"#333"}`, cursor:"pointer", transition:"all .2s", opacity:isDone?0.6:1}}>
- <div style={{minWidth:26, height:26, borderRadius:6, border:`2px solid ${isDone?"#27ae60":"#555"}`, background:isDone?"#27ae60":"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:13, color:isDone?"#fff":"#aaa", fontWeight:"bold"}}>{item.qty > 1 ? `${doneQty}/${item.qty}` : (isDone ? "✓" : "")}</div>
- <div style={{flex:1}}>
- <span style={{fontWeight:800, fontSize:isMobile?13:15, textDecoration:isDone?"line-through":"none", color:isDone?"#555":"#eee"}}>{item.qty>1&&<span style={{color:Y, marginRight:4}}>{item.qty}×</span>}{item.name} {item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:10}}> Llevar</span>}{item._isAdicion && <span style={{marginLeft:6, background:"#2d1a4a", color:"#c39bd3", borderRadius:4, padding:"1px 6px", fontSize:10, fontWeight:900}}>+ ADICIONAL</span>}</span>
- {item.salsas?.length > 0 && <div style={{color:Y, fontSize:11, fontStyle:"italic", marginTop:2}}> {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>}
- {item._comboNote && <div style={{color:"#3498db", fontSize:11, fontStyle:"italic", marginTop:2}}>🎯 {item._comboNote}</div>}
- {validNotes.map((n, idx) => <div key={idx} style={{fontSize:11, color:"#aaa", marginTop:3, fontStyle:"italic", whiteSpace:"pre-wrap"}}> Plato {idx+1}: {n}</div>)}
- </div>
- </div>
- );
- })}
- </>
- );
- })()}
- {order.notes && <div style={{marginTop:8, padding:"8px 10px", background:"#1a1500", borderRadius:8, border:"1px solid #3a3000", fontSize:12, color:"#e6c200", whiteSpace:"pre-wrap"}}> General: {order.notes}</div>}
- </div>
- );
- })}
- </div>
+  {/* ── Pedidos Anulados Flash (25 seg) ── */}
+  {anuladoFlash.map(({ id, order, expiresAt }) => {
+   const secsLeft = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+   return (
+    <div key={id} style={{background:"#2a0000", border:"2px solid #e74c3c", borderRadius:12, padding:"14px 18px", marginBottom:12, animation:"pulse 1s infinite alternate"}}>
+     <style>{`@keyframes pulse{from{border-color:#e74c3c}to{border-color:#ff8080}}`}</style>
+     <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6}}>
+      <div style={{color:"#e74c3c", fontFamily:"'Bebas Neue',cursive", fontSize:20, letterSpacing:1}}>🚫 PEDIDO ANULADO</div>
+      <div style={{fontSize:11, color:"#888"}}>Desaparece en {secsLeft}s</div>
+     </div>
+     <div style={{fontWeight:900, fontSize:15, color:"#eee", marginBottom:4}}>
+      {order.orderType==="llevar" ? `🥡 ${order.table||"Sin nombre"}` : `Mesa ${order.table}`}
+      {order._mesero && <span style={{fontSize:12, color:"#888", marginLeft:8}}>· {order._mesero}</span>}
+     </div>
+     {order.motivoAnulacion && <div style={{fontSize:12, color:"#e67e22", fontStyle:"italic"}}>Motivo: "{order.motivoAnulacion}"</div>}
+     {order.replacedById && (
+      <div style={{fontSize:12, color:"#27ae60", marginTop:4}}>🔄 Reemplazado — el nuevo pedido aparece en pantalla</div>
+     )}
+     <div style={{display:"flex", flexWrap:"wrap", gap:4, marginTop:8}}>
+      {(order.items||[]).map((it,i)=>(
+       <span key={i} style={{background:"#3a0000", borderRadius:4, padding:"2px 8px", fontSize:11, color:"#e74c3c", border:"1px solid #e74c3c33", textDecoration:"line-through"}}>
+        {it.qty}× {it.name}
+       </span>
+      ))}
+     </div>
+    </div>
+   );
+  })}
+
+  {activeOrders.length === 0 && anuladoFlash.length === 0 ? (
+   <div style={{textAlign:"center", padding:60, color:"#444"}}>
+    <div style={{fontSize:56}}>👨‍🍳</div>
+    <div style={{marginTop:12, fontSize:16}}>Sin pedidos pendientes en cocina</div>
+   </div>
+  ) : (
+   <div>
+    <div style={{...s.row, marginBottom:14}}>
+     <div style={s.title}>COCINA — {activeOrders.length} pendiente{activeOrders.length!==1?"s":""}</div>
+    </div>
+    <div style={{display:"grid", gridTemplateColumns:isDesktop?"1fr 1fr":"1fr", gap:12}}>
+     {activeOrders.map((order, priority) => {
+      const checks = kitchenChecks[order.id] || {};
+      const mins = Math.floor((Date.now() - new Date(order.createdAt))/60000);
+      const hasAdicion = (order.items||[]).some(i=>i._isAdicion);
+
+      return (
+       <div key={order.id} style={{background:mins>=15?"#1f0d0d":mins>=8?"#1f180d":"#1c1c1c", borderRadius:14, border:`2px solid ${mins>=15?"#e74c3c":mins>=8?"#e67e22":order.replacesId?"#27ae60":Y}`, padding:14, position:"relative", transition:"all .3s"}}>
+        <div style={{position:"absolute", top:-10, left:14, background:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y, color:mins>=8?"#fff":"#111", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:900}}>
+         {`#${priority+1} · ${mins<1?"ahora":`${mins}m`}`}
+        </div>
+
+        {order.replacesId && (
+         <div style={{background:"#0a1f0a", border:"1px solid #27ae6044", borderRadius:6, padding:"3px 10px", marginBottom:8, marginTop:6, fontSize:10, color:"#27ae60", fontWeight:800}}>
+          🔄 REEMPLAZO de pedido anulado
+         </div>
+        )}
+
+        {/* Cabecera: mesa + mesero */}
+        <div style={{...s.row, marginBottom:6, marginTop:6}}>
+         <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:22, color:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y}}>
+          {order.orderType==="llevar"?`🥡 ${order.table||"Sin nombre"}`:`Mesa ${order.table}`}
+         </span>
+         {order._mesero && (
+          <span style={{fontSize:11, color:"#888", fontWeight:700, background:"#1a1a1a", borderRadius:6, padding:"2px 8px", border:"1px solid #2a2a2a"}}>
+           👤 {order._mesero}
+          </span>
+         )}
+        </div>
+
+        {/* Progreso */}
+        {(() => {
+         const kitchenItems = (order.items || []).filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
+         const totalPortions = kitchenItems.reduce((sum, item) => sum + item.qty, 0);
+         const donePortions = kitchenItems.reduce((sum, item, i) => sum + (Number(checks[i]===true?item.qty:checks[i]) || 0), 0);
+         return (
+          <>
+           <div style={{background:"#2a2a2a", borderRadius:4, height:5, marginBottom:12, overflow:"hidden"}}>
+            <div style={{background:Y, height:"100%", width:`${totalPortions > 0 ? (donePortions/totalPortions)*100 : 0}%`, transition:"width .3s"}}/>
+           </div>
+           {kitchenItems.map((item, i) => {
+            let doneQty = checks[i];
+            if (doneQty === true) doneQty = item.qty;
+            doneQty = Number(doneQty) || 0;
+            const isDone = doneQty === item.qty;
+            const validNotes = (item.individualNotes || []).filter(n => n.trim() !== "");
+            return (
+             <div key={i} onClick={() => toggleCheck(order, i, item.qty)}
+              style={{display:"flex", alignItems:"center", gap:10, padding:"9px 10px", marginBottom:5, borderRadius:8, background:isDone?"#0a2a0a":"#252525", border:`1px solid ${isDone?"#27ae6055":"#333"}`, cursor:"pointer", transition:"all .2s", opacity:isDone?0.6:1}}>
+              <div style={{minWidth:26, height:26, borderRadius:6, border:`2px solid ${isDone?"#27ae60":"#555"}`, background:isDone?"#27ae60":"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:13, color:isDone?"#fff":"#aaa", fontWeight:"bold"}}>
+               {item.qty > 1 ? `${doneQty}/${item.qty}` : (isDone ? "✓" : "")}
+              </div>
+              <div style={{flex:1}}>
+               <span style={{fontWeight:800, fontSize:isMobile?13:15, textDecoration:isDone?"line-through":"none", color:isDone?"#555":"#eee"}}>
+                {item.qty>1&&<span style={{color:Y, marginRight:4}}>{item.qty}×</span>}
+                {item.name}
+                {item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:10}}> Llevar</span>}
+                {item._isAdicion && <span style={{marginLeft:6, background:"#2d1a4a", color:"#c39bd3", borderRadius:4, padding:"1px 6px", fontSize:10, fontWeight:900}}>+ADICIONAL</span>}
+               </span>
+               {item.salsas?.length > 0 && <div style={{color:Y, fontSize:11, fontStyle:"italic", marginTop:2}}> {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>}
+               {item._comboNote && <div style={{color:"#3498db", fontSize:11, fontStyle:"italic", marginTop:2}}>🎯 {item._comboNote}</div>}
+               {validNotes.map((n, idx) => <div key={idx} style={{fontSize:11, color:"#aaa", marginTop:3, fontStyle:"italic", whiteSpace:"pre-wrap"}}> Plato {idx+1}: {n}</div>)}
+              </div>
+             </div>
+            );
+           })}
+          </>
+         );
+        })()}
+
+        {order.notes && <div style={{marginTop:8, padding:"8px 10px", background:"#1a1500", borderRadius:8, border:"1px solid #3a3000", fontSize:12, color:"#e6c200", whiteSpace:"pre-wrap"}}> General: {order.notes}</div>}
+
+        {/* Adicional footer: quién lo agregó */}
+        {hasAdicion && order._adicionPor && (
+         <div style={{marginTop:8, display:"flex", justifyContent:"flex-end"}}>
+          <span style={{fontSize:11, color:"#c39bd3", background:"#1a0a2a", borderRadius:6, padding:"2px 10px", border:"1px solid #8e44ad44"}}>
+           ➕ Adicional por {order._adicionPor}
+          </span>
+         </div>
+        )}
+       </div>
+      );
+     })}
+    </div>
+   </div>
+  )}
  </div>
  );
 }
@@ -4010,7 +4140,15 @@ export default function App() {
 
  const draftTotal = draft.items.reduce((s,i)=>s+i.price*i.qty,0);
 
+ // ── Guard: caja debe estar abierta para operar ────────────────────
+ const cajaAbierta = !!cajaRef2.current?.isOpen;
+ const requireCaja = (fn) => (...args) => {
+  if (!cajaAbierta) { showToast("🔴 Abre la caja antes de operar", "#e74c3c"); return; }
+  return fn(...args);
+ };
+
  const submitOrder = async (forceMerge = null) => {
+ if (!cajaAbierta) { showToast("🔴 Abre la caja antes de tomar pedidos", "#e74c3c"); return; }
  if (draft.orderType === "mesa" && !draft.table.trim()) return;
  if (!draft.items.length) return;
  const total = draftTotal;
@@ -4039,7 +4177,7 @@ export default function App() {
  else { mergedItems.push(newItem); }
  }
  });
- const updated = { ...existing, items: mergedItems, total: mergedItems.reduce((s, i) => s + i.price * i.qty, 0), notes: [existing.notes, mergeModal.newDraftData.notes].filter(Boolean).join(" | "), taperCost: 0, kitchenStatus: 'pendiente', _cajaSessionId: existing._cajaSessionId || cajaRef2.current?.sessionId || null };
+ const updated = { ...existing, items: mergedItems, total: mergedItems.reduce((s, i) => s + i.price * i.qty, 0), notes: [existing.notes, mergeModal.newDraftData.notes].filter(Boolean).join(" | "), taperCost: 0, kitchenStatus: 'pendiente', _cajaSessionId: existing._cajaSessionId || cajaRef2.current?.sessionId || null, _adicionPor: currentUser?.name || null, _adicionAt: new Date().toISOString() };
  const mergedList = ordersRef.current.map(o => o.id === existing.id ? updated : o);
  setOrders(mergedList);
  await saveOrders(mergedList);
@@ -4052,7 +4190,7 @@ export default function App() {
  if (draft.payTiming === "ahora") {
  setCobrarTarget({ type: 'new', data: { id:Date.now().toString(), ...finalDraft, total, createdAt:new Date().toISOString(), _cajaSessionId: cajaRef2.current?.sessionId || null } });
  } else {
- const order = { id:Date.now().toString(), ...finalDraft, total, isPaid: false, status:"pendiente", kitchenStatus:"pendiente", createdAt:new Date().toISOString(), _cajaSessionId: cajaRef2.current?.sessionId || null };
+ const order = { id:Date.now().toString(), ...finalDraft, total, isPaid: false, status:"pendiente", kitchenStatus:"pendiente", createdAt:new Date().toISOString(), _cajaSessionId: cajaRef2.current?.sessionId || null, _mesero: currentUser?.name || null };
  const newOrders = [...ordersRef.current, order];
  setOrders(newOrders); await saveOrders(newOrders);
  setDraft(newDraft()); showToast(` Pedido enviado a cocina`); setTab("pedidos");
@@ -4061,6 +4199,7 @@ export default function App() {
 
  const handleConfirmCobro = async (paymentData) => {
  if (!cobrarTarget) return;
+ if (!cajaAbierta) { showToast("🔴 Abre la caja antes de cobrar", "#e74c3c"); setCobrarTarget(null); return; }
  const cur = ordersRef.current; // always fresh, no stale closure
  const target = cobrarTarget; setCobrarTarget(null);
  const payments = { efectivo: paymentData.efectivo, yape: paymentData.yape, tarjeta: paymentData.tarjeta };
@@ -4356,7 +4495,7 @@ export default function App() {
  <div style={s.content}>
  {tab==="dashboard" && <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} caja={caja} abrirCaja={abrirCaja} cerrarCaja={cerrarCaja} currentUser={currentUser} getPay={getPay} soundConfig={soundConfig} setSoundConfig={setSoundConfig} />}
  {tab==="mesas" && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setAnulacionModal={setAnulacionModal} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} mesasArr={mesasArr} addMesa={addMesa} removeMesa={removeMesa} currentUser={currentUser} />}
- {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} isTablet={isTablet} mesasArr={mesasArr} />}
+ {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} isTablet={isTablet} mesasArr={mesasArr} cajaAbierta={cajaAbierta} />}
  {tab==="pedidos" && <PedidosComponent orders={orders} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
  {tab==="cocina" && <CocinaComponent orders={orders} kitchenChecks={kitchenChecks} setKitchenChecks={setKitchenChecks} markKitchenListo={markKitchenListo} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} soundConfig={soundConfig} />}
  {tab==="historial"    && <HistorialComponent history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} />}
