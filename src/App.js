@@ -82,10 +82,43 @@ const FS = (localId) => ({
  try { await addDoc(this.historyCol(), order); } catch (e) { console.error(e); }
  },
  async getStaff() {
- try { const s = await getDoc(this.staffRef()); return s.exists() ? (s.data().users ?? []) : []; } catch { return []; }
+  try {
+   const s = await getDoc(this.staffRef());
+   if (!s.exists()) return null;          // null = doc no existe (primera vez)
+   const users = s.data().users ?? [];
+   return users;                           // puede ser [] si alguien borró todo
+  } catch(e) {
+   console.error("getStaff error:", e);
+   return undefined;                       // undefined = error de red/permisos
+  }
  },
  async saveStaff(users) {
- try { await setDoc(this.staffRef(), { users, ts: new Date().toISOString() }); } catch(e) { console.error(e); }
+  // GUARD: nunca guardar array vacío ni sin admin
+  if (!Array.isArray(users) || users.length === 0) {
+   console.error("saveStaff: rejected empty array");
+   return false;
+  }
+  if (!users.some(u => u.roles?.includes("admin"))) {
+   console.error("saveStaff: rejected — no admin in list");
+   return false;
+  }
+  try {
+   await setDoc(this.staffRef(), { users, ts: new Date().toISOString() });
+   // Backup en localStorage (por sucursal)
+   try { localStorage.setItem(`staff_backup_${this._localId}`, JSON.stringify({ users, ts: new Date().toISOString() })); } catch(_) {}
+   return true;
+  } catch(e) {
+   console.error("saveStaff write error:", e);
+   return false;
+  }
+ },
+ getStaffBackup() {
+  try {
+   const raw = localStorage.getItem(`staff_backup_${this._localId}`);
+   if (!raw) return null;
+   const parsed = JSON.parse(raw);
+   return parsed?.users?.length ? parsed.users : null;
+  } catch { return null; }
  },
  async getSolicitudes() {
  try { const s = await getDoc(this.solicitudesRef()); return s.exists() ? (s.data().list ?? []) : []; } catch { return []; }
@@ -356,34 +389,51 @@ function DevPanel({ onClose, onDevLogin, s, Y, isMobile }) {
 
  const loadLocal = async (id) => {
   setLoading(true); setStaff([]); setEditingUser(null);
-  const users = await FS(id).getStaff();
-  setStaff(users.length ? users : DEFAULT_STAFF);
+  const fs = FS(id);
+  let users = await fs.getStaff();
+  if (users === undefined || users === null) {
+   // Try backup first
+   const backup = fs.getStaffBackup();
+   users = backup || DEFAULT_STAFF;
+  } else if (users.length === 0) {
+   const backup = fs.getStaffBackup();
+   users = (backup && backup.length > 0) ? backup : DEFAULT_STAFF;
+  }
+  setStaff(users);
   setLoading(false);
  };
 
  useEffect(() => { loadLocal(selectedLocal); }, [selectedLocal]);
 
- const handleResetPin = async (userId) => {
-  const updated = staff.map(u => u.id === userId ? {...u, pinHash: null} : u);
+ const safeUpdateStaff = async (updaterFn) => {
+  // Always read fresh from Firebase, apply change, then write back
+  const fs = FS(selectedLocal);
+  let fresh = await fs.getStaff();
+  if (!fresh || fresh === undefined || fresh.length === 0) {
+   fresh = staff; // fallback to local state if Firebase read fails
+  }
+  const updated = updaterFn(fresh);
   setStaff(updated);
-  await FS(selectedLocal).saveStaff(updated);
+  const ok = await fs.saveStaff(updated);
+  if (!ok) toast_("⚠️ Error al guardar — intenta de nuevo", "#e74c3c");
+  return ok;
+ };
+
+ const handleResetPin = async (userId) => {
+  await safeUpdateStaff(users => users.map(u => u.id === userId ? {...u, pinHash: null} : u));
   toast_("🔑 PIN reseteado", "#e67e22");
  };
 
  const handleForcePin = async (userId) => {
   if (newPin.length < 4) return;
   const hash = await sha256(newPin);
-  const updated = staff.map(u => u.id === userId ? {...u, pinHash: hash} : u);
-  setStaff(updated);
-  await FS(selectedLocal).saveStaff(updated);
+  await safeUpdateStaff(users => users.map(u => u.id === userId ? {...u, pinHash: hash} : u));
   setNewPin(""); setEditingUser(null);
   toast_("✅ PIN actualizado");
  };
 
  const handleDeleteUser = async (userId) => {
-  const updated = staff.filter(u => u.id !== userId);
-  setStaff(updated);
-  await FS(selectedLocal).saveStaff(updated);
+  await safeUpdateStaff(users => users.filter(u => u.id !== userId));
   toast_("🗑 Usuario eliminado", "#e74c3c");
  };
 
@@ -524,11 +574,49 @@ function LoginScreen({ onLogin, s, Y, isMobile }) {
 
  const roleOrder = ["admin","cajero","mesero","cocinero"];
 
- const loadStaff = async (localId) => {
+ const loadStaff = async (localId, retries = 2) => {
   setLoadingStaff(true);
   const fs = FS(localId);
-  let users = await fs.getStaff();
-  if (!users.length) { users = DEFAULT_STAFF; await fs.saveStaff(users); }
+
+  let users = await fs.getStaff(); // null=new doc, undefined=error, []=exists but empty
+
+  if (users === undefined) {
+   // Network/permission error → try backup
+   const backup = fs.getStaffBackup();
+   if (backup) {
+    console.warn("loadStaff: using localStorage backup due to Firebase error");
+    users = backup;
+   } else if (retries > 0) {
+    // Retry after brief delay
+    await new Promise(r => setTimeout(r, 1200));
+    setLoadingStaff(false);
+    return loadStaff(localId, retries - 1);
+   } else {
+    // Complete failure — show error, do NOT overwrite Firebase
+    setLoadingStaff(false);
+    setError("No se pudo cargar el personal. Revisa tu conexión.");
+    return;
+   }
+  }
+
+  if (users === null) {
+   // Document truly doesn't exist → seed DEFAULT_STAFF (first time only)
+   users = DEFAULT_STAFF;
+   await fs.saveStaff(users);
+  } else if (users.length === 0) {
+   // Document exists but users array empty → try backup before touching Firebase
+   const backup = fs.getStaffBackup();
+   if (backup && backup.length > 0) {
+    console.warn("loadStaff: users array empty in Firebase, restoring from backup");
+    users = backup;
+    await fs.saveStaff(users); // restore
+   } else {
+    // Truly empty (e.g., dev wiped it) → seed defaults
+    users = DEFAULT_STAFF;
+    await fs.saveStaff(users);
+   }
+  }
+
   setStaff(users);
   setLoadingStaff(false);
  };
@@ -557,7 +645,10 @@ function LoginScreen({ onLogin, s, Y, isMobile }) {
   const hash = await sha256(pin);
   const fs = FS(selectedLocal);
   if (!selectedUser.pinHash) {
-   const updated = staff.map(u => u.id === selectedUser.id ? { ...u, pinHash: hash } : u);
+   // Read fresh from Firebase before writing to avoid overwriting other users
+   let freshUsers = await fs.getStaff();
+   if (!freshUsers || freshUsers === undefined) freshUsers = staff; // fallback to cached
+   const updated = (freshUsers || staff).map(u => u.id === selectedUser.id ? { ...u, pinHash: hash } : u);
    await fs.saveStaff(updated);
    setStaff(updated);
    proceedLogin({ ...selectedUser, pinHash: hash });
@@ -1833,37 +1924,11 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  );
 }
 
-// ── Impresión mejorada — Ticket de Cocina ────────────────────────
-function printOrder(order) {
- const kitchenMode = !order.isPaid; // ticket cocina = pedido no cobrado; receipt = cobrado
- const items = (order.items||[]).map(i => {
- const validNotes = (i.individualNotes || []).filter(n => n.trim() !== "");
- let notesHtml = "";
- if (validNotes.length > 0) {
- notesHtml = validNotes.map((n, idx) => `<tr><td colspan="${kitchenMode?2:3}" class="note-cell"> ↳ [${idx+1}]: ${n}</td></tr>`).join("");
- }
- const salsasHtml = i.salsas?.length > 0
- ? `<tr><td colspan="${kitchenMode?2:3}" class="salsa-cell">   Salsas: ${i.salsas.map(s=>`${s.name} (${s.style})`).join(" · ")}</td></tr>`
- : "";
- const comboNoteHtml = i._comboNote
- ? `<tr><td colspan="${kitchenMode?2:3}" class="salsa-cell">   🎯 ${i._comboNote}</td></tr>`
- : "";
- const llevarTag = i.isLlevar ? ` <span class="llevar-tag">[LLEVAR]</span>` : "";
- const priceCell = kitchenMode ? "" : `<td class="price">S/.${(i.price*i.qty).toFixed(2)}</td>`;
- return `<tr class="item-row"><td class="qty">${i.qty}x</td><td class="item">${i.name}${llevarTag}</td>${priceCell}</tr>${salsasHtml}${comboNoteHtml}${notesHtml}`;
- }).join("");
+// ════════════════════════════════════════════════════════════════════
+// SISTEMA DE IMPRESIÓN — Ticket Cocina + Ticket Consumidor
+// ════════════════════════════════════════════════════════════════════
 
- const notes = order.notes ? `<div class="notes">⚠ NOTA GENERAL: ${order.notes}</div>` : "";
- const tipoBase = order.orderType==="llevar"
- ? `LLEVAR${order.table ? ` — ${order.table}` : ""}${order.phone ? `<br><span style="font-size:13px">${order.phone}</span>` : ""}`
- : `MESA ${order.table}`;
- const hora = new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"});
- const fecha = new Date().toLocaleDateString("es-PE",{day:"2-digit",month:"2-digit",year:"2-digit"});
- const paidMarker = order.isPaid ? `<div class="paid-marker">★ PAGADO ★</div>` : "";
- const totalItems = (order.items||[]).reduce((s,i)=>s+i.qty,0);
- 
- const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Ticket Cocina</title>
-<style>
+const TICKET_CSS = `
  @page{size:58mm auto;margin:0}
  *{box-sizing:border-box;margin:0;padding:0}
  body{font-family:'Courier New',Courier,monospace;font-size:12px;width:58mm;padding:4mm 3mm 8mm;background:#fff;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -1874,44 +1939,167 @@ function printOrder(order) {
  .mesa{text-align:center;font-size:19px;font-weight:900;margin:2mm 0 1mm;letter-spacing:1px;line-height:1.3}
  .hora{text-align:center;font-size:11px;margin-bottom:0.5mm;font-weight:700}
  .fecha{text-align:center;font-size:9px;margin-bottom:1.5mm}
- .items-count{text-align:center;font-size:9px;margin-bottom:2mm;font-style:italic}
+ .badge{text-align:center;font-size:9px;margin-bottom:2mm;font-style:italic}
  table{width:100%;border-collapse:collapse}
  td{padding:1.5mm 0;vertical-align:top}
  .qty{width:8mm;font-weight:900;font-size:13px}
  .item{width:auto;font-weight:700;font-size:12px;padding-right:1mm}
  .price{width:18mm;text-align:right;white-space:nowrap;font-weight:700;font-size:12px}
- .item-row td{border-bottom:1px dotted #999;padding-bottom:1.5mm}
- .note-cell{font-size:9.5px;font-style:italic;padding-top:0;padding-bottom:1.5mm;padding-left:8mm;color:#000;font-weight:600}
- .salsa-cell{font-size:9.5px;padding-top:0;padding-bottom:1.5mm;padding-left:8mm;font-weight:700;color:#000}
+ .item-row td{border-bottom:1px dotted #ccc;padding-bottom:1mm}
+ .sub-cell{font-size:9.5px;padding-top:0;padding-bottom:1.5mm;padding-left:8mm;color:#000}
+ .note-cell{font-style:italic;font-weight:600;color:#333}
+ .disc-cell{font-weight:900}
  .llevar-tag{font-size:8px;font-weight:900;border:1px solid #000;padding:0 2px;margin-left:2px;vertical-align:middle}
- .total-row{display:flex;justify-content:space-between;font-size:15px;font-weight:900;margin-top:2.5mm;padding-top:2mm;border-top:2.5px solid #000}
+ .total-section{margin-top:2.5mm;padding-top:2mm;border-top:2.5px solid #000}
+ .total-row{display:flex;justify-content:space-between;font-size:15px;font-weight:900}
+ .disc-row{display:flex;justify-content:space-between;font-size:11px;margin-top:1mm}
  .notes{font-size:10.5px;font-style:italic;margin-top:2.5mm;padding:2mm;border:2px solid #000;font-weight:700;text-align:center;text-transform:uppercase;letter-spacing:0.5px}
  .paid-marker{text-align:center;font-weight:900;font-size:13px;margin-top:2.5mm;border:2px solid #000;padding:2mm;letter-spacing:2px}
  .footer{text-align:center;font-size:9px;margin-top:4mm;letter-spacing:2px;font-weight:700}
- .cocina-header{text-align:center;background:#000;color:#fff;font-size:11px;font-weight:900;padding:2mm;margin-bottom:2mm;letter-spacing:2px}
-</style></head><body>
- <div class="cocina-header">▶ TICKET DE COCINA ◀</div>
- <div class="logo">MR. PAPACHOS</div>
- <div class="sub">¡Sabe a Cajacho! · Cajamarca</div>
- <hr class="divider-solid">
- <div class="mesa">${tipoBase}</div>
- <div class="hora">${hora} hs</div>
- <div class="fecha">${fecha}</div>
- <div class="items-count">(${totalItems} ítem${totalItems!==1?"s":""})</div>
- <hr class="divider">
- <table>${items}</table>
- ${notes}
- <hr class="divider">
- ${kitchenMode ? "" : `<div class="total-row"><span>TOTAL</span><span>S/.${order.total.toFixed(2)}</span></div>`}
- ${paidMarker}
- <div class="footer">${kitchenMode ? "— COCINA · MR. PAPACHOS —" : "— GRACIAS POR SU VISITA —"}</div>
- <script>window.onload=function(){window.print();}<\/script>
-</body></html>`;
+ .header-badge{text-align:center;background:#000;color:#fff;font-size:11px;font-weight:900;padding:2mm;margin-bottom:2mm;letter-spacing:2px}
+`;
 
+function openTicketWindow(htmlContent) {
  const blob = new Blob([htmlContent], { type: 'text/html' });
  const url = URL.createObjectURL(blob);
- window.open(url, '_blank');
+ const win = window.open(url, '_blank');
+ if (!win) alert("Permite las ventanas emergentes para imprimir tickets.");
 }
+
+function buildHeader(label, order) {
+ const hora  = new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"});
+ const fecha = new Date().toLocaleDateString("es-PE",{day:"2-digit",month:"2-digit",year:"2-digit"});
+ const tipoBase = order.orderType==="llevar"
+  ? `LLEVAR${order.table ? ` — ${order.table}` : ""}${order.phone ? `<br><small>${order.phone}</small>` : ""}`
+  : `MESA ${order.table}`;
+ return `
+  <div class="header-badge">${label}</div>
+  <div class="logo">MR. PAPACHOS</div>
+  <div class="sub">¡Sabe a Cajacho! · Cajamarca</div>
+  <hr class="divider-solid">
+  <div class="mesa">${tipoBase}</div>
+  <div class="hora">${hora} hs</div>
+  <div class="fecha">${fecha}</div>
+ `;
+}
+
+// ── TICKET DE COCINA — con notas, salsas, adicionales, sin precios ─
+function printKitchenTicket(order) {
+ const itemRows = (order.items||[]).map(i => {
+  const validNotes = (i.individualNotes||[]).filter(n=>n.trim());
+  const notesHtml  = validNotes.map((n,idx)=>`<tr><td colspan="2" class="sub-cell note-cell"> ↳ [${idx+1}]: ${n}</td></tr>`).join("");
+  const salsasHtml = i.salsas?.length>0
+   ? `<tr><td colspan="2" class="sub-cell"> Salsas: ${i.salsas.map(s=>`${s.name} (${s.style})`).join(" · ")}</td></tr>` : "";
+  const comboHtml  = i._comboNote
+   ? `<tr><td colspan="2" class="sub-cell"> 🎯 ${i._comboNote}</td></tr>` : "";
+  const llevar     = i.isLlevar ? ` <span class="llevar-tag">LLEVAR</span>` : "";
+  const adicion    = i._isAdicion ? ` <span class="llevar-tag">+EXTRA</span>` : "";
+  return `<tr class="item-row"><td class="qty">${i.qty}x</td><td class="item">${i.name}${llevar}${adicion}</td></tr>${salsasHtml}${comboHtml}${notesHtml}`;
+ }).join("");
+
+ const totalItems = (order.items||[]).reduce((s,i)=>s+i.qty,0);
+ const notes = order.notes ? `<div class="notes">⚠ NOTA: ${order.notes}</div>` : "";
+
+ const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cocina</title>
+<style>${TICKET_CSS}</style></head><body>
+ ${buildHeader("▶ COCINA ◀", order)}
+ <div class="badge">${totalItems} ítem${totalItems!==1?"s":""} · Por: ${order._mesero||"—"}</div>
+ <hr class="divider">
+ <table>${itemRows}</table>
+ ${notes}
+ <div class="footer">— COCINA · MR. PAPACHOS —</div>
+ <script>window.onload=()=>window.print()<\/script>
+</body></html>`;
+ openTicketWindow(html);
+}
+
+// ── TICKET DE CONSUMIDOR — limpio, con precios, descuentos por ítem ─
+function printConsumerTicket(order, opts = {}) {
+ // opts: { items, overrideTotal, discountData, label, splitIdx }
+ const displayItems = opts.items || order.items || [];
+ const label = opts.label || (order.isPaid ? "★ RECIBO DE PAGO ★" : "◆ CUENTA");
+
+ const itemRows = displayItems.map(i => {
+  const qty     = i.splitQty || i.qty;
+  const origPx  = (i._originalPrice || i.price) * qty;
+  const finalPx = i.price * qty;
+  const hasDisc = i._originalPrice && i._originalPrice > i.price;
+  const llevar  = i.isLlevar ? ` <span class="llevar-tag">LLEVAR</span>` : "";
+  const comboHtml = i._comboNote
+   ? `<tr><td colspan="3" class="sub-cell"> 🎯 ${i._comboNote}</td></tr>` : "";
+  const salsasHtml = i.salsas?.length>0
+   ? `<tr><td colspan="3" class="sub-cell"> ${i.salsas.map(s=>`${s.name} (${s.style})`).join(" · ")}</td></tr>` : "";
+  const priceRow = hasDisc
+   ? `<tr><td colspan="3" class="sub-cell disc-cell"> ↳ Precio ajustado (era S/.${origPx.toFixed(2)}) −S/.${(origPx-finalPx).toFixed(2)}</td></tr>` : "";
+  const priceNoteRow = i.priceNote
+   ? `<tr><td colspan="3" class="sub-cell"> ↳ ${i.priceNote}</td></tr>` : "";
+  return `<tr class="item-row"><td class="qty">${qty}x</td><td class="item">${i.name}${llevar}</td><td class="price">S/.${finalPx.toFixed(2)}</td></tr>${salsasHtml}${comboHtml}${priceRow}${priceNoteRow}`;
+ }).join("");
+
+ // Totals
+ const subtotal = displayItems.reduce((s,i)=>{
+  const qty = i.splitQty || i.qty;
+  return s + i.price * qty;
+ }, 0);
+ const discData = opts.discountData || {};
+ const itemDiscAmt  = discData.itemDiscAmt  || 0;
+ const globalDiscAmt= discData.globalDiscAmt|| 0;
+ const finalTotal   = opts.overrideTotal !== undefined ? opts.overrideTotal : subtotal;
+
+ let totalSection = `<div class="total-section">`;
+ if (itemDiscAmt > 0 || globalDiscAmt > 0) {
+  totalSection += `<div class="disc-row"><span>Subtotal</span><span>S/.${subtotal.toFixed(2)}</span></div>`;
+  if (itemDiscAmt > 0)   totalSection += `<div class="disc-row"><span>🏷 Desc. por ítems</span><span>−S/.${itemDiscAmt.toFixed(2)}</span></div>`;
+  if (globalDiscAmt > 0) totalSection += `<div class="disc-row"><span>🏷 Desc. global${discData.globalMotivo ? ` (${discData.globalMotivo})` : ""}</span><span>−S/.${globalDiscAmt.toFixed(2)}</span></div>`;
+ }
+ totalSection += `<div class="total-row"><span>TOTAL</span><span>S/.${finalTotal.toFixed(2)}</span></div>`;
+
+ // Payment methods
+ if (order.isPaid || opts.showPayments) {
+  const ef = order.payments?.efectivo || 0;
+  const ya = order.payments?.yape    || 0;
+  const ta = order.payments?.tarjeta || 0;
+  if (ef>0) totalSection += `<div class="disc-row"><span>💵 Efectivo</span><span>S/.${ef.toFixed(2)}</span></div>`;
+  if (ya>0) totalSection += `<div class="disc-row"><span>📱 Yape</span><span>S/.${ya.toFixed(2)}</span></div>`;
+  if (ta>0) totalSection += `<div class="disc-row"><span>💳 Tarjeta</span><span>S/.${ta.toFixed(2)}</span></div>`;
+  totalSection += `<div class="paid-marker">★ PAGADO ★</div>`;
+ }
+ totalSection += `</div>`;
+
+ const splitBadge = opts.splitIdx !== undefined ? `<div class="badge">Pago ${opts.splitIdx} de ${opts.splitTotal}</div>` : "";
+ const notes = order.notes ? `<div class="notes">Nota: ${order.notes}</div>` : "";
+
+ const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Recibo</title>
+<style>${TICKET_CSS}</style></head><body>
+ ${buildHeader(label, order)}
+ ${splitBadge}
+ <hr class="divider">
+ <table>${itemRows}</table>
+ ${notes}
+ ${totalSection}
+ <div class="footer">— GRACIAS POR SU VISITA —</div>
+ <script>window.onload=()=>window.print()<\/script>
+</body></html>`;
+ openTicketWindow(html);
+}
+
+// ── PRINT BOTH (cocina + consumidor) ─────────────────────────────────
+function printOrder(order) {
+ if (order.isPaid) {
+  // Consumer receipt only
+  printConsumerTicket(order, { showPayments: true });
+ } else {
+  // Kitchen ticket (active order)
+  printKitchenTicket(order);
+ }
+}
+
+// ── PRINT SPLIT ITEMS for one client ────────────────────────────────
+function printSplitTicket(order, selectedItems, splitIdx, splitTotal) {
+ const items = selectedItems.map(i => ({...i, qty: i.splitQty || i.qty}));
+ printConsumerTicket(order, { items, splitIdx, splitTotal });
+}
+
 
 // ═══════════════════════════════════════════════════════════════════
 // COMPONENTES SECUNDARIOS
@@ -2278,68 +2466,108 @@ function MesaModalComponent({ num, orders, setDraft, newDraft, onClose, setTab, 
 
 function InlineSplit({ order, onProceed, onClose, s, Y, fmt }) {
  const [splitItems, setSplitItems] = useState(
- (order.items||[]).map(i => ({ ...i, splitQty: 0 }))
+  (order.items||[]).map(i => ({ ...i, splitQty: 0 }))
  );
+ const [ticketMode, setTicketMode] = useState(null); // null | "asking" | "separate" | "single"
  const splitTotal = splitItems.reduce((acc, i) => acc + i.price * i.splitQty, 0);
+ const selectedItems = splitItems.filter(i => i.splitQty > 0);
+ const remainingItems = splitItems.filter(i => i.qty - i.splitQty > 0);
 
  const handleQty = (cartId, delta, maxQty) => {
- setSplitItems(prev => prev.map(i => {
- if (i.cartId !== cartId) return i;
- const next = Math.min(Math.max(i.splitQty + delta, 0), maxQty);
- return { ...i, splitQty: next };
- }));
+  setSplitItems(prev => prev.map(i => {
+   if (i.cartId !== cartId) return i;
+   const next = Math.min(Math.max(i.splitQty + delta, 0), maxQty);
+   return { ...i, splitQty: next };
+  }));
+ };
+
+ const handleCobrar = () => {
+  if (selectedItems.length === 0) return;
+  // Ask ticket preference before proceeding
+  setTicketMode("asking");
+ };
+
+ const handlePrintAndProceed = (mode) => {
+  const totalParts = 1; // can extend later for numbered splits
+  if (mode === "separate") {
+   // Print just selected items ticket now
+   printSplitTicket(order, selectedItems, 1, totalParts);
+  } else {
+   // Single combined ticket — print full remaining for reference
+   printConsumerTicket(order, { items: selectedItems });
+  }
+  onProceed(selectedItems, splitTotal);
  };
 
  return (
- <div style={{
- marginTop:0, overflow:"hidden",
- animation:"slideDown 0.22s ease-out",
- background:"#111", borderTop:`2px dashed ${Y}44`,
- borderRadius:"0 0 12px 12px", padding:"14px 12px 12px"
- }}>
+ <div style={{marginTop:0, overflow:"hidden", animation:"slideDown 0.22s ease-out", background:"#111", borderTop:`2px dashed ${Y}44`, borderRadius:"0 0 12px 12px", padding:"14px 12px 12px"}}>
  <style>{`@keyframes slideDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}`}</style>
- <div style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, marginBottom:10}}>
- Dividir — elige cuánto paga este cliente
- </div>
- {splitItems.map(item => {
- const filled = item.splitQty > 0;
- return (
- <div key={item.cartId} style={{
- display:"flex", alignItems:"center", justifyContent:"space-between",
- background: filled ? `${Y}12` : "#1a1a1a",
- border: `1px solid ${filled ? Y+"55" : "#2a2a2a"}`,
- borderRadius:8, padding:"8px 10px", marginBottom:6,
- transition:"all .15s"
- }}>
- <div style={{flex:1, minWidth:0}}>
- <div style={{fontWeight:700, fontSize:13, color: filled ? "#fff" : "#aaa"}}>
- {item.name}
- {item.isLlevar && <span style={{marginLeft:6,background:"#154360",color:"#3498db",borderRadius:4,padding:"1px 5px",fontSize:9,fontWeight:700}}>Llevar</span>}
- </div>
- <div style={{fontSize:11, color:"#555"}}>{item.qty} disp. · {fmt(item.price)} c/u</div>
- </div>
- <div style={{display:"flex", alignItems:"center", gap:8, flexShrink:0}}>
- <button style={{...s.btn("danger"), padding:"3px 10px", fontSize:15, lineHeight:1}} onClick={() => handleQty(item.cartId,-1,item.qty)}>−</button>
- <span style={{fontWeight:900, fontSize:15, minWidth:22, textAlign:"center", color: filled ? Y : "#555"}}>{item.splitQty}</span>
- <button style={{...s.btn(), padding:"3px 10px", fontSize:15, lineHeight:1}} onClick={() => handleQty(item.cartId,1,item.qty)}>+</button>
- <span style={{color:"#888", fontSize:12, minWidth:52, textAlign:"right"}}>{fmt(item.price*item.splitQty)}</span>
- </div>
- </div>
- );
- })}
- <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 4px 4px", borderTop:`1px solid #2a2a2a`, marginTop:6}}>
- <span style={{fontWeight:900, fontSize:14}}>SUBTOTAL</span>
- <span style={{fontWeight:900, fontSize:16, color:Y}}>{fmt(splitTotal)}</span>
- </div>
- <div style={{display:"flex", gap:8, marginTop:10}}>
- <button style={{...s.btn("secondary"), flex:1, padding:10}} onClick={onClose}>Cancelar división</button>
- <button
- style={{...s.btn("success"), flex:2, padding:10, fontSize:14, opacity: splitTotal===0?0.4:1}}
- disabled={splitTotal===0}
- onClick={() => onProceed(splitItems.filter(i=>i.splitQty>0), splitTotal)}>
- Cobrar {fmt(splitTotal)}
- </button>
- </div>
+
+ {/* Asking ticket mode dialog */}
+ {ticketMode === "asking" && (
+  <div style={{background:"#1a1a1a", border:`2px solid ${Y}55`, borderRadius:10, padding:"14px 16px", marginBottom:14}}>
+   <div style={{fontWeight:900, fontSize:14, color:Y, marginBottom:10}}>🖨 ¿Cómo deseas el ticket?</div>
+   <div style={{fontSize:12, color:"#888", marginBottom:12}}>
+    Seleccionaste {selectedItems.reduce((s,i)=>s+i.splitQty,0)} ítem(s) · S/.{splitTotal.toFixed(2)}
+    {remainingItems.length > 0 && <div style={{marginTop:4}}>Quedan {remainingItems.reduce((s,i)=>s+(i.qty-i.splitQty),0)} ítem(s) para otros clientes</div>}
+   </div>
+   <div style={{display:"flex", flexDirection:"column", gap:8}}>
+    <button style={{...s.btn("primary"), padding:"12px 0", fontSize:13}} onClick={() => handlePrintAndProceed("separate")}>
+     🧾 Ticket individual + Cobrar solo esto
+    </button>
+    <button style={{...s.btn("secondary"), padding:"10px 0", fontSize:12}} onClick={() => handlePrintAndProceed("single")}>
+     📄 Cobrar sin ticket separado
+    </button>
+    <button style={{...s.btn("danger"), padding:"8px 0", fontSize:11}} onClick={() => setTicketMode(null)}>
+     ← Volver a seleccionar
+    </button>
+   </div>
+  </div>
+ )}
+
+ {ticketMode === null && (
+ <>
+  <div style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, marginBottom:10}}>
+   Dividir — elige cuánto paga este cliente
+  </div>
+  {splitItems.map(item => {
+   const filled = item.splitQty > 0;
+   return (
+    <div key={item.cartId} style={{display:"flex", alignItems:"center", justifyContent:"space-between", background: filled ? `${Y}12` : "#1a1a1a", border:`1px solid ${filled ? Y+"55" : "#2a2a2a"}`, borderRadius:8, padding:"8px 10px", marginBottom:6, transition:"all .15s"}}>
+     <div style={{flex:1, minWidth:0}}>
+      <div style={{fontWeight:700, fontSize:13, color: filled ? "#fff" : "#aaa"}}>
+       {item.name}
+       {item.isLlevar && <span style={{marginLeft:6,background:"#154360",color:"#3498db",borderRadius:4,padding:"1px 5px",fontSize:9,fontWeight:700}}>Llevar</span>}
+      </div>
+      <div style={{fontSize:11, color:"#555"}}>{item.qty} disp. · {fmt(item.price)} c/u</div>
+     </div>
+     <div style={{display:"flex", alignItems:"center", gap:8, flexShrink:0}}>
+      <button style={{...s.btn("danger"), padding:"3px 10px", fontSize:15, lineHeight:1}} onClick={() => handleQty(item.cartId,-1,item.qty)}>−</button>
+      <span style={{fontWeight:900, fontSize:15, minWidth:22, textAlign:"center", color: filled ? Y : "#555"}}>{item.splitQty}</span>
+      <button style={{...s.btn(), padding:"3px 10px", fontSize:15, lineHeight:1}} onClick={() => handleQty(item.cartId,1,item.qty)}>+</button>
+      <span style={{color:"#888", fontSize:12, minWidth:52, textAlign:"right"}}>{fmt(item.price*item.splitQty)}</span>
+     </div>
+    </div>
+   );
+  })}
+  <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 4px 4px", borderTop:`1px solid #2a2a2a`, marginTop:6}}>
+   <span style={{fontWeight:900, fontSize:14}}>SUBTOTAL</span>
+   <span style={{fontWeight:900, fontSize:16, color:Y}}>{fmt(splitTotal)}</span>
+  </div>
+  <div style={{display:"flex", gap:8, marginTop:10}}>
+   <button style={{...s.btn("secondary"), flex:1, padding:10}} onClick={onClose}>Cancelar división</button>
+   <button style={{...s.btn("secondary"), padding:"10px 12px", fontSize:12}} disabled={selectedItems.length===0}
+    onClick={() => selectedItems.length > 0 && printSplitTicket(order, selectedItems, 1, 1)}>
+    🖨 Ticket
+   </button>
+   <button style={{...s.btn("success"), flex:2, padding:10, fontSize:14, opacity: splitTotal===0?0.4:1}}
+    disabled={splitTotal===0}
+    onClick={handleCobrar}>
+    💰 Cobrar S/.{splitTotal.toFixed(2)}
+   </button>
+  </div>
+ </>
+ )}
  </div>
  );
 }
@@ -2676,7 +2904,8 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  {!o.isPaid && !isMesero && (
  <button style={{...s.btn("warn"),flex:1}} onClick={()=>setEditingOrder(o)}>✏️ Editar</button>
  )}
- <button style={{...s.btn("secondary"), padding:"7px 10px", fontSize:11}} onClick={()=>printOrder(o)}>🖨</button>
+ <button style={{...s.btn("secondary"), padding:"7px 10px", fontSize:11}} onClick={()=>printKitchenTicket(o)}>🍳</button>
+ <button style={{...s.btn("secondary"), padding:"7px 10px", fontSize:11}} onClick={()=>printConsumerTicket(o)}>🧾</button>
  {canAnular && !o.isPaid && (
  <button style={{...s.btn("danger"), padding:"7px 10px", fontSize:11, fontWeight:800}} onClick={()=>setAnulacionModal(o)}>🚫 Anular</button>
  )}
@@ -3963,8 +4192,16 @@ export default function App() {
    else setSolicitudes([]);
   });
   unsubStaff = onSnapshot(localFS.staffRef(), (docSnap) => {
-   if (docSnap.exists()) setStaff(docSnap.data().users || []);
-   else setStaff([]);
+   if (docSnap.exists()) {
+    const incoming = docSnap.data().users;
+    if (Array.isArray(incoming) && incoming.length > 0) {
+     setStaff(incoming);
+     // Keep localStorage backup fresh
+     try { localStorage.setItem(`staff_backup_${currentUser.localId}`, JSON.stringify({ users: incoming, ts: new Date().toISOString() })); } catch(_) {}
+    }
+    // If incoming is empty, keep current state (don't overwrite with [])
+   }
+   // If doc doesn't exist, also keep current state (may be mid-write)
   });
   unsubCaja = onSnapshot(localFS.cajaRef(), (docSnap) => {
    if (docSnap.exists()) setCaja(docSnap.data());
@@ -4060,7 +4297,26 @@ export default function App() {
   showToast("🔒 Caja cerrada", "#e67e22");
   return corte;
  };
- const saveStaff = async (users) => { setStaff(users); await FS(currentUser.localId).saveStaff(users); };
+ const saveStaff = async (users) => {
+  if (!Array.isArray(users) || users.length === 0) {
+   showToast("⚠️ No se puede guardar: lista vacía", "#e74c3c");
+   return;
+  }
+  if (!users.some(u => u.roles?.includes("admin"))) {
+   showToast("⚠️ No se puede guardar: debe haber al menos un Administrador", "#e74c3c");
+   return;
+  }
+  // Optimistic update on UI
+  setStaff(users);
+  // Write to Firebase with validation guard built in
+  const ok = await FS(currentUser.localId).saveStaff(users);
+  if (!ok) {
+   showToast("⚠️ Error al guardar personal — intenta de nuevo", "#e74c3c");
+   // Revert optimistic update by re-reading Firebase
+   const fresh = await FS(currentUser.localId).getStaff();
+   if (fresh && fresh.length > 0) setStaff(fresh);
+  }
+ };
 
  // Crear solicitud de aprobación (para no-admins)
  const crearSolicitud = async (solicitud) => {
