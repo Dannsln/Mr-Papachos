@@ -2129,9 +2129,13 @@ function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, set
  const today = new Date().toDateString();
  // Caja session: show totals from current session open time, never include anulled
  const cajaOpenedAt = caja?.openedAt ? new Date(caja.openedAt) : null;
+ const cajaDay = cajaOpenedAt ? cajaOpenedAt.toDateString() : null;
  const inCurrentSession = (o) => {
   if (!cajaOpenedAt) return false;
   if (o.anulado || o.status === "anulado") return false;
+  // Same day boundary as cerrarCaja: use createdAt for the day, never cross midnight
+  const orderDay = new Date(o.createdAt).toDateString();
+  if (cajaDay && orderDay !== cajaDay) return false;
   const t = new Date(o.paidAt || o.createdAt).getTime();
   return t >= cajaOpenedAt.getTime();
  };
@@ -4329,17 +4333,22 @@ export default function App() {
   if (!cajaRef2.current?.isOpen) return;
   const sessionId = cajaRef2.current.sessionId;
   const openedAt = new Date(cajaRef2.current.openedAt);
+  const cajaDay = openedAt.toDateString(); // e.g. "Fri Apr 18 2026"
 
-  // Helper: is this order from the current session?
-  // Priority: explicit _cajaSessionId match → else time-range (order paid after caja opened, not yet in another session)
- const inThisSession = (o) => {
-  if (o._cajaSessionId) return o._cajaSessionId === sessionId;
-  // ─── FIX: legacy orders — solo del mismo día en que se abrió la caja ───
-  const refTime = new Date(o.paidAt || o.createdAt);
-  const cajaDay = openedAt.toDateString();
-  return refTime.getTime() >= openedAt.getTime()
-    && refTime.toDateString() === cajaDay;
-};
+  // An order belongs to THIS session close only if:
+  // 1. It was CREATED on the same calendar day the caja was opened (day boundary)
+  // 2. AND its sessionId matches (if stamped) OR it was paid after caja opened (legacy)
+  //
+  // This prevents cross-midnight accumulation when the caja isn't closed at 00:00.
+  const inThisSession = (o) => {
+   // Day boundary: always use createdAt to assign the order to a calendar day
+   const orderDay = new Date(o.createdAt).toDateString();
+   if (orderDay !== cajaDay) return false; // different calendar day → different session
+
+   if (o._cajaSessionId) return o._cajaSessionId === sessionId;
+   // Legacy orders (no stamp): same day + paid/created after caja opened
+   return new Date(o.paidAt || o.createdAt).getTime() >= openedAt.getTime();
+  };
 
   const pagadosSesion = history.filter(o =>
    o.status === "pagado" && !o.anulado && inThisSession(o)
