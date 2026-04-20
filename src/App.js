@@ -154,7 +154,7 @@ const MENU_BASE = [
  { id:"S09", cat:"Salchipapas", name:"Salchi Champi Quesera", price:18, desc:"Papa, hot dog, chorizo artesanal, doble queso, tocino, champiñones" },
  { id:"S10", cat:"Salchipapas", name:"Salchi Nuggets", price:20, desc:"Papa, nuggets, hot dog, chorizo artesanal, queso, ensalada" },
  { id:"S11", cat:"Salchipapas", name:"Salchi Porky", price:20, desc:"Papa, chorizo artesanal, hot dog, trozos de chicharrón" },
- { id:"S12", cat:"Salchipapas", name:"La Papacha", price:22, desc:"Papa, hot dog, chorizo artesanal, huevo, queso, tocino, 2 alitas y trozos de pollo broaster" },
+ { id:"S12", cat:"Salchipapas", name:"Salchipapa La Papacha", price:22, desc:"Papa, hot dog, chorizo artesanal, huevo, queso, tocino, 2 alitas y trozos de pollo broaster" },
  { id:"S13", cat:"Salchipapas", name:"Salchi Lomo", price:25, desc:"(Pollo o carne) Papa, hot dog, chorizo artesanal, plátano, 2 alitas, ensalada" },
  { id:"A01", cat:"Alitas", name:"Alitas 4 pzas", price:14, desc:"4 alitas + papas fritas + ensalada" },
  { id:"A02", cat:"Alitas", name:"Alitas 6 pzas", price:20, desc:"6 alitas + papas fritas + ensalada" },
@@ -2239,7 +2239,9 @@ const totalEnCaja = (caja?.fondoInicial||0) + cashRev;
     {isAdmin && caja?.cortes?.length > 0 && (
      <div style={{marginTop:12, borderTop:"1px solid #2a2a2a", paddingTop:10}}>
       <div style={{fontSize:10, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>Cortes del día</div>
-      {caja.cortes.slice(-3).reverse().map((c,i) => (
+      {caja.cortes
+  .filter(c => new Date(c.cierreAt).toDateString() === new Date().toDateString())
+  .slice(-5).reverse().map((c,i) => (
        <div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:11, color:"#777", padding:"3px 0", borderBottom:"1px solid #1a1a1a"}}>
         <span>{new Date(c.cierreAt).toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})} · {c.cerradoBy}</span>
         <span style={{color:"#aaa", fontWeight:700}}>S/.{c.total.toFixed(2)} · {c.pedidosCobrados} pedidos</span>
@@ -4296,15 +4298,23 @@ export default function App() {
   const openedAt = new Date().toISOString();
   const fecha = new Date().toLocaleDateString("es-PE",{weekday:"long", day:"numeric", month:"long", year:"numeric"});
   const hora  = new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"});
+  
+  // ─── FIX: solo conservar cortes de HOY al abrir nueva sesión ───
+  const todayStr = new Date().toDateString();
+  const cortesHoy = (caja?.cortes || []).filter(c =>
+    new Date(c.cierreAt).toDateString() === todayStr
+  );
+  
   const data = {
-   isOpen: true,
-   sessionId,
-   openedAt,
-   openedBy: currentUser.name,
-   fondoInicial: parseFloat(fondoInicial) || 0,
-   cortes: caja?.cortes || [],
-   _savedAt: new Date().toISOString(),
+    isOpen: true,
+    sessionId,
+    openedAt,
+    openedBy: currentUser.name,
+    fondoInicial: parseFloat(fondoInicial) || 0,
+    cortes: cortesHoy,           // ← solo los de hoy
+    _savedAt: new Date().toISOString(),
   };
+  // ... resto igual
   // Guardar primero en Firestore; actualizar estado local solo si tuvo éxito
   const ok = await saveCaja(data);
   if (!ok) {
@@ -4322,12 +4332,14 @@ export default function App() {
 
   // Helper: is this order from the current session?
   // Priority: explicit _cajaSessionId match → else time-range (order paid after caja opened, not yet in another session)
-  const inThisSession = (o) => {
-   if (o._cajaSessionId) return o._cajaSessionId === sessionId;
-   // Legacy orders without stamp: include if paid/created after this caja opened
-   const refTime = new Date(o.paidAt || o.createdAt).getTime();
-   return refTime >= openedAt.getTime();
-  };
+ const inThisSession = (o) => {
+  if (o._cajaSessionId) return o._cajaSessionId === sessionId;
+  // ─── FIX: legacy orders — solo del mismo día en que se abrió la caja ───
+  const refTime = new Date(o.paidAt || o.createdAt);
+  const cajaDay = openedAt.toDateString();
+  return refTime.getTime() >= openedAt.getTime()
+    && refTime.toDateString() === cajaDay;
+};
 
   const pagadosSesion = history.filter(o =>
    o.status === "pagado" && !o.anulado && inThisSession(o)
