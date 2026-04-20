@@ -2137,14 +2137,18 @@ function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, set
  };
  const paidArchivedSession = history.filter(o => o.status==="pagado" && !o.anulado && inCurrentSession(o));
  const paidActiveSession   = orders.filter(o => o.isPaid && !o.anulado && inCurrentSession(o));
- const allPaidToday = [...paidArchivedSession, ...paidActiveSession];
- // Total en caja efectivo = fondo inicial + efectivo cobrado
+ // allPaidSession: todos los pedidos de la sesión de caja (para totales de efectivo/Yape/tarjeta)
+ const allPaidSession = [...paidArchivedSession, ...paidActiveSession];
+ // allPaidToday: solo pedidos pagados HOY (para los stats "Recaudado hoy" / "Pagados hoy")
+ const isToday = (o) => new Date(o.paidAt || o.createdAt).toDateString() === today;
+ const allPaidToday = allPaidSession.filter(isToday);
+ // Total en caja efectivo = fondo inicial + efectivo cobrado (toda la sesión)
  
  // 1. Primero declara e inicializa las bases
-const cashRev = allPaidToday.reduce((s,o) => s + getPay(o,"efectivo"), 0);
+const cashRev = allPaidSession.reduce((s,o) => s + getPay(o,"efectivo"), 0);
 const todayRev = allPaidToday.reduce((s,o) => s + o.total, 0);
-const yapeRev = allPaidToday.reduce((s,o) => s + getPay(o,"yape"), 0);
-const cardRev = allPaidToday.reduce((s,o) => s + getPay(o,"tarjeta"), 0);
+const yapeRev = allPaidSession.reduce((s,o) => s + getPay(o,"yape"), 0);
+const cardRev = allPaidSession.reduce((s,o) => s + getPay(o,"tarjeta"), 0);
 const totalRev = history.filter(o => o.status==="pagado" && !o.anulado).reduce((s,o) => s + o.total, 0)
                + paidActiveSession.reduce((s,o) => s + o.total, 0);
 const totalEnCaja = (caja?.fondoInicial||0) + cashRev;
@@ -2213,7 +2217,7 @@ const totalEnCaja = (caja?.fondoInicial||0) + cashRev;
     </div>
 
     {/* Resumen en caja abierta */}
-    {caja?.isOpen && allPaidToday.length > 0 && (
+    {caja?.isOpen && allPaidSession.length > 0 && (
      <div style={{display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8}}>
       <div style={{background:"#0f2a0f", borderRadius:8, padding:"8px 10px", textAlign:"center"}}>
        <div style={{color:"#27ae60", fontWeight:900, fontSize:16}}>S/.{totalEnCaja.toFixed(2)}</div>
@@ -2301,7 +2305,7 @@ const totalEnCaja = (caja?.fondoInicial||0) + cashRev;
    <div style={{...s.statCard, border:`1px solid ${Y}55`}}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(todayRev)}</div><div style={s.statLbl}>Recaudado hoy</div></div>
    <div style={s.statCard}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(totalRev)}</div><div style={s.statLbl}>Total histórico</div></div>
   </div>
-  {allPaidToday.length > 0 && (
+  {allPaidSession.length > 0 && (
    <div style={{...s.card, marginTop:8}}>
     <div style={s.row}>
      <div style={{textAlign:"center", flex:1}}><div style={{color:"#27ae60", fontWeight:900, fontSize:isMobile?13:16}}>{fmt(cashRev)}</div><div style={{fontSize:10, color:"#666"}}>Efectivo</div></div>
