@@ -132,17 +132,17 @@ const FS = (localId) => ({
 });
 
 const MENU_BASE = [
- { id:"H01", cat:"Hamburguesas", name:"La Silvestre", price:7, desc:"Carne, papa frita, ensalada" },
- { id:"H02", cat:"Hamburguesas", name:"La Piolin", price:8, desc:"Carne o pollo, huevo, papa frita, ensalada" },
- { id:"H03", cat:"Hamburguesas", name:"La Speedy Gonzales", price:10, desc:"Carne, huevo, hot dog, papa frita, ensalada" },
- { id:"H04", cat:"Hamburguesas", name:"La Cajacha", price:12, desc:"Carne, huevo, queso, hot dog, papa frita, ensalada" },
- { id:"H05", cat:"Hamburguesas", name:"La Coyote", price:12, desc:"Carne, huevo, plátano, jamón, papa frita, ensalada" },
- { id:"H06", cat:"Hamburguesas", name:"La Super Cajacha", price:14, desc:"Carne, queso, chorizo artesanal, tocino, papa frita, ensalada" },
- { id:"H07", cat:"Hamburguesas", name:"La Bugs Bunny", price:14, desc:"Carne, huevo, hot dog, chorizo artesanal, jamón, papa frita, ensalada" },
- { id:"H08", cat:"Hamburguesas", name:"La Cajamarquesa", price:14, desc:"Carne, champiñones, queso, tocino, papas fritas, ensalada" },
- { id:"H09", cat:"Hamburguesas", name:"La Porky", price:15, desc:"Carne, huevo, hot dog, chorizo artesanal, tocino, papa frita, ensalada" },
- { id:"H10", cat:"Hamburguesas", name:"La Tazmania", price:14, desc:"Carne, queso, piña, hot dog, jamón, papa frita, ensalada" },
- { id:"H11", cat:"Hamburguesas", name:"La Papachos", price:20, desc:"Doble carne, huevo, doble queso, hot dog, chorizo artesanal, jamón, tocino, papa frita, ensalada" },
+ { id:"H01", cat:"Hamburguesas", name:"Hamburguesa Silvestre", price:7, desc:"Carne, papa frita, ensalada" },
+ { id:"H02", cat:"Hamburguesas", name:"Hamburguesa Piolin", price:8, desc:"Carne o pollo, huevo, papa frita, ensalada" },
+ { id:"H03", cat:"Hamburguesas", name:"Hamburguesa Speedy Gonzales", price:10, desc:"Carne, huevo, hot dog, papa frita, ensalada" },
+ { id:"H04", cat:"Hamburguesas", name:"Hamburguesa Cajacha", price:12, desc:"Carne, huevo, queso, hot dog, papa frita, ensalada" },
+ { id:"H05", cat:"Hamburguesas", name:"Hamburguesa Coyote", price:12, desc:"Carne, huevo, plátano, jamón, papa frita, ensalada" },
+ { id:"H06", cat:"Hamburguesas", name:"Hamburguesa Super Cajacha", price:14, desc:"Carne, queso, chorizo artesanal, tocino, papa frita, ensalada" },
+ { id:"H07", cat:"Hamburguesas", name:"Hamburguesa Bugs Bunny", price:14, desc:"Carne, huevo, hot dog, chorizo artesanal, jamón, papa frita, ensalada" },
+ { id:"H08", cat:"Hamburguesas", name:"Hamburguesa Cajamarquesa", price:14, desc:"Carne, champiñones, queso, tocino, papas fritas, ensalada" },
+ { id:"H09", cat:"Hamburguesas", name:"Hamburguesa Porky", price:15, desc:"Carne, huevo, hot dog, chorizo artesanal, tocino, papa frita, ensalada" },
+ { id:"H10", cat:"Hamburguesas", name:"Hamburguesa Tazmania", price:14, desc:"Carne, queso, piña, hot dog, jamón, papa frita, ensalada" },
+ { id:"H11", cat:"Hamburguesas", name:"Hamburguesa Papachos", price:20, desc:"Doble carne, huevo, doble queso, hot dog, chorizo artesanal, jamón, tocino, papa frita, ensalada" },
  { id:"S01", cat:"Salchipapas", name:"Salchipapa Clásica", price:8, desc:"Papa, hot dog" },
  { id:"S02", cat:"Salchipapas", name:"Salchipapa Sencilla", price:10, desc:"Papa, hot dog, huevo" },
  { id:"S03", cat:"Salchipapas", name:"Salchipapa Cajacha", price:12, desc:"Papa, hot dog, chorizo artesanal, queso" },
@@ -165,10 +165,10 @@ const MENU_BASE = [
  { id:"AC02", cat:"Alichaufa", name:"Alichaufa 6 pzas", price:24, desc:"6 alitas + papas fritas + chaufa + ensalada" },
  { id:"AC03", cat:"Alichaufa", name:"Alichaufa 8 pzas", price:30, desc:"8 alitas + papas fritas + chaufa + ensalada" },
  { id:"AC04", cat:"Alichaufa", name:"Alichaufa 10 pzas", price:36, desc:"10 alitas + papas fritas + chaufa + ensalada" },
- { id:"PB01", cat:"Pollo Broaster", name:"Pollo 1/8 Clásico", price:12, desc:"1/8 de pollo broaster clásico" },
- { id:"PB02", cat:"Pollo Broaster", name:"Pollo 1/4 Clásico", price:18, desc:"1/4 de pollo broaster clásico" },
- { id:"PB03", cat:"Pollo Broaster", name:"Pollo 1/8 A lo Pobre", price:16, desc:"1/8 de pollo broaster a lo pobre" },
- { id:"PB04", cat:"Pollo Broaster", name:"Pollo 1/4 A lo Pobre", price:22, desc:"1/4 de pollo broaster a lo pobre" },
+ { id:"PB01", cat:"Pollo Broaster", name:"Pollo Broaster 1/8 Clásico", price:12, desc:"1/8 de pollo broaster clásico" },
+ { id:"PB02", cat:"Pollo Broaster", name:"Pollo Broaster  1/4 Clásico", price:18, desc:"1/4 de pollo broaster clásico" },
+ { id:"PB03", cat:"Pollo Broaster", name:"Pollo Broaster 1/8 A lo Pobre", price:16, desc:"1/8 de pollo broaster a lo pobre" },
+ { id:"PB04", cat:"Pollo Broaster", name:"Pollo Broaster 1/4 A lo Pobre", price:22, desc:"1/4 de pollo broaster a lo pobre" },
  { id:"MB01", cat:"Mostrito Broaster", name:"Mostrito 1/8 Clásico", price:14, desc:"1/8 de mostrito broaster clásico" },
  { id:"MB02", cat:"Mostrito Broaster", name:"Mostrito 1/4 Clásico", price:22, desc:"1/4 de mostrito broaster clásico" },
  { id:"MB03", cat:"Mostrito Broaster", name:"Mostrito 1/8 A lo Pobre", price:18, desc:"1/8 de mostrito broaster a lo pobre" },
@@ -360,10 +360,10 @@ const DEFAULT_STAFF = [
 ];
 
 const ROLE_INFO = {
- admin:    { label:"Administrador", color:"#FFD700", icon:"👑" },
- cajero:   { label:"Cajero",        color:"#3498db", icon:"💰" },
- mesero:   { label:"Mesero",        color:"#27ae60", icon:"🍽" },
- cocinero: { label:"Cocina",        color:"#e67e22", icon:"👨‍🍳" },
+ admin:    { label:"Administrador", color:"#FFD700",},
+ cajero:   { label:"Cajero",        color:"#3498db",},
+ mesero:   { label:"Mesero",        color:"#27ae60",},
+ cocinero: { label:"Cocina",        color:"#e67e22",},
 };
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2926,12 +2926,12 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  : <>
  <button style={{...s.btn("success"),flex:2,fontWeight:900}} onClick={()=>setCobrarTarget({type:'existing',data:o})}>💰 Cobrar</button>
  <button style={{...s.btn(splitOpen?"primary":"secondary"), flex:1}} onClick={()=>setSplitOpenId(splitOpen?null:o.id)}>
- {splitOpen ? "▲" : "✂️ Dividir"}
+ {splitOpen ? "▲" : " Dividir"}
  </button>
  </>
  )}
  {!o.isPaid && !isMesero && (
- <button style={{...s.btn("warn"),flex:1}} onClick={()=>setEditingOrder(o)}>✏️ Editar</button>
+ <button style={{...s.btn("warn"),flex:1}} onClick={()=>setEditingOrder(o)}> Editar</button>
  )}
  <button style={{...s.btn("secondary"), padding:"7px 10px", fontSize:11}} onClick={()=>printKitchenTicket(o)}>🍳</button>
  <button style={{...s.btn("secondary"), padding:"7px 10px", fontSize:11}} onClick={()=>printConsumerTicket(o)}>🧾</button>
@@ -4230,9 +4230,19 @@ export default function App() {
    }
    // If doc doesn't exist, also keep current state (may be mid-write)
   });
-  unsubCaja = onSnapshot(localFS.cajaRef(), (docSnap) => {
-   if (docSnap.exists()) setCaja(docSnap.data());
-   else setCaja(null);
+  unsubCaja = onSnapshot(localFS.cajaRef(), async (docSnap) => {
+   if (!docSnap.exists()) { setCaja(null); return; }
+   const data = docSnap.data();
+   // Corrección defensiva: si Firestore dice isOpen pero closedAt ya existe, algo falló antes
+   // al guardar el cierre. Lo marcamos como cerrado automáticamente.
+   if (data.isOpen && data.closedAt) {
+    console.warn("Caja en estado inconsistente (isOpen+closedAt). Corrigiendo...");
+    const fixed = { ...data, isOpen: false, _autoFixedAt: new Date().toISOString() };
+    try { await setDoc(localFS.cajaRef(), fixed); } catch(e) { console.error("autofix caja error:", e); }
+    setCaja(fixed);
+    return;
+   }
+   setCaja(data);
   });
   setLoaded(true);
  };
@@ -4264,8 +4274,18 @@ export default function App() {
  const cajaRef2 = useRef(null); // mirror of caja state for sync access in async closures
  useEffect(() => { cajaRef2.current = caja; }, [caja]);
 
+ // saveCaja: guarda en Firestore con hasta 3 reintentos. Retorna true si tuvo éxito.
  const saveCaja = async (data) => {
-  await setDoc(FS(currentUser.localId).cajaRef(), data);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+   try {
+    await setDoc(FS(currentUser.localId).cajaRef(), data);
+    return true;
+   } catch(e) {
+    console.error(`saveCaja intento ${attempt}/3 falló:`, e);
+    if (attempt < 3) await new Promise(r => setTimeout(r, 600 * attempt));
+   }
+  }
+  return false;
  };
 
  const abrirCaja = async (fondoInicial) => {
@@ -4280,16 +4300,22 @@ export default function App() {
    openedBy: currentUser.name,
    fondoInicial: parseFloat(fondoInicial) || 0,
    cortes: caja?.cortes || [],
+   _savedAt: new Date().toISOString(),
   };
+  // Guardar primero en Firestore; actualizar estado local solo si tuvo éxito
+  const ok = await saveCaja(data);
+  if (!ok) {
+   showToast("⚠️ Error al abrir la caja. Verifica tu conexión e intenta de nuevo.", "#e74c3c");
+   return;
+  }
   setCaja(data);
-  await saveCaja(data);
   showToast(`🟢 Caja abierta — ${fecha} · ${hora} | Todos los pedidos de ahora en adelante se registrarán en esta sesión`, "#27ae60");
  };
 
  const cerrarCaja = async () => {
-  if (!caja?.isOpen) return;
-  const sessionId = caja.sessionId;
-  const openedAt = new Date(caja.openedAt);
+  if (!cajaRef2.current?.isOpen) return;
+  const sessionId = cajaRef2.current.sessionId;
+  const openedAt = new Date(cajaRef2.current.openedAt);
 
   // Helper: is this order from the current session?
   // Priority: explicit _cajaSessionId match → else time-range (order paid after caja opened, not yet in another session)
@@ -4314,27 +4340,33 @@ export default function App() {
   const corte = {
    cierreAt: new Date().toISOString(),
    cerradoBy: currentUser.name,
-   fondoInicial: caja.fondoInicial,
-   openedAt: caja.openedAt,
+   fondoInicial: cajaRef2.current.fondoInicial,
+   openedAt: cajaRef2.current.openedAt,
    sessionId,
    efectivo, yape, tarjeta, total,
-   totalEnCaja: caja.fondoInicial + efectivo,
+   totalEnCaja: cajaRef2.current.fondoInicial + efectivo,
    pedidosCobrados: todosSesion.length,
   };
   const data = {
    isOpen: false,
    sessionId,
-   openedAt: caja.openedAt,
-   openedBy: caja.openedBy,
-   fondoInicial: caja.fondoInicial,
+   openedAt: cajaRef2.current.openedAt,
+   openedBy: cajaRef2.current.openedBy,
+   fondoInicial: cajaRef2.current.fondoInicial,
    closedAt: corte.cierreAt,
    closedBy: currentUser.name,
-   cortes: [...(caja.cortes || []), corte],
+   cortes: [...(cajaRef2.current.cortes || []), corte],
    ultimoCorte: corte,
+   _savedAt: new Date().toISOString(),
   };
+  // Guardar primero en Firestore; actualizar estado local solo si tuvo éxito
+  const ok = await saveCaja(data);
+  if (!ok) {
+   showToast("⚠️ Error al guardar el cierre. Verifica tu conexión e intenta de nuevo.", "#e74c3c");
+   return null;
+  }
   setCaja(data);
-  await saveCaja(data);
-  showToast("🔒 Caja cerrada", "#e67e22");
+  showToast("🔒 Caja cerrada correctamente", "#e67e22");
   return corte;
  };
  const saveStaff = async (users) => {
