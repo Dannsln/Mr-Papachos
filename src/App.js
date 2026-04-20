@@ -132,29 +132,29 @@ const FS = (localId) => ({
 });
 
 const MENU_BASE = [
- { id:"H01", cat:"Hamburguesas", name:"Hamburguesa La Silvestre", price:7, desc:"Carne, papa frita, ensalada" },
- { id:"H02", cat:"Hamburguesas", name:"Hamburguesa La Piolin", price:8, desc:"Carne o pollo, huevo, papa frita, ensalada" },
- { id:"H03", cat:"Hamburguesas", name:"Hamburguesa La Speedy Gonzales", price:10, desc:"Carne, huevo, hot dog, papa frita, ensalada" },
- { id:"H04", cat:"Hamburguesas", name:"Hamburguesa La Cajacha", price:12, desc:"Carne, huevo, queso, hot dog, papa frita, ensalada" },
- { id:"H05", cat:"Hamburguesas", name:"Hamburguesa La Coyote", price:12, desc:"Carne, huevo, plátano, jamón, papa frita, ensalada" },
- { id:"H06", cat:"Hamburguesas", name:"Hamburguesa La Super Cajacha", price:14, desc:"Carne, queso, chorizo artesanal, tocino, papa frita, ensalada" },
- { id:"H07", cat:"Hamburguesas", name:"Hamburguesa La Bugs Bunny", price:14, desc:"Carne, huevo, hot dog, chorizo artesanal, jamón, papa frita, ensalada" },
- { id:"H08", cat:"Hamburguesas", name:"Hamburguesa La Cajamarquesa", price:14, desc:"Carne, champiñones, queso, tocino, papas fritas, ensalada" },
- { id:"H09", cat:"Hamburguesas", name:"Hamburguesa La Porky", price:15, desc:"Carne, huevo, hot dog, chorizo artesanal, tocino, papa frita, ensalada" },
- { id:"H10", cat:"Hamburguesas", name:"Hamburguesa La Tazmania", price:14, desc:"Carne, queso, piña, hot dog, jamón, papa frita, ensalada" },
- { id:"H11", cat:"Hamburguesas", name:"Hamburguesa La Papachos", price:20, desc:"Doble carne, huevo, doble queso, hot dog, chorizo artesanal, jamón, tocino, papa frita, ensalada" },
+ { id:"H01", cat:"Hamburguesas", name:"La Silvestre", price:7, desc:"Carne, papa frita, ensalada" },
+ { id:"H02", cat:"Hamburguesas", name:"La Piolin", price:8, desc:"Carne o pollo, huevo, papa frita, ensalada" },
+ { id:"H03", cat:"Hamburguesas", name:"La Speedy Gonzales", price:10, desc:"Carne, huevo, hot dog, papa frita, ensalada" },
+ { id:"H04", cat:"Hamburguesas", name:"La Cajacha", price:12, desc:"Carne, huevo, queso, hot dog, papa frita, ensalada" },
+ { id:"H05", cat:"Hamburguesas", name:"La Coyote", price:12, desc:"Carne, huevo, plátano, jamón, papa frita, ensalada" },
+ { id:"H06", cat:"Hamburguesas", name:"La Super Cajacha", price:14, desc:"Carne, queso, chorizo artesanal, tocino, papa frita, ensalada" },
+ { id:"H07", cat:"Hamburguesas", name:"La Bugs Bunny", price:14, desc:"Carne, huevo, hot dog, chorizo artesanal, jamón, papa frita, ensalada" },
+ { id:"H08", cat:"Hamburguesas", name:"La Cajamarquesa", price:14, desc:"Carne, champiñones, queso, tocino, papas fritas, ensalada" },
+ { id:"H09", cat:"Hamburguesas", name:"La Porky", price:15, desc:"Carne, huevo, hot dog, chorizo artesanal, tocino, papa frita, ensalada" },
+ { id:"H10", cat:"Hamburguesas", name:"La Tazmania", price:14, desc:"Carne, queso, piña, hot dog, jamón, papa frita, ensalada" },
+ { id:"H11", cat:"Hamburguesas", name:"La Papachos", price:20, desc:"Doble carne, huevo, doble queso, hot dog, chorizo artesanal, jamón, tocino, papa frita, ensalada" },
  { id:"S01", cat:"Salchipapas", name:"Salchipapa Clásica", price:8, desc:"Papa, hot dog" },
  { id:"S02", cat:"Salchipapas", name:"Salchipapa Sencilla", price:10, desc:"Papa, hot dog, huevo" },
  { id:"S03", cat:"Salchipapas", name:"Salchipapa Cajacha", price:12, desc:"Papa, hot dog, chorizo artesanal, queso" },
  { id:"S04", cat:"Salchipapas", name:"Salchipapa Hawaiana", price:12, desc:"Papa, hot dog, jamón, piña, queso" },
  { id:"S05", cat:"Salchipapas", name:"Salchipobre", price:13, desc:"Papa, hot dog, huevo, plátano, jamón" },
- { id:"S06", cat:"Salchipapas", name:"Salchipapa La Piernona", price:15, desc:"Papa, hot dog, pierna broster" },
- { id:"S07", cat:"Salchipapas", name:"Salchipapa Super Cajacha", price:16, desc:"Papa, hot dog, chorizo artesanal, doble queso, tocino" },
+ { id:"S06", cat:"Salchipapas", name:"Salchi Piernona", price:15, desc:"Papa, hot dog, pierna broster" },
+ { id:"S07", cat:"Salchipapas", name:"Salchi Super Cajacha", price:16, desc:"Papa, hot dog, chorizo artesanal, doble queso, tocino" },
  { id:"S08", cat:"Salchipapas", name:"Salchibroster", price:16, desc:"Papa, hot dog, huevo, pollo broaster" },
- { id:"S09", cat:"Salchipapas", name:"Salchipapa Champi Quesera", price:18, desc:"Papa, hot dog, chorizo artesanal, doble queso, tocino, champiñones" },
+ { id:"S09", cat:"Salchipapas", name:"Salchi Champi Quesera", price:18, desc:"Papa, hot dog, chorizo artesanal, doble queso, tocino, champiñones" },
  { id:"S10", cat:"Salchipapas", name:"Salchi Nuggets", price:20, desc:"Papa, nuggets, hot dog, chorizo artesanal, queso, ensalada" },
  { id:"S11", cat:"Salchipapas", name:"Salchi Porky", price:20, desc:"Papa, chorizo artesanal, hot dog, trozos de chicharrón" },
- { id:"S12", cat:"Salchipapas", name:"Salchiapa La Papacha", price:22, desc:"Papa, hot dog, chorizo artesanal, huevo, queso, tocino, 2 alitas y trozos de pollo broaster" },
+ { id:"S12", cat:"Salchipapas", name:"La Papacha", price:22, desc:"Papa, hot dog, chorizo artesanal, huevo, queso, tocino, 2 alitas y trozos de pollo broaster" },
  { id:"S13", cat:"Salchipapas", name:"Salchi Lomo", price:25, desc:"(Pollo o carne) Papa, hot dog, chorizo artesanal, plátano, 2 alitas, ensalada" },
  { id:"A01", cat:"Alitas", name:"Alitas 4 pzas", price:14, desc:"4 alitas + papas fritas + ensalada" },
  { id:"A02", cat:"Alitas", name:"Alitas 6 pzas", price:20, desc:"6 alitas + papas fritas + ensalada" },
@@ -258,7 +258,7 @@ const MENU_BASE = [
  { id:"EX01", cat:"Extras", name:"Porción de Papas", price:6, desc:"Porción extra de papas fritas" },
  { id:"EX02", cat:"Extras", name:"Porción de Ensalada", price:4, desc:"Porción extra de ensalada" },
  { id:"EX03", cat:"Extras", name:"Porción de Chaufa", price:6, desc:"Porción extra de arroz chaufa" },
- { id:"EX04", cat:"Extras", name:"Porcion de Arroz Blanco", price:3, desc:"Porción de arroz blanco" },
+ { id:"EX04", cat:"Extras", name:"Arroz Blanco en Molde", price:3, desc:"Porción de arroz blanco" },
  // ── TAPERS ──────────────────────────────────────────────────────────
  { id:"TP01", cat:"Tapers", name:"Taper Pequeño", price:1.00, desc:"Taper pequeño para llevar" },
  { id:"TP02", cat:"Tapers", name:"Taper Mediano", price:1.50, desc:"Taper mediano para llevar" },
@@ -2113,16 +2113,31 @@ function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, set
 
  const testSound = () => { playBeeps(soundConfig); speak("Prueba de sonido"); };
 
+ // Midnight warning
+ const [showMidnightWarning, setShowMidnightWarning] = useState(false);
+ useEffect(() => {
+  const checkMidnight = () => {
+   const now = new Date();
+   const h = now.getHours(), m = now.getMinutes();
+   if (h === 0 && m === 0) setShowMidnightWarning(true);
+  };
+  const t = setInterval(checkMidnight, 30000);
+  return () => clearInterval(t);
+ }, []);
+
  // Usar paidAt para agrupar el día (si pagó hoy, cuenta hoy aunque creado ayer)
  const today = new Date().toDateString();
- const paidArchivedToday = history.filter(o =>
-  o.status==="pagado" && new Date(o.paidAt || o.createdAt).toDateString()===today
- );
- // Only count orders still in active list (not yet archived to history)
- const paidActiveToday = orders.filter(o =>
-  o.isPaid && new Date(o.paidAt || o.createdAt).toDateString()===today
- );
- const allPaidToday = [...paidArchivedToday, ...paidActiveToday];
+ // Caja session: show totals from current session open time, never include anulled
+ const cajaOpenedAt = caja?.openedAt ? new Date(caja.openedAt) : null;
+ const inCurrentSession = (o) => {
+  if (!cajaOpenedAt) return false;
+  if (o.anulado || o.status === "anulado") return false;
+  const t = new Date(o.paidAt || o.createdAt).getTime();
+  return t >= cajaOpenedAt.getTime();
+ };
+ const paidArchivedSession = history.filter(o => o.status==="pagado" && !o.anulado && inCurrentSession(o));
+ const paidActiveSession   = orders.filter(o => o.isPaid && !o.anulado && inCurrentSession(o));
+ const allPaidToday = [...paidArchivedSession, ...paidActiveSession];
  // Total en caja efectivo = fondo inicial + efectivo cobrado
  
  // 1. Primero declara e inicializa las bases
@@ -2130,12 +2145,8 @@ const cashRev = allPaidToday.reduce((s,o) => s + getPay(o,"efectivo"), 0);
 const todayRev = allPaidToday.reduce((s,o) => s + o.total, 0);
 const yapeRev = allPaidToday.reduce((s,o) => s + getPay(o,"yape"), 0);
 const cardRev = allPaidToday.reduce((s,o) => s + getPay(o,"tarjeta"), 0);
-
-const totalRev = history.filter(o => o.status==="pagado").reduce((s,o) => s + o.total, 0)
-               + paidActiveToday.reduce((s,o) => s + o.total, 0);
-
-// 2. Luego usa cashRev de forma segura
-// Total en caja efectivo = fondo inicial + efectivo cobrado
+const totalRev = history.filter(o => o.status==="pagado" && !o.anulado).reduce((s,o) => s + o.total, 0)
+               + paidActiveSession.reduce((s,o) => s + o.total, 0);
 const totalEnCaja = (caja?.fondoInicial||0) + cashRev;
 
  const handleCerrar = async () => {
@@ -2145,6 +2156,20 @@ const totalEnCaja = (caja?.fondoInicial||0) + cashRev;
 
  return (
  <div>
+  {/* ── Aviso medianoche ── */}
+  {showMidnightWarning && (
+   <div style={{background:"#1a0505", border:"2px solid #e74c3c", borderRadius:12, padding:"14px 18px", marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+    <div>
+     <div style={{fontWeight:900, fontSize:15, color:"#e74c3c"}}>🌙 Son las 00:00 — ¿Cerramos la caja de hoy?</div>
+     <div style={{fontSize:12, color:"#888", marginTop:2}}>Los pedidos del nuevo día empezarán a contar desde que abras una nueva caja.</div>
+    </div>
+    <button style={{...s.btn("danger"), padding:"8px 16px", fontWeight:900, flexShrink:0}} onClick={() => { setShowMidnightWarning(false); handleCerrar(); }}>
+     🔒 Cerrar ahora
+    </button>
+    <button style={{...s.btn("secondary"), padding:"8px 12px", marginLeft:6, flexShrink:0}} onClick={() => setShowMidnightWarning(false)}>Luego</button>
+   </div>
+  )}
+
   {/* ── WIDGET CAJA ── */}
   {isAdmin && (
    <div style={{...s.card, marginBottom:16, border: caja?.isOpen ? `1px solid #27ae6066` : `1px solid #e74c3c44`, background: caja?.isOpen ? "#0a1f0a" : "#1a0a0a"}}>
@@ -2274,7 +2299,7 @@ const totalEnCaja = (caja?.fondoInicial||0) + cashRev;
    <div style={s.statCard}><div style={s.statNum}>{orders.filter(o => o.kitchenStatus !== "listo" && !o.anulado).length}</div><div style={s.statLbl}>En Cocina</div></div>
    <div style={s.statCard}><div style={s.statNum}>{allPaidToday.length}</div><div style={s.statLbl}>Pagados hoy</div></div>
    <div style={{...s.statCard, border:`1px solid ${Y}55`}}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(todayRev)}</div><div style={s.statLbl}>Recaudado hoy</div></div>
-   <div style={s.statCard}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(totalRev)}</div><div style={s.statLbl}>Total</div></div>
+   <div style={s.statCard}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(totalRev)}</div><div style={s.statLbl}>Total histórico</div></div>
   </div>
   {allPaidToday.length > 0 && (
    <div style={{...s.card, marginTop:8}}>
@@ -3335,65 +3360,50 @@ function SolicitarCorreccionModal({ order, onSubmit, onClose, s, Y, fmt, getPay 
 }
 
 function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder, isAdmin, currentUser, crearSolicitud, updateHistoryDoc }) {
- const [expandedSessions, setExpandedSessions] = useState(["__today__"]);
+ const [expandedDays, setExpandedDays] = useState([new Date().toLocaleDateString("es-PE")]);
  const [histDate, setHistDate] = useState("");
  const [editCobroModal, setEditCobroModal] = useState(null);
  const [correccionModal, setCorreccionModal] = useState(null);
 
- // ── Agrupar por sesión de caja (_cajaSessionId) ──────────────────
- // Pedidos sin sessionId (legacy) se agrupan por fecha de creación
- const sessionMap = {};
-
+ // ── Group orders by DATE (top level), then by session inside ──────
+ // Exclude anulled orders from revenue totals
+ const dayMap = {};
  history.forEach(o => {
-  const sid = o._cajaSessionId || ("date_" + (() => {
-   const d = new Date(o.createdAt);
-   return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,'0') + "-" + String(d.getDate()).padStart(2,'0');
-  })());
+  const dateObj = new Date(o.createdAt);
+  const dateStr = dateObj.toLocaleDateString("es-PE");
+  const sortKey = dateObj.getFullYear() + "-" + String(dateObj.getMonth()+1).padStart(2,'0') + "-" + String(dateObj.getDate()).padStart(2,'0');
+  if (!dayMap[sortKey]) dayMap[sortKey] = { date:dateStr, sortKey, sessions:{}, orders:[], total:0, ef:0, ya:0, ta:0, cancelados:0 };
 
-  if (!sessionMap[sid]) {
-   const isSession = o._cajaSessionId;
-   // Use openedAt stored in order, or fall back to createdAt of first order
-   const refDate = new Date(o._cajaOpenedAt || o.createdAt);
-   const dateStr = refDate.toLocaleDateString("es-PE");
-   const sortKey = refDate.getFullYear() + "-" + String(refDate.getMonth()+1).padStart(2,'0') + "-" + String(refDate.getDate()).padStart(2,'0');
-   sessionMap[sid] = {
-    sid,
-    isSession,
-    date: dateStr,
-    sortKey,
-    openedAt: o._cajaOpenedAt || o.createdAt,
-    orders: [], total: 0, ef: 0, ya: 0, ta: 0, cancelados: 0
-   };
-  }
-  sessionMap[sid].orders.push(o);
-  if (o.status === "pagado") {
-   sessionMap[sid].total += o.total;
-   sessionMap[sid].ef += getPay(o,"efectivo");
-   sessionMap[sid].ya += getPay(o,"yape");
-   sessionMap[sid].ta += getPay(o,"tarjeta");
-  } else if (o.status === "cancelado") { sessionMap[sid].cancelados += 1; }
- });
+  dayMap[sortKey].orders.push(o);
 
- // Sort within each session: most recent first
- Object.values(sessionMap).forEach(d => {
-  d.orders.sort((a,b) => {
-   const ta = new Date(a.paidAt || a.cancelledAt || a.createdAt).getTime();
-   const tb = new Date(b.paidAt || b.cancelledAt || b.createdAt).getTime();
-   return tb - ta;
-  });
-  // Update date label from earliest order if openedAt not stamped
-  if (d.orders.length && !d.openedAt) {
-   const earliest = [...d.orders].sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt))[0];
-   const ref = new Date(earliest.createdAt);
-   d.date = ref.toLocaleDateString("es-PE");
-   d.sortKey = ref.getFullYear() + "-" + String(ref.getMonth()+1).padStart(2,'0') + "-" + String(ref.getDate()).padStart(2,'0');
+  if (o.status === "pagado" && !o.anulado) {
+   dayMap[sortKey].total += o.total;
+   dayMap[sortKey].ef += getPay(o,"efectivo");
+   dayMap[sortKey].ya += getPay(o,"yape");
+   dayMap[sortKey].ta += getPay(o,"tarjeta");
+
+   // Also track by session for the sub-breakdown
+   const sid = o._cajaSessionId || "sin_sesion";
+   if (!dayMap[sortKey].sessions[sid]) dayMap[sortKey].sessions[sid] = { sid, openedAt: o._cajaOpenedAt || o.createdAt, total:0, ef:0, ya:0, ta:0, count:0 };
+   dayMap[sortKey].sessions[sid].total += o.total;
+   dayMap[sortKey].sessions[sid].ef += getPay(o,"efectivo");
+   dayMap[sortKey].sessions[sid].ya += getPay(o,"yape");
+   dayMap[sortKey].sessions[sid].ta += getPay(o,"tarjeta");
+   dayMap[sortKey].sessions[sid].count++;
+  } else if (o.status === "cancelado" || o.anulado) {
+   dayMap[sortKey].cancelados++;
   }
  });
 
- let sessionList = Object.values(sessionMap).sort((a,b) => b.sortKey.localeCompare(a.sortKey) || b.sid.localeCompare(a.sid));
- if (histDate) sessionList = sessionList.filter(d => d.sortKey === histDate);
+ // Sort orders within each day: most recent first
+ Object.values(dayMap).forEach(d => {
+  d.orders.sort((a,b) => new Date(b.paidAt||b.cancelledAt||b.createdAt) - new Date(a.paidAt||a.cancelledAt||a.createdAt));
+ });
 
- const toggleSession = (sid) => setExpandedSessions(prev => prev.includes(sid) ? prev.filter(s => s !== sid) : [...prev, sid]);
+ let daysList = Object.values(dayMap).sort((a,b) => b.sortKey.localeCompare(a.sortKey));
+ if (histDate) daysList = daysList.filter(d => d.sortKey === histDate);
+
+ const toggleDay = (sortKey) => setExpandedDays(prev => prev.includes(sortKey) ? prev.filter(s => s !== sortKey) : [...prev, sortKey]);
 
  return (
  <div>
@@ -3451,44 +3461,57 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder, 
  </div>
  </div>
 
- {sessionList.length === 0 ? (
+ {daysList.length === 0 ? (
  <div style={{textAlign:"center", padding:60, color:"#444", background:"#1a1a1a", borderRadius:12}}>
  <div style={{fontSize:48, marginBottom:10}}></div>
  <div style={{fontSize:16, fontWeight:700}}>No hay registros para mostrar</div>
  </div>
  ) : (
- sessionList.map(d => {
- const isExpanded = expandedSessions.includes(d.sid);
- // Label: date + "Sesión de caja" if session-tagged
- const sessionLabel = d.isSession
-  ? `${d.date} · Sesión ${new Date(d.openedAt).toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})}`
-  : d.date;
+ daysList.map(d => {
+ const isExpanded = expandedDays.includes(d.sortKey);
+ const sessionCount = Object.keys(d.sessions).length;
  return (
- <div key={d.sid} style={{background:"#1c1c1c", borderRadius:12, marginBottom:16, border:"1px solid #2a2a2a", overflow:"hidden", boxShadow:"0 4px 6px rgba(0,0,0,0.3)"}}>
- <div 
- style={{padding:"16px 20px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", background: isExpanded ? `linear-gradient(90deg, #1f1a00 0%, #1c1c1c 100%)` : "#1c1c1c", borderBottom: isExpanded ? `2px solid ${Y}55` : "none", transition:"all 0.2s"}} 
- onClick={() => toggleSession(d.sid)}
- >
+ <div key={d.sortKey} style={{background:"#1c1c1c", borderRadius:12, marginBottom:16, border:"1px solid #2a2a2a", overflow:"hidden", boxShadow:"0 4px 6px rgba(0,0,0,0.3)"}}>
+ <div style={{padding:"16px 20px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", background: isExpanded ? `linear-gradient(90deg, #1f1a00 0%, #1c1c1c 100%)` : "#1c1c1c", borderBottom: isExpanded ? `2px solid ${Y}55` : "none", transition:"all 0.2s"}}
+  onClick={() => toggleDay(d.sortKey)}>
  <div style={{display:"flex", alignItems:"center", gap:12}}>
- <div style={{fontSize:24}}>{d.isSession ? "🗂" : ""}</div>
+ <div style={{fontSize:24}}>📅</div>
  <div>
- <div style={{fontWeight:900, fontSize:18, color: isExpanded ? Y : "#eee", letterSpacing:0.5}}>{sessionLabel}</div>
- <div style={{fontSize:12, color:"#888", marginTop:2}}>
-  {d.orders.filter(x => x.status==="pagado").length} pedidos cobrados {d.cancelados > 0 && <span style={{color:"#e74c3c"}}> • {d.cancelados} anulados</span>}
-  {d.isSession && <span style={{color:"#555", marginLeft:6}}>· Sesión de caja</span>}
- </div>
+  <div style={{fontWeight:900, fontSize:18, color: isExpanded ? Y : "#eee", letterSpacing:0.5}}>{d.date}</div>
+  <div style={{fontSize:12, color:"#888", marginTop:2}}>
+   {d.orders.filter(x => x.status==="pagado" && !x.anulado).length} pedidos cobrados
+   {d.cancelados > 0 && <span style={{color:"#e74c3c"}}> • {d.cancelados} anulados</span>}
+   {sessionCount > 1 && <span style={{color:"#555"}}> · {sessionCount} sesiones de caja</span>}
+  </div>
  </div>
  </div>
  <div style={{textAlign:"right", display:"flex", alignItems:"center", gap:16}}>
- <div style={{fontWeight:900, fontSize:22, color:"#27ae60"}}>{fmt(d.total)}</div>
- <div style={{background:"#2a2a2a", borderRadius:"50%", width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", color:Y, transition:"transform 0.3s", transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)"}}>▼</div>
+  <div style={{fontWeight:900, fontSize:22, color:"#27ae60"}}>{fmt(d.total)}</div>
+  <div style={{background:"#2a2a2a", borderRadius:"50%", width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", color:Y, transition:"transform 0.3s", transform: isExpanded?"rotate(180deg)":"rotate(0deg)"}}>▼</div>
  </div>
  </div>
 
  {/* CUERPO DEL ACORDEÓN (Detalles de los pedidos) */}
  {isExpanded && (
  <div style={{padding:"20px", background:"#111"}}>
- 
+
+ {/* Multi-sesión breakdown si hay más de una sesión en el día */}
+ {sessionCount > 1 && (
+  <div style={{marginBottom:16, background:"#0a0a0a", borderRadius:10, padding:"12px 14px", border:"1px solid #2a2a2a"}}>
+   <div style={{fontSize:11, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:8}}>Desglose por sesión de caja</div>
+   {Object.values(d.sessions).sort((a,b)=>new Date(a.openedAt)-new Date(b.openedAt)).map((ses,idx) => (
+    <div key={ses.sid} style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 0", borderBottom:"1px solid #1a1a1a"}}>
+     <div style={{fontSize:12, color:"#888"}}>
+      Sesión {idx+1}
+      {ses.openedAt && <span style={{marginLeft:6, color:"#555"}}>{new Date(ses.openedAt).toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})}</span>}
+      <span style={{marginLeft:8, color:"#444"}}>{ses.count} pedidos</span>
+     </div>
+     <span style={{color:Y, fontWeight:900, fontSize:13}}>{fmt(ses.total)}</span>
+    </div>
+   ))}
+  </div>
+ )}
+
  {/* Cajas de Métodos de Pago */}
  <div style={{display:"flex", gap:12, marginBottom:20, flexWrap:"wrap"}}>
  <div style={{flex:1, minWidth:100, background:"#1a2e1a", border:"1px solid #27ae6055", borderRadius:8, padding:"12px", textAlign:"center"}}>
@@ -3657,8 +3680,8 @@ function Inventario({ menu, orders, history, isMobile, s, Y, fmt }) {
  };
 
  const counts={}, revenue={};
- history.filter(o=>o.status==="pagado"&&inPeriod(o.createdAt)).forEach(order=>{ order.items?.forEach(item=>{counts[item.id]=(counts[item.id]||0)+item.qty;revenue[item.id]=(revenue[item.id]||0)+item.price*item.qty;}); });
- if (invPeriod==="hoy"||invPeriod==="semana"||invPeriod==="fecha") { orders.filter(o=>o.isPaid&&inPeriod(o.createdAt)).forEach(order=>{ order.items?.forEach(item=>{counts[item.id]=(counts[item.id]||0)+item.qty;revenue[item.id]=(revenue[item.id]||0)+item.price*item.qty;}); }); }
+ history.filter(o=>o.status==="pagado"&&!o.anulado&&inPeriod(o.createdAt)).forEach(order=>{ order.items?.forEach(item=>{counts[item.id]=(counts[item.id]||0)+item.qty;revenue[item.id]=(revenue[item.id]||0)+item.price*item.qty;}); });
+ if (invPeriod==="hoy"||invPeriod==="semana"||invPeriod==="fecha") { orders.filter(o=>o.isPaid&&!o.anulado&&inPeriod(o.createdAt)).forEach(order=>{ order.items?.forEach(item=>{counts[item.id]=(counts[item.id]||0)+item.qty;revenue[item.id]=(revenue[item.id]||0)+item.price*item.qty;}); }); }
 
  let items = menu.map(item=>({...item,qty:counts[item.id]||0,revenue:revenue[item.id]||0})).filter(item=>(invCat==="Todos"||item.cat===invCat)&&item.name.toLowerCase().includes(search.toLowerCase()));
  if (invSortBy==="cantidad") items=items.sort((a,b)=>b.qty-a.qty); else items=items.sort((a,b)=>a.name.localeCompare(b.name));
@@ -4243,29 +4266,42 @@ export default function App() {
 
  const abrirCaja = async (fondoInicial) => {
   const sessionId = `caja_${Date.now()}`;
+  const openedAt = new Date().toISOString();
+  const fecha = new Date().toLocaleDateString("es-PE",{weekday:"long", day:"numeric", month:"long", year:"numeric"});
+  const hora  = new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"});
   const data = {
    isOpen: true,
    sessionId,
-   openedAt: new Date().toISOString(),
+   openedAt,
    openedBy: currentUser.name,
    fondoInicial: parseFloat(fondoInicial) || 0,
    cortes: caja?.cortes || [],
   };
   setCaja(data);
   await saveCaja(data);
-  showToast(`✅ Caja abierta con fondo S/.${(parseFloat(fondoInicial)||0).toFixed(2)}`, "#27ae60");
+  showToast(`🟢 Caja abierta — ${fecha} · ${hora} | Todos los pedidos de ahora en adelante se registrarán en esta sesión`, "#27ae60");
  };
 
  const cerrarCaja = async () => {
   if (!caja?.isOpen) return;
   const sessionId = caja.sessionId;
-  // Todos los pedidos de esta sesión de caja (con _cajaSessionId)
-  const pagadosSesion = sessionId
-   ? history.filter(o => o.status === "pagado" && o._cajaSessionId === sessionId)
-   : history.filter(o => o.status === "pagado" && new Date(o.paidAt || o.createdAt).toDateString() === new Date(caja.openedAt).toDateString());
-  const activosSesion = sessionId
-   ? ordersRef.current.filter(o => o.isPaid && o._cajaSessionId === sessionId)
-   : ordersRef.current.filter(o => o.isPaid && new Date(o.paidAt || o.createdAt).toDateString() === new Date(caja.openedAt).toDateString());
+  const openedAt = new Date(caja.openedAt);
+
+  // Helper: is this order from the current session?
+  // Priority: explicit _cajaSessionId match → else time-range (order paid after caja opened, not yet in another session)
+  const inThisSession = (o) => {
+   if (o._cajaSessionId) return o._cajaSessionId === sessionId;
+   // Legacy orders without stamp: include if paid/created after this caja opened
+   const refTime = new Date(o.paidAt || o.createdAt).getTime();
+   return refTime >= openedAt.getTime();
+  };
+
+  const pagadosSesion = history.filter(o =>
+   o.status === "pagado" && !o.anulado && inThisSession(o)
+  );
+  const activosSesion = ordersRef.current.filter(o =>
+   o.isPaid && !o.anulado && inThisSession(o)
+  );
   const todosSesion = [...pagadosSesion, ...activosSesion];
   const efectivo  = todosSesion.reduce((s,o) => s + getPay(o,"efectivo"), 0);
   const yape      = todosSesion.reduce((s,o) => s + getPay(o,"yape"), 0);
@@ -4644,17 +4680,32 @@ export default function App() {
  const now = new Date().toISOString();
  const newId = Date.now().toString();
  const hasReplacement = replacementItems && replacementItems.length > 0;
- const anuladoOrder = { ...originalOrder, anulado:true, status:"anulado", anuladoAt:now, motivoAnulacion:motivo||"", replacedById:hasReplacement?newId:null };
+ // Mark as anulado in orders array (needed for 25-sec kitchen flash in CocinaComponent)
+ const anuladoOrder = { ...originalOrder, anulado:true, status:"anulado", isPaid:false, anuladoAt:now, motivoAnulacion:motivo||"", replacedById:hasReplacement?newId:null };
  let updatedOrders = cur.map(o => o.id === originalOrder.id ? anuladoOrder : o);
  if (hasReplacement) {
- const repTotal = replacementItems.reduce((s,i) => s+i.price*i.qty, 0);
- const replacementOrder = { id:newId, table:originalOrder.table, orderType:originalOrder.orderType, phone:originalOrder.phone||"", deliveryAddress:originalOrder.deliveryAddress||"", notes:originalOrder.notes||"", items:replacementItems, total:repTotal, isPaid:false, status:"pendiente", kitchenStatus:"pendiente", createdAt:now, replacesId:originalOrder.id, taperCost:0 };
- updatedOrders = [...updatedOrders, replacementOrder];
+  const repTotal = replacementItems.reduce((s,i) => s+i.price*i.qty, 0);
+  const replacementOrder = { id:newId, table:originalOrder.table, orderType:originalOrder.orderType, phone:originalOrder.phone||"", deliveryAddress:originalOrder.deliveryAddress||"", notes:originalOrder.notes||"", items:replacementItems, total:repTotal, isPaid:false, status:"pendiente", kitchenStatus:"pendiente", createdAt:now, replacesId:originalOrder.id, taperCost:0, _cajaSessionId: originalOrder._cajaSessionId || cajaRef2.current?.sessionId || null, _mesero: currentUser?.name || null };
+  updatedOrders = [...updatedOrders, replacementOrder];
  }
  setOrders(updatedOrders);
  await saveOrders(updatedOrders);
  setAnulacionModal(null);
  showToast("🚫 Pedido anulado" + (hasReplacement ? " · Reemplazo enviado a cocina" : ""), "#e74c3c");
+
+ // After 25 seconds: move anulled order to history and clean from active orders
+ setTimeout(async () => {
+  try {
+   const cur2 = ordersRef.current;
+   const stillThere = cur2.find(o => o.id === originalOrder.id && o.anulado);
+   if (stillThere) {
+    const cleaned = cur2.filter(o => o.id !== originalOrder.id);
+    setOrders(cleaned);
+    await saveOrders(cleaned);
+    await addHistory({ ...anuladoOrder, cancelledAt: now, createdAt: originalOrder.createdAt || now });
+   }
+  } catch(e) { console.error("anular cleanup error:", e); }
+ }, 25500);
  };
 
  const saveEditedOrder = async (updated) => {
