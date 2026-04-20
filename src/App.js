@@ -2303,7 +2303,7 @@ const totalEnCaja = (caja?.fondoInicial||0) + cashRev;
    <div style={s.statCard}><div style={s.statNum}>{orders.filter(o => o.kitchenStatus !== "listo" && !o.anulado).length}</div><div style={s.statLbl}>En Cocina</div></div>
    <div style={s.statCard}><div style={s.statNum}>{allPaidToday.length}</div><div style={s.statLbl}>Pagados hoy</div></div>
    <div style={{...s.statCard, border:`1px solid ${Y}55`}}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(todayRev)}</div><div style={s.statLbl}>Recaudado hoy</div></div>
-   <div style={s.statCard}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(totalRev)}</div><div style={s.statLbl}>Total histórico</div></div>
+   <div style={s.statCard}><div style={{...s.statNum, fontSize:isMobile?16:20}}>{fmt(totalRev)}</div><div style={s.statLbl}>Total</div></div>
   </div>
   {allPaidSession.length > 0 && (
    <div style={{...s.card, marginTop:8}}>
@@ -4276,17 +4276,20 @@ export default function App() {
 
  // saveCaja: guarda en Firestore con hasta 3 reintentos. Retorna true si tuvo éxito.
  const saveCaja = async (data) => {
+  // ─── Eliminar campos undefined que Firestore no acepta ───
+  const clean = JSON.parse(JSON.stringify(data, (_, v) => v === undefined ? null : v));
+  
   for (let attempt = 1; attempt <= 3; attempt++) {
-   try {
-    await setDoc(FS(currentUser.localId).cajaRef(), data);
-    return true;
-   } catch(e) {
-    console.error(`saveCaja intento ${attempt}/3 falló:`, e);
-    if (attempt < 3) await new Promise(r => setTimeout(r, 600 * attempt));
-   }
+    try {
+      await setDoc(FS(currentUser.localId).cajaRef(), clean);
+      return true;
+    } catch(e) {
+      console.error(`saveCaja intento ${attempt}/3 falló:`, e);
+      if (attempt < 3) await new Promise(r => setTimeout(r, 600 * attempt));
+    }
   }
   return false;
- };
+};
 
  const abrirCaja = async (fondoInicial) => {
   const sessionId = `caja_${Date.now()}`;
