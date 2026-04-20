@@ -2382,7 +2382,7 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
 
  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(3, 1fr)", gridAutoRows: isTablet ? "minmax(25vh, auto)" : "auto", gap: isMobile ? 12 : 20, marginBottom:20 }}>
  {mesasArr.map(num => {
- const mesaOrders = orders.filter(o => o.table===String(num) && o.orderType!=="llevar");
+ const mesaOrders = orders.filter(o => o.table===String(num) && o.orderType!=="llevar" && !o.anulado);
  const ocupada = mesaOrders.length > 0;
  const total = mesaOrders.reduce((sum,o) => sum + o.total, 0);
  const hasMixto = mesaOrders.some(o => (o.items||[]).some(i=>i.isLlevar));
