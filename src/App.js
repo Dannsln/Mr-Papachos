@@ -1784,11 +1784,23 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  </div>
 
  <div style={{ marginBottom:10 }}>
- <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Momento del Cobro</label>
- <div style={{ display:"flex", gap:6, marginTop:4 }}>
- <button style={{ ...s.btn(draft.payTiming==="despues"?"primary":"secondary"), flex:1 }} onClick={() => setDraft(d => ({...d,payTiming:"despues"}))}> Pagar después</button>
- <button style={{ ...s.btn(draft.payTiming==="ahora"?"primary":"secondary"), flex:1 }} onClick={() => setDraft(d => ({...d,payTiming:"ahora"}))}> Pagar ahora</button>
- </div>
+ {draft.orderType === "llevar" ? (
+  <div style={{background:"#0a1f0a", border:"1px solid #27ae6055", borderRadius:8, padding:"10px 14px", display:"flex", alignItems:"center", gap:8}}>
+   <span style={{fontSize:14}}>💳</span>
+   <div>
+    <div style={{fontSize:11, color:"#27ae60", fontWeight:800, textTransform:"uppercase", letterSpacing:1}}>Cobro obligatorio al confirmar</div>
+    <div style={{fontSize:11, color:"#555", marginTop:2}}>Los pedidos para llevar siempre se pagan al momento</div>
+   </div>
+  </div>
+ ) : (
+  <>
+  <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Momento del Cobro</label>
+  <div style={{ display:"flex", gap:6, marginTop:4 }}>
+  <button style={{ ...s.btn(draft.payTiming==="despues"?"primary":"secondary"), flex:1 }} onClick={() => setDraft(d => ({...d,payTiming:"despues"}))}> Pagar después</button>
+  <button style={{ ...s.btn(draft.payTiming==="ahora"?"primary":"secondary"), flex:1 }} onClick={() => setDraft(d => ({...d,payTiming:"ahora"}))}> Pagar ahora</button>
+  </div>
+  </>
+ )}
  </div>
 
  <div style={{ marginBottom:12 }}>
@@ -3369,7 +3381,7 @@ function SolicitarCorreccionModal({ order, onSubmit, onClose, s, Y, fmt, getPay 
  );
 }
 
-function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder, isAdmin, currentUser, crearSolicitud, updateHistoryDoc }) {
+function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay, printOrder, isAdmin, currentUser, crearSolicitud, updateHistoryDoc }) {
  const [expandedDays, setExpandedDays] = useState([new Date().toLocaleDateString("es-PE")]);
  const [histDate, setHistDate] = useState("");
  const [editCobroModal, setEditCobroModal] = useState(null);
@@ -3463,7 +3475,7 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder, 
  onChange={e => { 
  const val = e.target.value; 
  setHistDate(val); 
- const match = Object.values(historyByDay).find(x => x.sortKey === val); 
+ const match = Object.values(dayMap).find(x => x.sortKey === val); 
  if (match && !expandedDays.includes(match.date)) setExpandedDays(prev => [...prev, match.date]); 
  }} 
  />
@@ -3538,122 +3550,151 @@ function HistorialComponent({ history, isMobile, s, Y, fmt, getPay, printOrder, 
  </div>
  </div>
 
- {/* Lista de Tickets del Día */}
- <div style={{display:"flex", flexDirection:"column", gap:12}}>
- {d.orders.map((o,idx) => {
- const pe = getPay(o, "efectivo"); 
- const py = getPay(o, "yape"); 
- const pt = getPay(o, "tarjeta");
- const isCanceled = o.status === "cancelado";
+ {/* ── DOS COLUMNAS: Para Llevar | Mesas ── */}
+ {(() => {
+  const llevarOrds = d.orders.filter(o => o.orderType === "llevar");
+  const mesaOrds   = d.orders.filter(o => o.orderType !== "llevar");
+  const isNum = t => /^\d+$/.test(String(t || ""));
+  // Mesas referenciadas por pedidos llevar ya archivados ese día
+  const llevarTables = new Set(llevarOrds.filter(o => isNum(o.table)).map(o => String(o.table)));
+  // Pedidos de mesa activos (aún no pagados) vinculados a esas mesas
+  const pendingLinked = (activeOrders || []).filter(o =>
+   o.orderType !== "llevar" && !o.isPaid && !o.anulado && llevarTables.has(String(o.table))
+  );
 
- return (
- <div key={o._fid||o.id||idx} style={{background:"#1c1c1c", border:`1px solid ${isCanceled ? '#e74c3c44' : '#333'}`, borderRadius:10, padding:"14px", opacity: isCanceled ? 0.6 : 1}}>
- 
- {/* Cabecera del Ticket */}
- <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", borderBottom:"1px solid #2a2a2a", paddingBottom:10, marginBottom:10, flexWrap:"wrap", gap:10}}>
- <div style={{display:"flex", alignItems:"center", gap:10}}>
- <span style={{fontWeight:900, fontSize:16, color: isCanceled ? "#e74c3c" : "#eee"}}>{o.orderType==="llevar" ? `🥡 ${o.table||"Sin nombre"}` : `🍽 Mesa ${o.table}`}</span>
- <span style={{...s.tag(isCanceled ? "#c0392b" : "#1e5c2e"), fontSize:10}}>{isCanceled ? "🚫 Anulado" : o.splitPayments?.length > 0 ? "✂️ Dividido" : "✅ Pagado"}</span>
- {o._correctedAt && <span style={{...s.tag("#7d3c00", "#e67e22"), fontSize:10}}>✏️ Corregido</span>}
- <span style={{color:"#666", fontSize:12}}>{timeStr(o.paidAt || o.cancelledAt || o.createdAt)}</span>
- </div>
- <div style={{display:"flex", alignItems:"center", gap:12}}>
- <div style={{textAlign:"right"}}>
- {o.descuentoPct > 0 && !isCanceled && (
- <div style={{fontSize:11, color:"#888", textDecoration:"line-through"}}>{fmt(o.totalOriginal)}</div>
- )}
- <span style={{color: isCanceled ? "#888" : o.descuentoPct > 0 ? "#27ae60" : Y, fontWeight:900, fontSize:18}}>
- {isCanceled ? <del>{fmt(o.total)}</del> : fmt(o.total)}
- </span>
- {o.descuentoPct > 0 && !isCanceled && (
- <div style={{fontSize:10, color:"#27ae60", fontWeight:700}}>🏷 −{o.descuentoPct}%</div>
- )}
- </div>
- <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
-  <button style={{...s.btn("secondary"), padding:"6px 10px", fontSize:11}} onClick={(e) => { e.stopPropagation(); printOrder(o); }}>🖨 Ticket</button>
-  {!isCanceled && isAdmin && o._fid && (
-   <button style={{...s.btn("warn"), padding:"6px 10px", fontSize:11}} onClick={(e)=>{e.stopPropagation(); setEditCobroModal(o);}}>✏️ Editar cobro</button>
-  )}
-  {!isCanceled && !isAdmin && o._fid && (
-   <button style={{...s.btn("blue"), padding:"6px 10px", fontSize:11}} onClick={(e)=>{e.stopPropagation(); setCorreccionModal(o);}}>📋 Solicitar corrección</button>
-  )}
- </div>
- </div>
- </div>
+  const renderOrderCard = (o, idx) => {
+   const pe = getPay(o,"efectivo"); const py = getPay(o,"yape"); const pt = getPay(o,"tarjeta");
+   const isCanceled = o.status === "cancelado";
+   return (
+    <div key={o._fid||o.id||idx} style={{background:"#1c1c1c", border:`1px solid ${isCanceled?"#e74c3c44":"#333"}`, borderRadius:10, padding:"14px", marginBottom:10, opacity:isCanceled?0.6:1}}>
+     {/* Cabecera */}
+     <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", borderBottom:"1px solid #2a2a2a", paddingBottom:10, marginBottom:10, flexWrap:"wrap", gap:8}}>
+      <div style={{display:"flex", alignItems:"center", gap:8, flexWrap:"wrap"}}>
+       <span style={{fontWeight:900, fontSize:15, color:isCanceled?"#e74c3c":"#eee"}}>
+        {o.orderType==="llevar" ? `🥡 ${o.table||"Sin nombre"}` : `🍽 Mesa ${o.table}`}
+       </span>
+       <span style={{...s.tag(isCanceled?"#c0392b":"#1e5c2e"), fontSize:10}}>
+        {isCanceled?"🚫 Anulado":o.splitPayments?.length>0?"✂️ Dividido":"✅ Pagado"}
+       </span>
+       {o._correctedAt && <span style={{...s.tag("#7d3c00","#e67e22"), fontSize:10}}>✏️ Corregido</span>}
+       <span style={{color:"#666", fontSize:11}}>{timeStr(o.paidAt||o.cancelledAt||o.createdAt)}</span>
+      </div>
+      <div style={{display:"flex", alignItems:"center", gap:8}}>
+       <div style={{textAlign:"right"}}>
+        {o.descuentoPct>0&&!isCanceled&&<div style={{fontSize:10,color:"#888",textDecoration:"line-through"}}>{fmt(o.totalOriginal)}</div>}
+        <span style={{color:isCanceled?"#888":o.descuentoPct>0?"#27ae60":Y, fontWeight:900, fontSize:17}}>
+         {isCanceled?<del>{fmt(o.total)}</del>:fmt(o.total)}
+        </span>
+        {o.descuentoPct>0&&!isCanceled&&<div style={{fontSize:10,color:"#27ae60",fontWeight:700}}>🏷 −{o.descuentoPct}%</div>}
+       </div>
+       <div style={{display:"flex", gap:4, flexWrap:"wrap"}}>
+        <button style={{...s.btn("secondary"),padding:"5px 9px",fontSize:11}} onClick={e=>{e.stopPropagation();printOrder(o);}}>🖨</button>
+        {!isCanceled&&isAdmin&&o._fid&&<button style={{...s.btn("warn"),padding:"5px 9px",fontSize:11}} onClick={e=>{e.stopPropagation();setEditCobroModal(o);}}>✏️</button>}
+        {!isCanceled&&!isAdmin&&o._fid&&<button style={{...s.btn("blue"),padding:"5px 9px",fontSize:11}} onClick={e=>{e.stopPropagation();setCorreccionModal(o);}}>📋</button>}
+       </div>
+      </div>
+     </div>
+     {/* Pago normal */}
+     {!isCanceled&&!o.splitPayments?.length&&(
+      <div style={{fontSize:11,color:"#aaa",marginBottom:10,background:"#0a0a0a",padding:"8px 12px",borderRadius:6}}>
+       <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+        <span style={{fontWeight:800,color:"#777"}}>PAGO:</span>
+        {[pe>0&&`💵 ${fmt(pe)}`,py>0&&`📱 Yape ${fmt(py)}`,pt>0&&`💳 ${fmt(pt)}`].filter(Boolean).join(" · ")}
+       </div>
+       {o.descuentoPct>0&&<div style={{marginTop:4,color:"#27ae60",fontWeight:700}}>🏷 −{o.descuentoPct}% {o.descuentoMotivo?`· ${o.descuentoMotivo}`:""}<span style={{color:"#555",marginLeft:6}}>| Original: {fmt(o.totalOriginal)}</span></div>}
+       {o._correctedAt&&<div style={{marginTop:4,color:"#e67e22",fontWeight:700}}>✏️ Corregido por {o._correctedBy}{o._correctedMotivo&&` · "${o._correctedMotivo}"`}</div>}
+      </div>
+     )}
+     {/* Pago dividido */}
+     {!isCanceled&&o.splitPayments?.length>0&&(
+      <div style={{marginBottom:10}}>
+       <div style={{fontSize:11,color:"#aaa",fontWeight:800,marginBottom:6,textTransform:"uppercase",letterSpacing:1}}>✂️ Cobros por división:</div>
+       {o.splitPayments.map((sp,i)=>{
+        const ef=sp.payments?.efectivo||0,ya=sp.payments?.yape||0,ta=sp.payments?.tarjeta||0;
+        return(
+         <div key={i} style={{background:"#0a0a0a",border:"1px solid #2a2a2a",borderRadius:6,padding:"8px 12px",marginBottom:6}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+           <span style={{fontSize:11,fontWeight:800,color:"#888"}}>División {i+1} · {timeStr(sp.paidAt)}</span>
+           <span style={{color:Y,fontWeight:900,fontSize:13}}>{fmt(sp.total)}</span>
+          </div>
+          <div style={{fontSize:10,color:"#666"}}>{[ef>0&&`💵 ${fmt(ef)}`,ya>0&&`📱 ${fmt(ya)}`,ta>0&&`💳 ${fmt(ta)}`].filter(Boolean).join(" · ")}</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:6}}>
+           {sp.items.map((item,ii)=><span key={ii} style={{background:"#1a1a1a",borderRadius:4,padding:"2px 7px",fontSize:10,color:"#ccc",border:"1px solid #333"}}>{item.qty}x {item.name}</span>)}
+          </div>
+         </div>
+        );
+       })}
+       <div style={{display:"flex",justifyContent:"space-between",padding:"6px 12px",background:"#111",borderRadius:6,fontSize:11}}>
+        <span style={{color:"#777",fontWeight:800}}>TOTAL COBRADO:</span>
+        <span style={{color:Y,fontWeight:900}}>{fmt(o.splitPayments.reduce((s,sp)=>s+(sp.total||0),0))}</span>
+       </div>
+      </div>
+     )}
+     {/* Ítems */}
+     <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+      {(o.items||[]).map((item,i)=>(
+       <div key={i} style={{fontSize:12,color:"#ccc",padding:"7px 10px",background:"#222",borderRadius:6,borderLeft:`3px solid ${isCanceled?"#e74c3c":Y}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,gap:8}}>
+         <span>{item.qty}x {item.name}{item.isLlevar&&<span style={{marginLeft:5,background:"#154360",color:"#3498db",borderRadius:4,padding:"1px 5px",fontSize:9}}>🥡</span>}</span>
+         <span style={{color:"#888"}}>{fmt(item.price*item.qty)}</span>
+        </div>
+        {item.salsas?.length>0&&<div style={{color:Y,fontSize:10,fontStyle:"italic",marginTop:3}}>🌶 {item.salsas.map(sa=>`${sa.name} (${sa.style})`).join(', ')}</div>}
+        {item._comboNote&&<div style={{color:"#3498db",fontSize:10,fontStyle:"italic",marginTop:3}}>🎯 {item._comboNote}</div>}
+       </div>
+      ))}
+     </div>
+    </div>
+   );
+  };
 
- {/* Detalle de Pagos - Normal */}
- {!isCanceled && !o.splitPayments?.length && (
- <div style={{fontSize:11, color:"#aaa", marginBottom:10, background:"#0a0a0a", padding:"8px 12px", borderRadius:6}}>
- <div style={{display:"flex", gap:12, flexWrap:"wrap"}}>
- <span style={{fontWeight:800, color:"#777"}}>MEDIO DE PAGO:</span>
- {[pe>0&&`💵 Efectivo: ${fmt(pe)}`, py>0&&`📱 Yape: ${fmt(py)}`, pt>0&&`💳 Tarjeta: ${fmt(pt)}`].filter(Boolean).join(" | ")}
- </div>
- {o.descuentoPct > 0 && (
- <div style={{marginTop:5, color:"#27ae60", fontWeight:700}}>
- 🏷 Descuento {o.descuentoPct}%: −{fmt(o.descuentoAmt)} {o.descuentoMotivo ? `· ${o.descuentoMotivo}` : ""}
- <span style={{color:"#555", marginLeft:6}}>| Precio original: {fmt(o.totalOriginal)}</span>
- </div>
- )}
- {o._correctedAt && (
- <div style={{marginTop:5, color:"#e67e22", fontWeight:700, display:"flex", alignItems:"center", gap:6}}>
- ✏️ Cobro corregido por {o._correctedBy}
- {o._correctedMotivo && <span style={{fontStyle:"italic", color:"#888"}}>· "{o._correctedMotivo}"</span>}
- </div>
- )}
- </div>
- )}
+  const renderPendingCard = (o, idx) => (
+   <div key={o.id||idx} style={{background:"#1a1500",border:"2px dashed #e67e2266",borderRadius:10,padding:"14px",marginBottom:10}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+     <span style={{fontWeight:900,fontSize:15,color:"#e67e22"}}>🍽 Mesa {o.table}</span>
+     <span style={{background:"#e67e2222",color:"#e67e22",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:800}}>⏳ Pago pendiente</span>
+    </div>
+    <div style={{fontSize:12,color:"#888",marginBottom:8}}>{o.items?.length||0} ítems · Total: {fmt(o.total)}</div>
+    <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+     {(o.items||[]).map((item,i)=>(
+      <span key={i} style={{background:"#222",borderRadius:4,padding:"2px 7px",fontSize:10,color:"#ccc",border:"1px solid #2a2a2a"}}>{item.qty}x {item.name}</span>
+     ))}
+    </div>
+   </div>
+  );
 
- {/* Detalle de Pagos - Dividido */}
- {!isCanceled && o.splitPayments?.length > 0 && (
- <div style={{marginBottom:10}}>
- <div style={{fontSize:11, color:"#aaa", fontWeight:800, marginBottom:6, textTransform:"uppercase", letterSpacing:1}}>✂️ Cobros por división:</div>
- {o.splitPayments.map((sp, idx) => {
- const spEf = sp.payments?.efectivo || 0;
- const spYa = sp.payments?.yape || 0;
- const spTa = sp.payments?.tarjeta || 0;
- return (
- <div key={idx} style={{background:"#0a0a0a", border:"1px solid #2a2a2a", borderRadius:6, padding:"8px 12px", marginBottom:6}}>
- <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4}}>
- <span style={{fontSize:11, fontWeight:800, color:"#888"}}>División {idx+1} · {timeStr(sp.paidAt)}</span>
- <span style={{color:Y, fontWeight:900, fontSize:13}}>{fmt(sp.total)}</span>
- </div>
- <div style={{fontSize:10, color:"#666"}}>
- {[spEf>0&&`💵 Efectivo: ${fmt(spEf)}`, spYa>0&&`📱 Yape: ${fmt(spYa)}`, spTa>0&&`💳 Tarjeta: ${fmt(spTa)}`].filter(Boolean).join(" · ")}
- </div>
- <div style={{display:"flex", flexWrap:"wrap", gap:4, marginTop:6}}>
- {sp.items.map((item, ii) => (
- <span key={ii} style={{background:"#1a1a1a", borderRadius:4, padding:"2px 7px", fontSize:10, color:"#ccc", border:"1px solid #333"}}>
- {item.qty}x {item.name}
- </span>
- ))}
- </div>
- </div>
- );
- })}
- <div style={{display:"flex", justifyContent:"space-between", padding:"6px 12px", background:"#111", borderRadius:6, fontSize:11}}>
- <span style={{color:"#777", fontWeight:800}}>TOTAL COBRADO:</span>
- <span style={{color:Y, fontWeight:900}}>{fmt(o.splitPayments.reduce((s,sp)=>s+(sp.total||0),0))}</span>
- </div>
- </div>
- )}
+  return (
+   <div style={{display:"grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap:20, alignItems:"start"}}>
 
- {/* Platos del Ticket */}
- <div style={{display:"grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap:8}}>
- {(o.items||[]).map((item,i) => (
- <div key={i} style={{fontSize:12, color:"#ccc", padding:"8px 12px", background:"#222", borderRadius:6, borderLeft:`3px solid ${isCanceled ? '#e74c3c' : Y}`}}>
- <div style={{display:"flex", justifyContent:"space-between", fontWeight:700}}>
-  <span>{item.qty}x {item.name} {item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:9}}>🥡 Llevar</span>}</span>
-  <span style={{color:"#888"}}>{fmt(item.price * item.qty)}</span>
- </div>
- {item.salsas?.length > 0 && <div style={{color:Y, fontSize:10, fontStyle:"italic", marginTop:4}}>🌶 {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>}
- {item._comboNote && <div style={{color:"#3498db", fontSize:10, fontStyle:"italic", marginTop:4}}>🎯 {item._comboNote}</div>}
- </div>
- ))}
- </div>
- </div>
- )
- })}
- </div>
+    {/* ── COLUMNA IZQUIERDA: Para Llevar ── */}
+    <div>
+     <div style={{fontSize:11, color:"#3498db", textTransform:"uppercase", fontWeight:800, letterSpacing:1, marginBottom:12, paddingBottom:8, borderBottom:"2px solid #154360", display:"flex", alignItems:"center", gap:8}}>
+      🥡 Para Llevar
+      <span style={{background:"#154360", color:"#3498db", borderRadius:10, padding:"1px 8px", fontSize:10}}>{llevarOrds.length}</span>
+     </div>
+     {llevarOrds.length === 0
+      ? <div style={{color:"#444", fontSize:12, padding:"16px", textAlign:"center", background:"#1a1a1a", borderRadius:8}}>Sin pedidos para llevar este día</div>
+      : llevarOrds.map((o, idx) => renderOrderCard(o, idx))
+     }
+    </div>
+
+    {/* ── COLUMNA DERECHA: Pedidos de Mesa ── */}
+    <div>
+     <div style={{fontSize:11, color:Y, textTransform:"uppercase", fontWeight:800, letterSpacing:1, marginBottom:12, paddingBottom:8, borderBottom:`2px solid ${Y}44`, display:"flex", alignItems:"center", gap:8}}>
+      🍽️ Pedidos de Mesa
+      <span style={{background:`${Y}22`, color:Y, borderRadius:10, padding:"1px 8px", fontSize:10}}>{mesaOrds.length + pendingLinked.length}</span>
+     </div>
+     {mesaOrds.length === 0 && pendingLinked.length === 0
+      ? <div style={{color:"#444", fontSize:12, padding:"16px", textAlign:"center", background:"#1a1a1a", borderRadius:8}}>Sin pedidos de mesa este día</div>
+      : <>
+         {mesaOrds.map((o, idx) => renderOrderCard(o, idx))}
+         {pendingLinked.map((o, idx) => renderPendingCard(o, idx))}
+        </>
+     }
+    </div>
+
+   </div>
+  );
+ })()}
  </div>
  )}
  </div>
@@ -5056,7 +5097,7 @@ export default function App() {
   {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} isTablet={isTablet} mesasArr={mesasArr} cajaAbierta={cajaAbierta} />}
   {tab==="pedidos" && <PedidosComponent orders={orders} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
   {tab==="cocina" && <CocinaComponent orders={orders} kitchenChecks={kitchenChecks} setKitchenChecks={setKitchenChecks} markKitchenListo={markKitchenListo} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} soundConfig={soundConfig} />}
-  {tab==="historial"    && <HistorialComponent history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} />}
+  {tab==="historial"    && <HistorialComponent history={history} activeOrders={orders} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} />}
   {tab==="inventario"   && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/>}
   {tab==="carta"        && <CartaComponent menu={menu} cartaCatFilter={cartaCatFilter} setCartaCatFilter={setCartaCatFilter} showAdd={showAdd} setShowAdd={setShowAdd} newItem={newItem} setNewItem={setNewItem} addMenuItem={addMenuItem} deleteMenuItem={deleteMenuItem} isMobile={isMobile} s={s} Y={Y} fmt={fmt} ALL_CATS={ALL_CATS} />}
   {tab==="solicitudes"  && <SolicitudesPanel solicitudes={solicitudes} onResolve={resolverSolicitud} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} updateHistoryDoc={updateHistoryDoc} />}
