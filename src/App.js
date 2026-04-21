@@ -2220,7 +2220,7 @@ const totalEnCaja = (caja?.fondoInicial||0) + cashRev;
        <input
         type="number" min="0" step="0.5"
         style={{...s.input, width:110, padding:"6px 10px", fontSize:13}}
-        placeholder="Fondo S/."
+        placeholder="Caja chicha S/."
         value={fondoInput}
         onChange={e => setFondoInput(e.target.value)}
        />
@@ -2348,7 +2348,7 @@ const totalEnCaja = (caja?.fondoInicial||0) + cashRev;
      </div>
      <div style={{background:"#111", borderRadius:10, padding:14, marginBottom:14}}>
       <div style={{display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid #222"}}>
-       <span style={{color:"#888"}}>Caja chica</span>
+       <span style={{color:"#888"}}>Fondo incial</span>
        <span style={{fontWeight:700}}>{fmt(cierreData.fondoInicial)}</span>
       </div>
       <div style={{display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid #222"}}>
