@@ -4561,6 +4561,30 @@ export default function App() {
  if (draft.orderType === "mesa" && !draft.table.trim()) return;
  if (!draft.items.length) return;
  const total = draftTotal;
+
+ // ── ENFORCE: mixed order → llevar items must be paid now ──────────
+ // If mesa order has llevar items and payTiming is "despues", intercept
+ const llevarItems = draft.items.filter(i => i.isLlevar);
+ const mesaItems   = draft.items.filter(i => !i.isLlevar);
+ if (forceMerge === null && draft.orderType === "mesa" && llevarItems.length > 0 && mesaItems.length > 0 && draft.payTiming === "despues") {
+  // Show llevar payment required toast and redirect to payment for llevar items
+  const llevarTotal = llevarItems.reduce((s,i)=>s+i.price*i.qty,0);
+  showToast(`🥡 Cobrar los ítems para llevar (S/.${llevarTotal.toFixed(2)}) antes de enviar a cocina`, "#3498db");
+  setCobrarTarget({
+   type: 'new',
+   data: {
+    id: Date.now().toString(),
+    orderType: 'llevar', table: draft.table, phone: draft.phone || "",
+    items: llevarItems, total: llevarTotal,
+    createdAt: new Date().toISOString(),
+    _cajaSessionId: cajaRef2.current?.sessionId || null,
+    _pendingMesaItems: mesaItems,   // stash mesa items to send to kitchen after payment
+    _pendingMesaDraft: { ...draft, items: mesaItems, total: mesaItems.reduce((s,i)=>s+i.price*i.qty,0) },
+   },
+  });
+  return;
+ }
+
  const existingMesaOrder = ordersRef.current.find(o => o.table === draft.table.trim() && o.orderType === "mesa" && !o.isPaid) ?? null;
 
  if (existingMesaOrder && forceMerge === null) {
@@ -4672,18 +4696,46 @@ export default function App() {
  }
 
  if (target.type === 'new') {
- const order = {
- ...target.data,
- isPaid:true, status:"pendiente", kitchenStatus:"pendiente",
- payments, paidAt:new Date().toISOString(),
- ...descuentoData,
- ...(paymentData.descuentoPct > 0 ? { total: paymentData.totalFinal } : {}),
- _cajaSessionId: target.data._cajaSessionId || cajaRef2.current?.sessionId || null,
- _cajaOpenedAt: target.data._cajaOpenedAt || cajaRef2.current?.openedAt || null,
+ const isLlevarOrder = target.data.orderType === 'llevar';
+ const baseOrder = {
+  ...target.data,
+  isPaid: true,
+  payments, paidAt: new Date().toISOString(),
+  ...descuentoData,
+  ...(paymentData.descuentoPct > 0 ? { total: paymentData.totalFinal } : {}),
+  _cajaSessionId: target.data._cajaSessionId || cajaRef2.current?.sessionId || null,
+  _cajaOpenedAt: target.data._cajaOpenedAt || cajaRef2.current?.openedAt || null,
  };
- const newOrders = [...cur, order];
- setOrders(newOrders); await saveOrders(newOrders);
- setDraft(newDraft()); showToast("✅ Pedido cobrado y enviado a cocina"); setTab("pedidos");
+ if (isLlevarOrder) {
+  // Llevar pagado al momento → pasa por cocina primero, se archiva cuando se entrega
+  // kitchenStatus siempre "pendiente": cocina DEBE ver el pedido aunque ya esté cobrado
+  const llevarOrder = { ...baseOrder, status: "pagado", kitchenStatus: "pendiente" };
+  const ordersToAdd = [llevarOrder];
+  if (target.data._pendingMesaDraft) {
+   // Pedido mixto: también enviar los ítems de mesa a cocina
+   const mesaDraft = target.data._pendingMesaDraft;
+   const mesaOrder = {
+    id: (Date.now() + 1).toString(),
+    ...mesaDraft,
+    isPaid: false, status: "pendiente", kitchenStatus: "pendiente",
+    createdAt: new Date().toISOString(),
+    _cajaSessionId: cajaRef2.current?.sessionId || null,
+    _mesero: currentUser?.name || null,
+   };
+   ordersToAdd.push(mesaOrder);
+   showToast("✅ Para llevar cobrado · Ambos pedidos enviados a cocina");
+  } else {
+   showToast("✅ 🥡 Para llevar cobrado · Enviado a cocina");
+  }
+  const newOrders = [...cur, ...ordersToAdd];
+  setOrders(newOrders); await saveOrders(newOrders);
+  setDraft(newDraft()); setTab("pedidos");
+ } else {
+  const order = { ...baseOrder, status: "pendiente", kitchenStatus: "pendiente" };
+  const newOrders = [...cur, order];
+  setOrders(newOrders); await saveOrders(newOrders);
+  setDraft(newDraft()); showToast("✅ Pedido cobrado y enviado a cocina"); setTab("pedidos");
+ }
  } else if (target.type === 'existing') {
  const o = target.data;
  const hasSplits = o.splitPayments && o.splitPayments.length > 0;
@@ -4785,13 +4837,37 @@ export default function App() {
  const deleteMenuItem = async (id) => { await saveMenu(menu.filter(i=>i.id!==id)); showToast(" Platillo eliminado","#e74c3c"); };
 
  const Y = "#FFD700";
+ const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
+
  const s = {
- app: {fontFamily:"'Nunito',sans-serif",background:"#0f0f0f",color:"#eee",minHeight:"100vh",display:"flex",flexDirection:"column",overflow:"visible"},
- header: {background:`linear-gradient(135deg,${Y} 0%,#e6b800 100%)`,color:"#111",padding:isMobile?"8px 12px":"10px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:"0 2px 12px rgba(255,215,0,.3)"},
- logo: {fontFamily:"'Bebas Neue',cursive",fontSize:isMobile?17:isTablet?22:28,letterSpacing:isMobile?1:3,margin:0,lineHeight:1.1},
- nav: {display:"flex",background:"#1a1a1a",borderBottom:`2px solid ${Y}33`,overflowX:"auto",scrollbarWidth:"none"},
- navBtn: (a)=>({padding:isMobile?"9px 7px":"10px 14px",background:a?Y:"transparent",color:a?"#111":"#999",border:"none",cursor:"pointer",fontFamily:"'Nunito',sans-serif",fontWeight:700,fontSize:isMobile?9:12,whiteSpace:"nowrap",transition:"all .2s",borderBottom:a?`3px solid #e6b800`:"3px solid transparent"}),
- content: {flex:1,padding:isMobile?"10px 8px":isTablet?14:20,maxWidth:isWide?1200:"100%",margin:"0 auto",width:"100%",boxSizing:"border-box",overflow:"visible"},
+ app: {fontFamily:"'Nunito',sans-serif",background:"#0f0f0f",color:"#eee",minHeight:"100vh",display:"flex",flexDirection:"row",overflow:"hidden"},
+ header: {background:`linear-gradient(135deg,${Y} 0%,#e6b800 100%)`,color:"#111",padding:isMobile?"8px 12px":"10px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:"0 2px 12px rgba(255,215,0,.3)", position:"fixed", top:0, left:0, right:0, zIndex:1000, height:50},
+ sidebar: (open) => ({
+  width: open ? (isMobile ? "100vw" : 220) : (isMobile ? 0 : 64),
+  minWidth: open ? (isMobile ? "100vw" : 220) : (isMobile ? 0 : 64),
+  background:"#111",
+  borderRight:"1px solid #1e1e1e",
+  display:"flex", flexDirection:"column",
+  transition:"width .22s cubic-bezier(.4,0,.2,1), min-width .22s cubic-bezier(.4,0,.2,1)",
+  overflow:"hidden", flexShrink:0,
+  position: isMobile ? "fixed" : "relative",
+  top: isMobile ? 50 : 0, left:0,
+  height: isMobile ? "calc(100vh - 50px)" : "100%",
+  zIndex: isMobile ? 990 : 1,
+  paddingTop: isMobile ? 0 : 50, // leave room for header on desktop
+ }),
+ navBtn: (active) => ({
+  display:"flex", alignItems:"center", gap:12,
+  padding: sidebarOpen ? "11px 18px" : "11px 0",
+  justifyContent: sidebarOpen ? "flex-start" : "center",
+  background: active ? `${Y}18` : "transparent",
+  color: active ? Y : "#777",
+  border:"none", borderLeft: active ? `3px solid ${Y}` : "3px solid transparent",
+  cursor:"pointer", fontFamily:"'Nunito',sans-serif", fontWeight: active ? 800 : 600,
+  fontSize:13, whiteSpace:"nowrap", transition:"all .15s", width:"100%",
+  letterSpacing:0.3,
+ }),
+ content: {flex:1, padding:isMobile?"10px 8px":isTablet?14:20, maxWidth:isWide?1200:"100%", margin:"0 auto", width:"100%", boxSizing:"border-box", overflow:"auto", marginTop:50},
  card: {background:"#1c1c1c",borderRadius:isMobile?10:12,padding:isMobile?10:14,marginBottom:10,border:"1px solid #2a2a2a"},
  cardHL: {background:"#1c1c1c",borderRadius:isMobile?10:12,padding:isMobile?10:14,marginBottom:10,border:`1px solid ${Y}44`},
  statCard:{background:"#1c1c1c",borderRadius:isMobile?10:12,padding:isMobile?"12px 8px":"16px 12px",border:"1px solid #2a2a2a",textAlign:"center"},
@@ -4863,71 +4939,132 @@ export default function App() {
  <>
  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito:wght@400;700;900&display=swap" rel="stylesheet"/>
  <div style={s.app}>
+
+ {/* ── HEADER fixed top bar ── */}
  <header style={s.header}>
- <div>
- <h1 style={s.logo}>MR. PAPACHOS · CAJAMARCA</h1>
- {!isMobile&&<div style={{fontSize:11,color:"#555",fontWeight:700}}>{currentUser.name} · {currentUser.label} | {currentUser.localName.toUpperCase()}</div>}
- </div>
- <div style={{display:"flex", gap:10, alignItems:"center"}}>
- {!isMobile&&<div style={{fontSize:11,color:"#333",fontWeight:700,textAlign:"right"}}>{new Date().toLocaleDateString("es-PE",{weekday:"long",day:"numeric",month:"long"})}</div>}
- {currentUser?.id==="admin" && pendingSols > 0 && (
-  <button style={{...s.btn("warn"), fontSize:10, padding:"4px 10px", position:"relative"}} onClick={()=>setTab("solicitudes")}>
-   🔔 {pendingSols}
-  </button>
- )}
- <button style={{...s.btn("danger"), fontSize:10, padding:"4px 8px"}} onClick={()=>setCurrentUser(null)}>Salir</button>
- </div>
+  <div style={{display:"flex", alignItems:"center", gap:12}}>
+   <button onClick={()=>setSidebarOpen(v=>!v)}
+    style={{background:"transparent",border:"none",cursor:"pointer",padding:"4px 6px",display:"flex",flexDirection:"column",gap:4,flexShrink:0}}>
+    <span style={{display:"block",width:20,height:2,background:"#111",borderRadius:2,transition:"all .2s"}}/>
+    <span style={{display:"block",width:14,height:2,background:"#111",borderRadius:2,transition:"all .2s"}}/>
+    <span style={{display:"block",width:20,height:2,background:"#111",borderRadius:2,transition:"all .2s"}}/>
+   </button>
+   <h1 style={{fontFamily:"'Bebas Neue',cursive",fontSize:isMobile?16:22,letterSpacing:2,margin:0,color:"#111"}}>
+    MR. PAPACHOS
+   </h1>
+   {!isMobile && <span style={{fontSize:10,color:"#333",fontWeight:700}}>· {currentUser.localName.toUpperCase()}</span>}
+  </div>
+  <div style={{display:"flex", gap:8, alignItems:"center"}}>
+   {!isMobile && <span style={{fontSize:11,color:"#333",fontWeight:700}}>{currentUser.name} · {currentUser.label}</span>}
+   {currentUser?.id==="admin" && pendingSols > 0 && (
+    <button style={{background:"#e74c3c",color:"#fff",border:"none",borderRadius:8,padding:"4px 10px",fontWeight:900,fontSize:11,cursor:"pointer"}} onClick={()=>setTab("solicitudes")}>
+     🔔 {pendingSols}
+    </button>
+   )}
+   <button style={{background:"#c0392b",color:"#fff",border:"none",borderRadius:8,padding:"4px 10px",fontWeight:800,fontSize:11,cursor:"pointer"}} onClick={()=>setCurrentUser(null)}>Salir</button>
+  </div>
  </header>
 
- <nav style={s.nav}>{tabs.map(t=>(<button key={t.id} style={{...s.navBtn(tab===t.id),flex:isMobile?1:"none"}} onClick={()=>setTab(t.id)}>{t.label}</button>))}</nav>
- {SolBadge}
+ {/* ── SIDEBAR ── */}
+ {/* Mobile backdrop */}
+ {isMobile && sidebarOpen && <div style={{position:"fixed",inset:0,top:50,background:"rgba(0,0,0,.7)",zIndex:989}} onClick={()=>setSidebarOpen(false)}/>}
 
- {toast&&(<div style={{position:"fixed",bottom:isMobile ? 90 : 20,left:"50%",transform:"translateX(-50%)",background:toast.color,color:"#fff",padding:"10px 20px",borderRadius:12,fontWeight:800,zIndex:9999,fontSize:14,boxShadow:"0 4px 20px rgba(0,0,0,.5)",whiteSpace:"nowrap"}}>{toast.msg}</div>)}
+ <div style={s.sidebar(sidebarOpen)}>
+  {/* Branding strip inside sidebar */}
+  {!isMobile && (
+   <div style={{padding: sidebarOpen ? "14px 18px 10px" : "14px 0 10px", textAlign: sidebarOpen?"left":"center", borderBottom:"1px solid #1e1e1e", flexShrink:0}}>
+    {sidebarOpen
+     ? <div style={{fontSize:11, color:"#444", textTransform:"uppercase", letterSpacing:1, fontWeight:700}}>{currentUser.name}<br/><span style={{color:"#333"}}>{currentUser.label}</span></div>
+     : <div style={{width:8,height:8,borderRadius:"50%",background: caja?.isOpen ? "#27ae60":"#e74c3c",margin:"0 auto"}}/>
+    }
+   </div>
+  )}
 
- {cobrarTarget && <div style={s.overlay} onClick={()=>setCobrarTarget(null)}><CobrarModal orderContext={cobrarTarget.data} total={cobrarTarget.data.total} onConfirm={handleConfirmCobro} onClose={()=>setCobrarTarget(null)} s={s} Y={Y} /></div>}
- {splitTarget && <SplitBillModal order={splitTarget} onProceed={(items, total) => { setCobrarTarget({ type: 'split', data: { originalOrder: splitTarget, splitItems: items, total }}); setSplitTarget(null); }} onClose={() => setSplitTarget(null)} s={s} Y={Y} fmt={fmt} />}
- {editingOrder&&<div style={s.overlay} onClick={()=>setEditingOrder(null)}><EditOrderModal order={editingOrder} onSave={saveEditedOrder} onClose={()=>setEditingOrder(null)} menu={menu} isMobile={isMobile} s={s} Y={Y} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} onRequestPrecio={crearSolicitud}/></div>}
- {mesaModal&&<div style={s.overlay} onClick={()=>setMesaModal(null)}><MesaModalComponent num={mesaModal} orders={orders} setDraft={setDraft} newDraft={newDraft} onClose={()=>setMesaModal(null)} setTab={setTab} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} setAnulacionModal={setAnulacionModal} printOrder={printOrder} isMobile={isMobile} s={s} Y={Y} fmt={fmt} currentUser={currentUser} crearSolicitud={crearSolicitud} isAdmin={currentUser?.id==="admin"} /></div>}
- 
- {mergeModal && (
- <div style={s.overlay} onClick={() => setMergeModal(null)}>
- <div style={{...s.modal, maxWidth:400}} onClick={e => e.stopPropagation()}>
- <div style={{fontSize:36, textAlign:"center", marginBottom:10}}></div>
- <div style={{fontWeight:900, fontSize:18, marginBottom:6, color:Y, textAlign:"center", fontFamily:"'Bebas Neue',cursive", letterSpacing:1}}>MESA {mergeModal.existingOrder.table} YA TIENE PEDIDO</div>
- <div style={{color:"#aaa", fontSize:13, textAlign:"center", marginBottom:16}}>{mergeModal.newDraftData.orderType === "llevar" ? <>¿Deseas <b style={{color:"#3498db"}}>acoplar este pedido Para Llevar</b> a la mesa?</> : "¿Qué quieres hacer con los nuevos ítems?"}</div>
- {mergeModal.newDraftData.orderType === "llevar" && <div style={{marginBottom:14}}><input style={{...s.input, borderColor:"#3498db"}} placeholder="Nombre (Ej: Juan)" value={mergeName} onChange={e => setMergeName(e.target.value)} spellCheck="false" /></div>}
- <div style={{background:"#111", borderRadius:8, padding:10, marginBottom:12, border:"1px solid #2a2a2a"}}><div style={{fontSize:11, color:"#666", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>Pedido existente</div>{(mergeModal.existingOrder.items||[]).map((item,i) => (<div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:12, color:"#888", padding:"2px 0"}}><span>{item.qty}x {item.name}</span><span>{fmt(item.price * item.qty)}</span></div>))}<div style={{borderTop:"1px solid #2a2a2a", marginTop:6, paddingTop:6, display:"flex", justifyContent:"space-between", fontWeight:900, fontSize:13}}><span>Subtotal</span><span style={{color:Y}}>{fmt(mergeModal.existingOrder.total)}</span></div></div>
- <div style={{background:"#0a1f0a", borderRadius:8, padding:10, marginBottom:16, border:"1px solid #27ae6044"}}><div style={{fontSize:11, color:"#27ae60", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>{mergeModal.newDraftData.orderType === "llevar" ? " Ítems Para Llevar a agregar" : "Nuevos ítems a agregar"}</div>{(mergeModal.newDraftData.items||[]).map((item,i) => (<div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:12, color:"#aaa", padding:"2px 0"}}><span>{item.qty}x {item.name}</span><span>{fmt(item.price * item.qty)}</span></div>))}<div style={{borderTop:"1px solid #27ae6033", marginTop:6, paddingTop:6, display:"flex", justifyContent:"space-between", fontWeight:900, fontSize:13}}><span style={{color:"#27ae60"}}>+ Subtotal</span><span style={{color:"#27ae60"}}>{fmt(mergeModal.newDraftData.items.reduce((s,i)=>s+i.price*i.qty,0))}</span></div></div>
- <div style={{display:"flex", flexDirection:"column", gap:8}}><button style={{...s.btn("success"), padding:14, fontSize:14, width:"100%"}} onClick={() => submitOrder("merge")}> Agregar al pedido existente<div style={{fontSize:11, fontWeight:400, marginTop:2, opacity:0.8}}>Total: {fmt(mergeModal.existingOrder.total + mergeModal.newDraftData.items.reduce((s,i)=>s+i.price*i.qty,0))}</div></button><button style={{...s.btn("blue"), padding:12, fontSize:13, width:"100%"}} onClick={() => submitOrder("new")}> Crear pedido separado para Mesa {mergeModal.existingOrder.table}</button><button style={{...s.btn("secondary"), padding:10, fontSize:12, width:"100%"}} onClick={() => setMergeModal(null)}> Cancelar</button></div>
+  <div style={{overflowY:"auto", flex:1, paddingTop:8, paddingBottom:isMobile?80:24}}>
+  {tabs.map(t => {
+   const icons = {dashboard:"🏠",mesas:"🍽",nuevo:"➕",pedidos:"📋",cocina:"👨‍🍳",solicitudes:"📨",historial:"📅",inventario:"📦",carta:"📖",personal:"👥"};
+   const hasCount = t.label.includes("(");
+   const labelClean = t.label.replace(/\s*\(.*\)/, "");
+   const count = hasCount ? t.label.match(/\((\d+)\)/)?.[1] : null;
+   return (
+    <button key={t.id} style={s.navBtn(tab===t.id)}
+     onClick={()=>{ setTab(t.id); if(isMobile) setSidebarOpen(false); }}>
+     <span style={{fontSize:18, flexShrink:0, width:22, textAlign:"center"}}>{icons[t.id]||"·"}</span>
+     {sidebarOpen && (
+      <span style={{display:"flex", alignItems:"center", gap:8, minWidth:0}}>
+       <span style={{overflow:"hidden", textOverflow:"ellipsis"}}>{labelClean}</span>
+       {count && <span style={{background:tab===t.id?"#e74c3c":`${Y}22`,color:tab===t.id?"#fff":Y,borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:900,flexShrink:0}}>{count}</span>}
+      </span>
+     )}
+    </button>
+   );
+  })}
+  </div>
+
+  {/* Caja status strip at bottom */}
+  {sidebarOpen && (
+   <div style={{padding:"10px 18px",borderTop:"1px solid #1e1e1e",flexShrink:0}}>
+    <div style={{display:"flex",alignItems:"center",gap:8}}>
+     <div style={{width:8,height:8,borderRadius:"50%",background:caja?.isOpen?"#27ae60":"#e74c3c",flexShrink:0}}/>
+     <span style={{fontSize:11,color:caja?.isOpen?"#27ae60":"#e74c3c",fontWeight:700}}>{caja?.isOpen?"Caja abierta":"Caja cerrada"}</span>
+    </div>
+    {!isMobile && <div style={{fontSize:10,color:"#333",marginTop:2}}>{new Date().toLocaleDateString("es-PE",{weekday:"short",day:"numeric",month:"short"})}</div>}
+   </div>
+  )}
  </div>
- </div>
- )}
 
- {anulacionModal && (
- <div style={s.overlay} onClick={() => setAnulacionModal(null)}>
- <AnulacionModal order={anulacionModal}
-  isAdmin={currentUser?.id === 'admin'}
-  currentUser={currentUser}
-  onConfirm={(items, motivo) => anularPedido(anulacionModal, items, motivo)}
-  onRequest={(sol) => crearSolicitud(sol)}
-  onClose={() => setAnulacionModal(null)} menu={menu} s={s} Y={Y} fmt={fmt} />
- </div>
- )}
+ {/* ── MAIN CONTENT ── */}
+ <div style={{flex:1, display:"flex", flexDirection:"column", minWidth:0, marginLeft: (!isMobile && !sidebarOpen) ? 0 : 0}}>
+  <div style={s.content}>
 
- {confirmDelete&&<div style={s.overlay} onClick={()=>setConfirmDelete(null)}><div style={{...s.modal,maxWidth:340,textAlign:"center"}} onClick={e=>e.stopPropagation()}><div style={{fontSize:42,marginBottom:12}}></div><div style={{fontWeight:900,fontSize:17,marginBottom:8,color:"#eee"}}>¿Eliminar pedido?</div><div style={{color:"#888",fontSize:13,marginBottom:20}}>Esta acción no se puede deshacer.</div><div style={{display:"flex",gap:10}}><button style={{...s.btn("secondary"),flex:1}} onClick={()=>setConfirmDelete(null)}>Cancelar</button><button style={{...s.btn("danger"),flex:1}} onClick={()=>deleteOrderPermanent(confirmDelete)}> Eliminar</button></div></div></div>}
+  {toast&&(<div style={{position:"fixed",bottom:isMobile ? 90 : 20,left:"50%",transform:"translateX(-50%)",background:toast.color,color:"#fff",padding:"10px 20px",borderRadius:12,fontWeight:800,zIndex:9999,fontSize:14,boxShadow:"0 4px 20px rgba(0,0,0,.5)",whiteSpace:"nowrap"}}>{toast.msg}</div>)}
 
- <div style={s.content}>
- {tab==="dashboard" && <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} caja={caja} abrirCaja={abrirCaja} cerrarCaja={cerrarCaja} currentUser={currentUser} getPay={getPay} soundConfig={soundConfig} setSoundConfig={setSoundConfig} />}
- {tab==="mesas" && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setAnulacionModal={setAnulacionModal} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} mesasArr={mesasArr} addMesa={addMesa} removeMesa={removeMesa} currentUser={currentUser} />}
- {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} isTablet={isTablet} mesasArr={mesasArr} cajaAbierta={cajaAbierta} />}
- {tab==="pedidos" && <PedidosComponent orders={orders} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
- {tab==="cocina" && <CocinaComponent orders={orders} kitchenChecks={kitchenChecks} setKitchenChecks={setKitchenChecks} markKitchenListo={markKitchenListo} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} soundConfig={soundConfig} />}
- {tab==="historial"    && <HistorialComponent history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} />}
- {tab==="inventario"   && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/>}
- {tab==="carta"        && <CartaComponent menu={menu} cartaCatFilter={cartaCatFilter} setCartaCatFilter={setCartaCatFilter} showAdd={showAdd} setShowAdd={setShowAdd} newItem={newItem} setNewItem={setNewItem} addMenuItem={addMenuItem} deleteMenuItem={deleteMenuItem} isMobile={isMobile} s={s} Y={Y} fmt={fmt} ALL_CATS={ALL_CATS} />}
- {tab==="solicitudes"  && <SolicitudesPanel solicitudes={solicitudes} onResolve={resolverSolicitud} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} updateHistoryDoc={updateHistoryDoc} />}
- {tab==="personal"     && <StaffManager staff={staff} onSaveStaff={saveStaff} isMobile={isMobile} s={s} Y={Y} localName={currentUser?.localName} />}
+  {cobrarTarget && <div style={s.overlay} onClick={()=>setCobrarTarget(null)}><CobrarModal orderContext={cobrarTarget.data} total={cobrarTarget.data.total} onConfirm={handleConfirmCobro} onClose={()=>setCobrarTarget(null)} s={s} Y={Y} /></div>}
+  {splitTarget && <SplitBillModal order={splitTarget} onProceed={(items, total) => { setCobrarTarget({ type: 'split', data: { originalOrder: splitTarget, splitItems: items, total }}); setSplitTarget(null); }} onClose={() => setSplitTarget(null)} s={s} Y={Y} fmt={fmt} />}
+  {editingOrder&&<div style={s.overlay} onClick={()=>setEditingOrder(null)}><EditOrderModal order={editingOrder} onSave={saveEditedOrder} onClose={()=>setEditingOrder(null)} menu={menu} isMobile={isMobile} s={s} Y={Y} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} onRequestPrecio={crearSolicitud}/></div>}
+  {mesaModal&&<div style={s.overlay} onClick={()=>setMesaModal(null)}><MesaModalComponent num={mesaModal} orders={orders} setDraft={setDraft} newDraft={newDraft} onClose={()=>setMesaModal(null)} setTab={setTab} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} setAnulacionModal={setAnulacionModal} printOrder={printOrder} isMobile={isMobile} s={s} Y={Y} fmt={fmt} currentUser={currentUser} crearSolicitud={crearSolicitud} isAdmin={currentUser?.id==="admin"} /></div>}
+  
+  {mergeModal && (
+  <div style={s.overlay} onClick={() => setMergeModal(null)}>
+  <div style={{...s.modal, maxWidth:400}} onClick={e => e.stopPropagation()}>
+  <div style={{fontSize:36, textAlign:"center", marginBottom:10}}></div>
+  <div style={{fontWeight:900, fontSize:18, marginBottom:6, color:Y, textAlign:"center", fontFamily:"'Bebas Neue',cursive", letterSpacing:1}}>MESA {mergeModal.existingOrder.table} YA TIENE PEDIDO</div>
+  <div style={{color:"#aaa", fontSize:13, textAlign:"center", marginBottom:16}}>{mergeModal.newDraftData.orderType === "llevar" ? <>¿Deseas <b style={{color:"#3498db"}}>acoplar este pedido Para Llevar</b> a la mesa?</> : "¿Qué quieres hacer con los nuevos ítems?"}</div>
+  {mergeModal.newDraftData.orderType === "llevar" && <div style={{marginBottom:14}}><input style={{...s.input, borderColor:"#3498db"}} placeholder="Nombre (Ej: Juan)" value={mergeName} onChange={e => setMergeName(e.target.value)} spellCheck="false" /></div>}
+  <div style={{background:"#111", borderRadius:8, padding:10, marginBottom:12, border:"1px solid #2a2a2a"}}><div style={{fontSize:11, color:"#666", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>Pedido existente</div>{(mergeModal.existingOrder.items||[]).map((item,i) => (<div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:12, color:"#888", padding:"2px 0"}}><span>{item.qty}x {item.name}</span><span>{fmt(item.price * item.qty)}</span></div>))}<div style={{borderTop:"1px solid #2a2a2a", marginTop:6, paddingTop:6, display:"flex", justifyContent:"space-between", fontWeight:900, fontSize:13}}><span>Subtotal</span><span style={{color:Y}}>{fmt(mergeModal.existingOrder.total)}</span></div></div>
+  <div style={{background:"#0a1f0a", borderRadius:8, padding:10, marginBottom:16, border:"1px solid #27ae6044"}}><div style={{fontSize:11, color:"#27ae60", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>{mergeModal.newDraftData.orderType === "llevar" ? " Ítems Para Llevar a agregar" : "Nuevos ítems a agregar"}</div>{(mergeModal.newDraftData.items||[]).map((item,i) => (<div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:12, color:"#aaa", padding:"2px 0"}}><span>{item.qty}x {item.name}</span><span>{fmt(item.price * item.qty)}</span></div>))}<div style={{borderTop:"1px solid #27ae6033", marginTop:6, paddingTop:6, display:"flex", justifyContent:"space-between", fontWeight:900, fontSize:13}}><span style={{color:"#27ae60"}}>+ Subtotal</span><span style={{color:"#27ae60"}}>{fmt(mergeModal.newDraftData.items.reduce((s,i)=>s+i.price*i.qty,0))}</span></div></div>
+  <div style={{display:"flex", flexDirection:"column", gap:8}}><button style={{...s.btn("success"), padding:14, fontSize:14, width:"100%"}} onClick={() => submitOrder("merge")}> Agregar al pedido existente<div style={{fontSize:11, fontWeight:400, marginTop:2, opacity:0.8}}>Total: {fmt(mergeModal.existingOrder.total + mergeModal.newDraftData.items.reduce((s,i)=>s+i.price*i.qty,0))}</div></button><button style={{...s.btn("blue"), padding:12, fontSize:13, width:"100%"}} onClick={() => submitOrder("new")}> Crear pedido separado para Mesa {mergeModal.existingOrder.table}</button><button style={{...s.btn("secondary"), padding:10, fontSize:12, width:"100%"}} onClick={() => setMergeModal(null)}> Cancelar</button></div>
+  </div>
+  </div>
+  )}
+
+  {anulacionModal && (
+  <div style={s.overlay} onClick={() => setAnulacionModal(null)}>
+  <AnulacionModal order={anulacionModal}
+   isAdmin={currentUser?.id === 'admin'}
+   currentUser={currentUser}
+   onConfirm={(items, motivo) => anularPedido(anulacionModal, items, motivo)}
+   onRequest={(sol) => crearSolicitud(sol)}
+   onClose={() => setAnulacionModal(null)} menu={menu} s={s} Y={Y} fmt={fmt} />
+  </div>
+  )}
+
+  {confirmDelete&&<div style={s.overlay} onClick={()=>setConfirmDelete(null)}><div style={{...s.modal,maxWidth:340,textAlign:"center"}} onClick={e=>e.stopPropagation()}><div style={{fontSize:42,marginBottom:12}}></div><div style={{fontWeight:900,fontSize:17,marginBottom:8,color:"#eee"}}>¿Eliminar pedido?</div><div style={{color:"#888",fontSize:13,marginBottom:20}}>Esta acción no se puede deshacer.</div><div style={{display:"flex",gap:10}}><button style={{...s.btn("secondary"),flex:1}} onClick={()=>setConfirmDelete(null)}>Cancelar</button><button style={{...s.btn("danger"),flex:1}} onClick={()=>deleteOrderPermanent(confirmDelete)}> Eliminar</button></div></div></div>}
+
+  {tab==="dashboard" && <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} caja={caja} abrirCaja={abrirCaja} cerrarCaja={cerrarCaja} currentUser={currentUser} getPay={getPay} soundConfig={soundConfig} setSoundConfig={setSoundConfig} />}
+  {tab==="mesas" && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setAnulacionModal={setAnulacionModal} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} mesasArr={mesasArr} addMesa={addMesa} removeMesa={removeMesa} currentUser={currentUser} />}
+  {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} isTablet={isTablet} mesasArr={mesasArr} cajaAbierta={cajaAbierta} />}
+  {tab==="pedidos" && <PedidosComponent orders={orders} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
+  {tab==="cocina" && <CocinaComponent orders={orders} kitchenChecks={kitchenChecks} setKitchenChecks={setKitchenChecks} markKitchenListo={markKitchenListo} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} soundConfig={soundConfig} />}
+  {tab==="historial"    && <HistorialComponent history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} />}
+  {tab==="inventario"   && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/>}
+  {tab==="carta"        && <CartaComponent menu={menu} cartaCatFilter={cartaCatFilter} setCartaCatFilter={setCartaCatFilter} showAdd={showAdd} setShowAdd={setShowAdd} newItem={newItem} setNewItem={setNewItem} addMenuItem={addMenuItem} deleteMenuItem={deleteMenuItem} isMobile={isMobile} s={s} Y={Y} fmt={fmt} ALL_CATS={ALL_CATS} />}
+  {tab==="solicitudes"  && <SolicitudesPanel solicitudes={solicitudes} onResolve={resolverSolicitud} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} updateHistoryDoc={updateHistoryDoc} />}
+  {tab==="personal"     && <StaffManager staff={staff} onSaveStaff={saveStaff} isMobile={isMobile} s={s} Y={Y} localName={currentUser?.localName} />}
+
+  </div>
  </div>
+
  </div>
  </>
  </ErrorBoundary>
