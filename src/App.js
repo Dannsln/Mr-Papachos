@@ -5038,7 +5038,22 @@ export default function App() {
 
  const s = {
  app: {fontFamily:"'Nunito',sans-serif",background:"#0f0f0f",color:"#eee",minHeight:"100vh",display:"flex",flexDirection:"row",overflow:"hidden"},
- header: {background:`linear-gradient(135deg,${Y} 0%,#e6b800 100%)`,color:"#111",padding:isMobile?"8px 12px":"10px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:"0 2px 12px rgba(255,215,0,.3)", position:"fixed", top:0, left:0, right:0, zIndex:1000, height:50},
+ 
+ header: {
+   background:`linear-gradient(135deg,${Y} 0%,#e6b800 100%)`,
+   color:"#111",
+   padding:isMobile?"8px 12px":"0 20px", // Quitamos el padding vertical para centrar con flex
+   display:"flex",
+   alignItems:"center",
+   justifyContent:"space-between",
+   boxShadow:"0 2px 12px rgba(255,215,0,.3)", 
+   position:"fixed", 
+   top:0, left:0, right:0, 
+   zIndex:1000, 
+   height: 60, // Fijamos altura a 60px
+   boxSizing: "border-box" // Crucial para que no se expanda
+ },
+ 
  sidebar: (open) => ({
   width: open ? (isMobile ? "100vw" : 220) : (isMobile ? 0 : 64),
   minWidth: open ? (isMobile ? "100vw" : 220) : (isMobile ? 0 : 64),
@@ -5048,11 +5063,12 @@ export default function App() {
   transition:"width .22s cubic-bezier(.4,0,.2,1), min-width .22s cubic-bezier(.4,0,.2,1)",
   overflow:"hidden", flexShrink:0,
   position: isMobile ? "fixed" : "relative",
-  top: isMobile ? 50 : 0, left:0,
-  height: isMobile ? "calc(100vh - 50px)" : "100%",
+  top: isMobile ? 60 : 0, left:0, // Actualizado a 60
+  height: isMobile ? "calc(100vh - 60px)" : "100%", // Actualizado a 60
   zIndex: isMobile ? 990 : 1,
-  paddingTop: isMobile ? 0 : 50, // leave room for header on desktop
+  paddingTop: isMobile ? 0 : 60, // Actualizado a 60 para coincidir con el header
  }),
+ 
  navBtn: (active) => ({
   display:"flex", alignItems:"center", gap:12,
   padding: sidebarOpen ? "11px 18px" : "11px 0",
@@ -5064,21 +5080,17 @@ export default function App() {
   fontSize:13, whiteSpace:"nowrap", transition:"all .15s", width:"100%",
   letterSpacing:0.3,
  }),
- content: {flex:1, padding:isMobile?"10px 8px":isTablet?14:20, maxWidth:isWide?1200:"100%", margin:"0 auto", width:"100%", boxSizing:"border-box", overflow:"auto", marginTop:50},
- card: {background:"#1c1c1c",borderRadius:isMobile?10:12,padding:isMobile?10:14,marginBottom:10,border:"1px solid #2a2a2a"},
- cardHL: {background:"#1c1c1c",borderRadius:isMobile?10:12,padding:isMobile?10:14,marginBottom:10,border:`1px solid ${Y}44`},
- statCard:{background:"#1c1c1c",borderRadius:isMobile?10:12,padding:isMobile?"12px 8px":"16px 12px",border:"1px solid #2a2a2a",textAlign:"center"},
- statNum: {fontSize:isMobile?22:28,fontWeight:900,color:Y,lineHeight:1},
- statLbl: {fontSize:isMobile?9:11,color:"#777",marginTop:5,textTransform:"uppercase",letterSpacing:1},
- btn: (v="primary")=>({padding:isMobile?"7px 10px":"8px 14px",background:v==="primary"?Y:v==="danger"?"#c0392b":v==="success"?"#27ae60":v==="blue"?"#2980b9":v==="warn"?"#d35400":"#2a2a2a",color:v==="primary"?"#111":"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:800,fontSize:isMobile?11:12,fontFamily:"'Nunito',sans-serif",transition:"opacity .15s",whiteSpace:"nowrap"}),
- input: {background:"#222",border:"1px solid #383838",borderRadius:8,padding:isMobile?"8px 10px":"9px 12px",color:"#eee",fontFamily:"'Nunito',sans-serif",fontSize:13,outline:"none",width:"100%",boxSizing:"border-box"},
- tag: (bg, col)=>({display:"inline-block",padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700,background:bg,color:col||"#eee"}),
- grid: (cols)=>({display:"grid",gridTemplateColumns:`repeat(auto-fit, minmax(${cols}px,1fr))`,gap:isMobile?8:10}),
- row: {display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8},
- title: {color:Y,fontFamily:"'Bebas Neue',cursive",fontSize:isMobile?18:22,marginBottom:isMobile?10:14,letterSpacing:1},
- overlay: {position:"fixed",inset:0,background:"rgba(0,0,0,.88)",zIndex:2000,display:"flex",alignItems:isMobile?"flex-end":"center",justifyContent:"center",padding:isMobile?0:16},
- modal: {background:"#1a1a1a",border:`1px solid ${Y}44`,borderRadius:isMobile?"16px 16px 0 0":14,padding:isMobile?"16px 12px 20px":20,width:"100%",maxWidth:isMobile?"100%":600,maxHeight:isMobile?"88vh":"85vh",overflowY:"auto",position:"relative"},
- };
+ 
+ content: {
+   flex:1, 
+   padding:isMobile?"10px 8px":isTablet?14:20, 
+   maxWidth:isWide?1200:"100%", 
+   margin:"0 auto", 
+   width:"100%", 
+   boxSizing:"border-box", 
+   overflow:"auto", 
+   marginTop:60 // Actualizado a 60 para que no choque con el header
+ },
 
  if (splash) return (
  <ErrorBoundary>
