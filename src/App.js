@@ -1812,9 +1812,15 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
 
  {draft.items.length === 0
  ? <div style={{ textAlign:"center", color:"#444", padding:"20px 0", fontSize:13 }}>Toca un platillo para agregarlo →</div>
- : <div style={{ flexGrow: isDesktop ? 1 : 0, maxHeight: isDesktop ? "none" : "none", overflowY: "auto", marginBottom:8, minHeight: 0 }}>
+ : <div style={{ flexGrow: isDesktop ? 1 : 0, overflowY: "auto", marginBottom:8, minHeight: 0,
+     ...(draft.orderType === "llevar" ? { background:"#0b1a10", border:"1px solid #27ae6055", borderRadius:10, padding:"10px 10px 2px" } : {}) }}>
+ {draft.orderType === "llevar" && (
+  <div style={{ fontSize:11, color:"#27ae60", fontWeight:800, textTransform:"uppercase", letterSpacing:1, marginBottom:8, display:"flex", alignItems:"center", gap:6 }}>
+   <span>📦</span> Ítems del pedido ({draft.items.reduce((s,i)=>s+i.qty,0)})
+  </div>
+ )}
  {draft.items.map(item => (
- <div key={item.cartId} style={{ marginBottom:10, padding:"10px", background:"#0a0a0a", borderRadius:8, border:"1px solid #222" }}>
+ <div key={item.cartId} style={{ marginBottom:8, padding:"10px", background: draft.orderType==="llevar" ? "#0f2218" : "#0a0a0a", borderRadius:8, border: draft.orderType==="llevar" ? "1px solid #27ae6033" : "1px solid #222" }}>
  <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8, paddingBottom:8, borderBottom:"1px solid #252525" }}>
  <div style={{ flex:1 }}>
  <div style={{ fontWeight:700, fontSize:14 }}>
