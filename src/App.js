@@ -5074,10 +5074,21 @@ export default function App() {
  </header>
 
  {uiMode === "topbar" ? (
-  /* ── TOPBAR MODE: tabs as a horizontal strip below the header ── */
-  <div style={{display:"flex", flexDirection:"column", flex:1, minWidth:0, marginTop:50}}>
-   {/* Tab strip */}
-   <div style={{background:"#111", borderBottom:"1px solid #1e1e1e", overflowX:"auto", display:"flex", gap:0, flexShrink:0, position:"sticky", top:50, zIndex:900, scrollbarWidth:"none"}}>
+  /* ── TOPBAR MODE ─────────────────────────────────────────────────
+     Header fijo: 50px (top:0)
+     Tab strip fijo: ~42px (top:50)
+     Contenido: scroll, empieza en top:92 (50+42) o top:88 en mobile
+  ──────────────────────────────────────────────────────────────── */
+  <>
+   {/* ── Barra de tabs fija ── */}
+   <nav style={{
+    position:"fixed", top:50, left:0, right:0, zIndex:950,
+    background:"#111", borderBottom:"2px solid #1e1e1e",
+    display:"flex", alignItems:"stretch",
+    overflowX:"auto", overflowY:"hidden",
+    scrollbarWidth:"none", msOverflowStyle:"none",
+    minHeight: isMobile ? 40 : 44,
+   }}>
     {tabs.map(t => {
      const icons = {dashboard:"🏠",mesas:"🍽",nuevo:"➕",pedidos:"📋",cocina:"👨‍🍳",solicitudes:"📨",historial:"📅",inventario:"📦",carta:"📖",personal:"👥"};
      const hasCount = t.label.includes("(");
@@ -5086,22 +5097,37 @@ export default function App() {
      const active = tab === t.id;
      return (
       <button key={t.id}
-       style={{background:active?`${Y}18`:"transparent",color:active?Y:"#777",border:"none",borderBottom:active?`2px solid ${Y}`:"2px solid transparent",padding:isMobile?"8px 10px":"10px 14px",cursor:"pointer",fontFamily:"'Nunito',sans-serif",fontWeight:active?800:600,fontSize:isMobile?11:12,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:5,flexShrink:0,transition:"all .15s"}}
+       style={{background:active?`${Y}15`:"transparent",color:active?Y:"#666",border:"none",borderBottom:active?`3px solid ${Y}`:"3px solid transparent",padding:isMobile?"0 10px":"0 14px",cursor:"pointer",fontFamily:"'Nunito',sans-serif",fontWeight:active?800:600,fontSize:isMobile?11:12,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4,flexShrink:0,transition:"color .15s, border-color .15s",height:"100%"}}
        onClick={()=>setTab(t.id)}>
-       <span>{icons[t.id]||"·"}</span>
-       <span>{labelClean}</span>
-       {count && <span style={{background:active?"#e74c3c":`${Y}22`,color:active?"#fff":Y,borderRadius:10,padding:"1px 6px",fontSize:10,fontWeight:900}}>{count}</span>}
+       <span style={{fontSize:isMobile?13:15}}>{icons[t.id]||"·"}</span>
+       {!isMobile && <span>{labelClean}</span>}
+       {isMobile && <span style={{fontSize:9,display:"block",lineHeight:1.2}}>{labelClean}</span>}
+       {count && <span style={{background:active?"#e74c3c":`${Y}22`,color:active?"#fff":Y,borderRadius:10,padding:"1px 5px",fontSize:9,fontWeight:900,flexShrink:0}}>{count}</span>}
       </button>
      );
     })}
-    {/* Caja indicator */}
-    <div style={{marginLeft:"auto",display:"flex",alignItems:"center",padding:"0 14px",gap:6,flexShrink:0}}>
-     <div style={{width:7,height:7,borderRadius:"50%",background:caja?.isOpen?"#27ae60":"#e74c3c"}}/>
-     {!isMobile && <span style={{fontSize:10,color:caja?.isOpen?"#27ae60":"#e74c3c",fontWeight:700}}>{caja?.isOpen?"Caja abierta":"Cerrada"}</span>}
+    {/* Caja indicator — pegado a la derecha */}
+    <div style={{marginLeft:"auto",display:"flex",alignItems:"center",padding:"0 12px",gap:5,flexShrink:0,borderLeft:"1px solid #1e1e1e"}}>
+     <div style={{width:7,height:7,borderRadius:"50%",background:caja?.isOpen?"#27ae60":"#e74c3c",flexShrink:0}}/>
+     {!isMobile && <span style={{fontSize:10,color:caja?.isOpen?"#27ae60":"#e74c3c",fontWeight:700,whiteSpace:"nowrap"}}>{caja?.isOpen?"Abierta":"Cerrada"}</span>}
     </div>
-   </div>
-   {/* Content */}
-   <div style={{...s.content, marginTop:0, paddingTop:isMobile?10:16}}>
+   </nav>
+
+   {/* ── Área de contenido con scroll propio ── */}
+   <div style={{
+    position:"fixed",
+    top: isMobile ? 90 : 94,
+    left:0, right:0, bottom:0,
+    overflowY:"auto",
+    background:"#0f0f0f",
+   }}>
+    <div style={{
+     maxWidth: isWide ? 1200 : "100%",
+     margin:"0 auto",
+     padding: isMobile ? "10px 8px 80px" : isTablet ? "14px 14px 24px" : "20px 20px 24px",
+     boxSizing:"border-box",
+     minHeight:"100%",
+    }}>
     {toast&&(<div style={{position:"fixed",bottom:isMobile ? 90 : 20,left:"50%",transform:"translateX(-50%)",background:toast.color,color:"#fff",padding:"10px 20px",borderRadius:12,fontWeight:800,zIndex:9999,fontSize:14,boxShadow:"0 4px 20px rgba(0,0,0,.5)",whiteSpace:"nowrap"}}>{toast.msg}</div>)}
     {cobrarTarget && <div style={s.overlay} onClick={()=>setCobrarTarget(null)}><CobrarModal orderContext={cobrarTarget.data} total={cobrarTarget.data.total} onConfirm={handleConfirmCobro} onClose={()=>setCobrarTarget(null)} s={s} Y={Y} /></div>}
     {splitTarget && <SplitBillModal order={splitTarget} onProceed={(items, total) => { setCobrarTarget({ type: 'split', data: { originalOrder: splitTarget, splitItems: items, total }}); setSplitTarget(null); }} onClose={() => setSplitTarget(null)} s={s} Y={Y} fmt={fmt} />}
@@ -5120,8 +5146,9 @@ export default function App() {
     {tab==="carta" && <CartaComponent menu={menu} cartaCatFilter={cartaCatFilter} setCartaCatFilter={setCartaCatFilter} showAdd={showAdd} setShowAdd={setShowAdd} newItem={newItem} setNewItem={setNewItem} addMenuItem={addMenuItem} deleteMenuItem={deleteMenuItem} isMobile={isMobile} s={s} Y={Y} fmt={fmt} ALL_CATS={ALL_CATS} />}
     {tab==="solicitudes" && <SolicitudesPanel solicitudes={solicitudes} onResolve={resolverSolicitud} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} updateHistoryDoc={updateHistoryDoc} />}
     {tab==="personal" && <StaffManager staff={staff} onSaveStaff={saveStaff} isMobile={isMobile} s={s} Y={Y} localName={currentUser?.localName} />}
+    </div>
    </div>
-  </div>
+  </>
  ) : (
   <>
  {/* Mobile backdrop */}
