@@ -1714,157 +1714,159 @@ function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updat
  };
 
  const CartContent = () => (
- <div style={{ ...s.cardHL, position: isDesktop ? "sticky" : "static", top:8, background: isMobile ? "#1a1a1a" : "#1c1c1c", border: isMobile ? "none" : `1px solid ${Y}44`, padding: isMobile ? 0 : 14, display: isDesktop ? "flex" : "block", flexDirection: "column", maxHeight: isDesktop ? "calc(100vh - 120px)" : "none", overflowY: isDesktop ? "hidden" : "auto" }}>
- {salsasModal && !salsasModal.itemToAdd && (
- <SalsasModalComponent 
- initialSalsas={salsasModal.salsas} 
- onSave={(salsas) => {
- setDraft(prev => ({...prev, items: prev.items.map(i => i.cartId === salsasModal.cartId ? {...i, salsas} : i)}));
- setSalsasModal(null);
- }} 
- onClose={() => setSalsasModal(null)} s={s} Y={Y} 
- />
- )}
- {comboModal && (
- <ComboCustomizacionModal item={comboModal} s={s} Y={Y}
-  onClose={() => setComboModal(null)}
-  onConfirm={(item, selections, noteStr) => {
-   const cartId = `${item.id}-${Date.now()}`;
-   addItem({ ...item, cartId, _comboNote: noteStr });
-   setComboModal(null);
-  }}
- />
- )}
+ <div style={{ ...s.cardHL, position: isDesktop ? "sticky" : "static", top:8, background: isMobile ? "#1a1a1a" : "#1c1c1c", border: isMobile ? "none" : `1px solid ${Y}44`, padding: isMobile ? 0 : 14, display: isDesktop ? "flex" : "block", flexDirection: "column", maxHeight: isDesktop ? "calc(100vh - 100px)" : "none", overflowY: isDesktop ? "hidden" : "auto" }}>
+   {salsasModal && !salsasModal.itemToAdd && (
+     <SalsasModalComponent 
+       initialSalsas={salsasModal.salsas} 
+       onSave={(salsas) => {
+         setDraft(prev => ({...prev, items: prev.items.map(i => i.cartId === salsasModal.cartId ? {...i, salsas} : i)}));
+         setSalsasModal(null);
+       }} 
+       onClose={() => setSalsasModal(null)} s={s} Y={Y} 
+     />
+   )}
+   {comboModal && (
+     <ComboCustomizacionModal item={comboModal} s={s} Y={Y}
+       onClose={() => setComboModal(null)}
+       onConfirm={(item, selections, noteStr) => {
+         const cartId = `${item.id}-${Date.now()}`;
+         addItem({ ...item, cartId, _comboNote: noteStr });
+         setComboModal(null);
+       }}
+     />
+   )}
 
- <div style={{ flexShrink: 0 }}>
- <div style={{ ...s.title, fontSize:22, marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
- <span>🛒 PEDIDO ACTUAL</span>
- {isMobile && <CloseBtn onClose={() => setShowCartModal(false)} />}
- </div>
+   {/* ─── CABECERA FIJA ─── */}
+   <div style={{ flexShrink: 0, marginBottom: 12 }}>
+     <div style={{ ...s.title, fontSize:22, marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+       <span>🛒 PEDIDO ACTUAL</span>
+       {isMobile && <CloseBtn onClose={() => setShowCartModal(false)} />}
+     </div>
 
- <div style={{ marginBottom:10 }}>
- <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Tipo de pedido</label>
- <div style={{ display:"flex", gap:6, marginTop:4 }}>
- {["mesa","llevar"].map(t => (
- <button key={t} style={{ ...s.btn(draft.orderType===t?"primary":"secondary"), flex:1 }}
- onClick={() => setDraft(d => ({...d, orderType:t, taperCost:0, payTiming: "despues", table:"", phone:"", deliveryAddress:""}))}>
- {t==="mesa"?"Mesa":"Para llevar"}
- </button>
- ))}
- </div>
-
- {draft.orderType === "mesa" ? (
- <select style={{ ...s.input, marginTop:6 }}
- value={draft.table}
- onChange={e => setDraft(d => ({...d, table: e.target.value}))}>
- <option value="">-- Seleccionar Mesa --</option>
- {(mesasArr||[]).map(n => (
- <option key={n} value={String(n)}>Mesa {n}</option>
- ))}
- </select>
- ) : (
- <div style={{marginTop:6, display:"flex", flexDirection:"column", gap:6}}>
- <input style={s.input}
- placeholder="Nombre del cliente (opcional)"
- value={draft.table || ""}
- onChange={e => setDraft(d => ({...d, table: e.target.value}))}
- spellCheck="false" />
- <input style={s.input}
- placeholder="Número de teléfono (opcional)"
- value={draft.phone || ""}
- onChange={e => setDraft(d => ({...d, phone: e.target.value}))}
- spellCheck="false" />
- <input style={s.input}
- placeholder="Dirección de entrega (opcional)"
- value={draft.deliveryAddress || ""}
- onChange={e => setDraft(d => ({...d, deliveryAddress: e.target.value}))}
- spellCheck="false" />
- </div>
- )}
- </div>
-
- <div style={{ marginBottom:10 }}>
- {draft.orderType === "llevar" ? (
-  <div style={{background:"#0a1520", border:"1px solid #3498db44", borderRadius:8, padding:"10px 14px", display:"flex", alignItems:"center", gap:10}}>
-   <span style={{fontSize:18}}>🥡</span>
-   <div>
-    <div style={{fontSize:11, color:"#3498db", fontWeight:800, textTransform:"uppercase", letterSpacing:1}}>Espera cobro del cajero</div>
-    <div style={{fontSize:11, color:"#555", marginTop:2}}>El pedido se registra y el cajero lo cobra antes de enviarlo a cocina</div>
+     <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, display:"block", marginBottom:4 }}>Tipo de pedido</label>
+     <div style={{ display:"flex", gap:6 }}>
+       {["mesa","llevar"].map(t => (
+         <button key={t} style={{ ...s.btn(draft.orderType===t?"primary":"secondary"), flex:1 }}
+           onClick={() => setDraft(d => ({...d, orderType:t, taperCost:0, payTiming: "despues", table:"", phone:"", deliveryAddress:""}))}>
+           {t==="mesa" ? "🍽 Mesa" : "🥡 Para llevar"}
+         </button>
+       ))}
+     </div>
    </div>
-  </div>
- ) : (
-  <>
-  <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Momento del Cobro</label>
-  <div style={{ display:"flex", gap:6, marginTop:4 }}>
-  <button style={{ ...s.btn(draft.payTiming==="despues"?"primary":"secondary"), flex:1 }} onClick={() => setDraft(d => ({...d,payTiming:"despues"}))}> Pagar después</button>
-  <button style={{ ...s.btn(draft.payTiming==="ahora"?"primary":"secondary"), flex:1 }} onClick={() => setDraft(d => ({...d,payTiming:"ahora"}))}> Pagar ahora</button>
-  </div>
-  </>
- )}
- </div>
 
- <div style={{ marginBottom:12 }}>
- <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Notas Generales</label>
- <textarea style={{ ...s.input, marginTop:4, resize:"vertical", minHeight:60, fontFamily:"inherit" }} value={draft.notes}
- onChange={e => setDraft(d => ({...d, notes: e.target.value}))} placeholder="Sin cebolla en general..." spellCheck="false" />
- </div>
- </div>
+   {/* ─── ÁREA SCROLLEABLE (Inputs + Ítems + Notas) ─── */}
+   <div style={{ flexGrow: 1, overflowY: "auto", minHeight: 0, paddingRight: 4, display: "flex", flexDirection: "column", gap: 14 }}>
+     
+     {/* 1. Datos del Cliente / Mesa */}
+     <div>
+       {draft.orderType === "mesa" ? (
+         <select style={s.input}
+           value={draft.table}
+           onChange={e => setDraft(d => ({...d, table: e.target.value}))}>
+           <option value="">-- Seleccionar Mesa --</option>
+           {(mesasArr||[]).map(n => <option key={n} value={String(n)}>Mesa {n}</option>)}
+         </select>
+       ) : (
+         <div style={{display:"flex", flexDirection:"column", gap:6}}>
+           <input style={s.input} placeholder="Nombre del cliente (opcional)" value={draft.table || ""} onChange={e => setDraft(d => ({...d, table: e.target.value}))} spellCheck="false" />
+           <input style={s.input} placeholder="Número de teléfono (opcional)" value={draft.phone || ""} onChange={e => setDraft(d => ({...d, phone: e.target.value}))} spellCheck="false" />
+           <input style={s.input} placeholder="Dirección de entrega (opcional)" value={draft.deliveryAddress || ""} onChange={e => setDraft(d => ({...d, deliveryAddress: e.target.value}))} spellCheck="false" />
+         </div>
+       )}
+     </div>
 
- {draft.items.length === 0
- ? <div style={{ textAlign:"center", color:"#444", padding:"20px 0", fontSize:13 }}>Toca un platillo para agregarlo →</div>
- : <div style={{ flexGrow: isDesktop ? 1 : 0, overflowY: "auto", marginBottom:8, minHeight: 0,
-     ...(draft.orderType === "llevar" ? { background:"#0b1a10", border:"1px solid #27ae6055", borderRadius:10, padding:"10px 10px 2px" } : {}) }}>
- {draft.orderType === "llevar" && (
-  <div style={{ fontSize:11, color:"#27ae60", fontWeight:800, textTransform:"uppercase", letterSpacing:1, marginBottom:8, display:"flex", alignItems:"center", gap:6 }}>
-   <span>📦</span> Ítems del pedido ({draft.items.reduce((s,i)=>s+i.qty,0)})
-  </div>
- )}
- {draft.items.map(item => (
- <div key={item.cartId} style={{ marginBottom:8, padding:"10px", background: draft.orderType==="llevar" ? "#0f2218" : "#0a0a0a", borderRadius:8, border: draft.orderType==="llevar" ? "1px solid #27ae6033" : "1px solid #222" }}>
- <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8, paddingBottom:8, borderBottom:"1px solid #252525" }}>
- <div style={{ flex:1 }}>
- <div style={{ fontWeight:700, fontSize:14 }}>
- {item.name} 
- {["Alitas", "Alichaufa", "Rondas"].includes(item.cat) && (
- <button style={{...s.btn("secondary"), padding:"2px 6px", fontSize:10, marginLeft:6}} onClick={() => setSalsasModal({cartId: item.cartId, salsas: item.salsas || []})}>
- Salsas
- </button>
- )}
- </div>
- {draft.orderType === "mesa" && (
- <button
-  style={{...s.btn(item.isLlevar?"blue":"secondary"), padding:"2px 8px", fontSize:10, marginTop:4}}
-  onClick={() => setDraft(d => ({...d, items: d.items.map(i => i.cartId===item.cartId ? {...i, isLlevar:!i.isLlevar} : i)}))}>
-  {item.isLlevar ? "🥡 Para llevar" : "🍽 Para mesa"}
- </button>
- )}
- </div>
- <button style={{ ...s.btn("danger"), padding:"4px 10px", fontSize:14 }} onClick={() => changeQty(item.cartId,-1)}>−</button>
- <span style={{ fontWeight:900, minWidth:20, textAlign:"center", fontSize:14 }}>{item.qty}</span>
- <button style={{ ...s.btn(), padding:"4px 10px", fontSize:14 }} onClick={() => changeQty(item.cartId,1)}>+</button>
- <span style={{ color:Y, fontWeight:900, fontSize:14, minWidth:55, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
- </div>
- {item.salsas?.length > 0 && <div style={{color:Y, fontSize:11, marginBottom:4, fontStyle:"italic"}}> Salsas: {item.salsas.map(sa => `${sa.name} (${sa.style})`).join(", ")}</div>}
- {item._comboNote && <div style={{color:"#3498db", fontSize:11, marginBottom:4, fontStyle:"italic"}}>🎯 {item._comboNote}</div>}
- {Array.from({ length: item.qty }).map((_, idx) => (
- <textarea key={idx} style={{ ...s.input, fontSize:13, padding:"6px 10px", marginTop: 4, background:"#141414", resize:"vertical", minHeight:40, fontFamily:"inherit" }} 
- placeholder={`Nota para el plato ${idx + 1}...`} value={item.individualNotes?.[idx] || ""} spellCheck="false" onChange={e => updateIndividualNote(item.cartId, idx, e.target.value)} />
- ))}
- </div>
- ))}
- </div>
- }
+     {/* 2. Alertas y timing de pago */}
+     <div>
+       {draft.orderType === "llevar" ? (
+         <div style={{background:"#0a1520", border:"1px solid #3498db44", borderRadius:8, padding:"10px 14px", display:"flex", alignItems:"center", gap:10}}>
+           <span style={{fontSize:18}}>🥡</span>
+           <div>
+             <div style={{fontSize:11, color:"#3498db", fontWeight:800, textTransform:"uppercase", letterSpacing:1}}>Espera cobro del cajero</div>
+             <div style={{fontSize:11, color:"#555", marginTop:2}}>El pedido se registra y el cajero lo cobra antes de enviarlo a cocina</div>
+           </div>
+         </div>
+       ) : (
+         <>
+           <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, display:"block", marginBottom:4 }}>Momento del Cobro</label>
+           <div style={{ display:"flex", gap:6 }}>
+             <button style={{ ...s.btn(draft.payTiming==="despues"?"primary":"secondary"), flex:1 }} onClick={() => setDraft(d => ({...d,payTiming:"despues"}))}> Pagar después</button>
+             <button style={{ ...s.btn(draft.payTiming==="ahora"?"primary":"secondary"), flex:1 }} onClick={() => setDraft(d => ({...d,payTiming:"ahora"}))}> Pagar ahora</button>
+           </div>
+         </>
+       )}
+     </div>
 
- <div style={{ flexShrink: 0 }}>
- <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderTop:`2px solid ${Y}55`, marginBottom:12 }}><span style={{ fontWeight:900, fontSize:17 }}>TOTAL</span><span style={{ fontWeight:900, fontSize:17, color:Y }}>{fmt(draftTotal)}</span></div>
+     {/* 3. Lista de Ítems */}
+     <div style={{ ...(draft.orderType === "llevar" ? { background:"#0b1a10", border:"1px solid #27ae6055", borderRadius:10, padding:"10px 10px 2px" } : {}) }}>
+       {draft.items.length === 0 ? (
+         <div style={{ textAlign:"center", color:"#444", padding:"20px 0", fontSize:13 }}>Toca un platillo para agregarlo →</div>
+       ) : (
+         <>
+           {draft.orderType === "llevar" && (
+             <div style={{ fontSize:11, color:"#27ae60", fontWeight:800, textTransform:"uppercase", letterSpacing:1, marginBottom:8, display:"flex", alignItems:"center", gap:6 }}>
+               <span>📦</span> Ítems del pedido ({draft.items.reduce((s,i)=>s+i.qty,0)})
+             </div>
+           )}
+           {draft.items.map(item => (
+             <div key={item.cartId} style={{ marginBottom:8, padding:"10px", background: draft.orderType==="llevar" ? "#0f2218" : "#0a0a0a", borderRadius:8, border: draft.orderType==="llevar" ? "1px solid #27ae6033" : "1px solid #222" }}>
+               <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8, paddingBottom:8, borderBottom:"1px solid #252525" }}>
+                 <div style={{ flex:1 }}>
+                   <div style={{ fontWeight:700, fontSize:14 }}>
+                     {item.name} 
+                     {["Alitas", "Alichaufa", "Rondas"].includes(item.cat) && (
+                       <button style={{...s.btn("secondary"), padding:"2px 6px", fontSize:10, marginLeft:6}} onClick={() => setSalsasModal({cartId: item.cartId, salsas: item.salsas || []})}>
+                         Salsas
+                       </button>
+                     )}
+                   </div>
+                   {draft.orderType === "mesa" && (
+                     <button
+                       style={{...s.btn(item.isLlevar?"blue":"secondary"), padding:"2px 8px", fontSize:10, marginTop:4}}
+                       onClick={() => setDraft(d => ({...d, items: d.items.map(i => i.cartId===item.cartId ? {...i, isLlevar:!i.isLlevar} : i)}))}>
+                       {item.isLlevar ? "🥡 Para llevar" : "🍽 Para mesa"}
+                     </button>
+                   )}
+                 </div>
+                 <button style={{ ...s.btn("danger"), padding:"4px 10px", fontSize:14 }} onClick={() => changeQty(item.cartId,-1)}>−</button>
+                 <span style={{ fontWeight:900, minWidth:20, textAlign:"center", fontSize:14 }}>{item.qty}</span>
+                 <button style={{ ...s.btn(), padding:"4px 10px", fontSize:14 }} onClick={() => changeQty(item.cartId,1)}>+</button>
+                 <span style={{ color:Y, fontWeight:900, fontSize:14, minWidth:55, textAlign:"right" }}>{fmt(item.price*item.qty)}</span>
+               </div>
+               {item.salsas?.length > 0 && <div style={{color:Y, fontSize:11, marginBottom:4, fontStyle:"italic"}}> Salsas: {item.salsas.map(sa => `${sa.name} (${sa.style})`).join(", ")}</div>}
+               {item._comboNote && <div style={{color:"#3498db", fontSize:11, marginBottom:4, fontStyle:"italic"}}>🎯 {item._comboNote}</div>}
+               {Array.from({ length: item.qty }).map((_, idx) => (
+                 <textarea key={idx} style={{ ...s.input, fontSize:13, padding:"6px 10px", marginTop: 4, background:"#141414", resize:"vertical", minHeight:40, fontFamily:"inherit" }} 
+                   placeholder={`Nota para el plato ${idx + 1}...`} value={item.individualNotes?.[idx] || ""} spellCheck="false" onChange={e => updateIndividualNote(item.cartId, idx, e.target.value)} />
+               ))}
+             </div>
+           ))}
+         </>
+       )}
+     </div>
 
- <button style={{ ...s.btn(), width:"100%", padding:16, fontSize:16, opacity:((!cajaAbierta) || (draft.orderType==="mesa" && !draft.table || !draft.items.length))?0.4:1 }}
- onClick={() => { submitOrder(); if(isMobile) setShowCartModal(false); }} disabled={!cajaAbierta || (draft.orderType==="mesa" && !draft.table) || !draft.items.length}>
- {!cajaAbierta ? "🔴 Caja cerrada" : draft.payTiming==="ahora" ? " Continuar al Cobro" : " Enviar a Cocina"}
- </button>
- <button style={{ ...s.btn("secondary"), width:"100%", padding:10, marginTop:8, fontSize:13 }}
- onClick={() => { setDraft(newDraft()); if(isMobile) setShowCartModal(false); }}> Limpiar Pedido</button>
- </div>
+     {/* 4. Notas Generales */}
+     <div>
+       <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, display:"block", marginBottom:4 }}>Notas Generales</label>
+       <textarea style={{ ...s.input, resize:"vertical", minHeight:60, fontFamily:"inherit" }} value={draft.notes}
+         onChange={e => setDraft(d => ({...d, notes: e.target.value}))} placeholder="Sin cebolla en general..." spellCheck="false" />
+     </div>
+
+   </div>
+
+   {/* ─── FOOTER FIJO ─── */}
+   <div style={{ flexShrink: 0, marginTop: 12 }}>
+     <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderTop:`2px solid ${Y}55`, marginBottom:12 }}>
+       <span style={{ fontWeight:900, fontSize:17 }}>TOTAL</span>
+       <span style={{ fontWeight:900, fontSize:17, color:Y }}>{fmt(draftTotal)}</span>
+     </div>
+
+     <button style={{ ...s.btn(), width:"100%", padding:16, fontSize:16, opacity:((!cajaAbierta) || (draft.orderType==="mesa" && !draft.table || !draft.items.length))?0.4:1 }}
+       onClick={() => { submitOrder(); if(isMobile) setShowCartModal(false); }} disabled={!cajaAbierta || (draft.orderType==="mesa" && !draft.table) || !draft.items.length}>
+       {!cajaAbierta ? "🔴 Caja cerrada" : draft.payTiming==="ahora" ? " Continuar al Cobro" : " Enviar a Cocina"}
+     </button>
+     <button style={{ ...s.btn("secondary"), width:"100%", padding:10, marginTop:8, fontSize:13 }}
+       onClick={() => { setDraft(newDraft()); if(isMobile) setShowCartModal(false); }}> Limpiar Pedido</button>
+   </div>
  </div>
  );
 
