@@ -3317,10 +3317,15 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
 
         {/* Progreso */}
         {(() => {
-         const kitchenItems = (order.items || []).filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
-         const totalPortions = kitchenItems.reduce((sum, item) => sum + item.qty, 0);
-      const donePortions = kitchenItems.reduce((sum, item, i) => {
-          const checkValue = (checks && typeof checks === 'object') ? checks[i] : 0;
+        const kitchenItems = (order?.items || []).filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
+         const totalPortions = kitchenItems.reduce((sum, item) => sum + (item?.qty || 0), 0);
+         
+         // ESCUDO RAÍZ: Si kitchenChecks o el ID no existen, usamos un objeto vacío
+         const checks = (kitchenChecks && order?.id) ? (kitchenChecks[order.id] || {}) : {};
+
+         // Cálculo seguro del subtotal de platos listos
+         const donePortions = kitchenItems.reduce((sum, item, i) => {
+          const checkValue = checks[i]; // Ahora checks siempre es al menos {}
           const val = (checkValue === true) ? item.qty : (Number(checkValue) || 0);
           return sum + val;
          }, 0);
@@ -3328,29 +3333,46 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
          return (
           <>
            <div style={{background:"#2a2a2a", borderRadius:4, height:5, marginBottom:12, overflow:"hidden"}}>
-            <div style={{background:Y, height:"100%", width:`${totalPortions > 0 ? (donePortions/totalPortions)*100 : 0}%`, transition:"width .3s"}}/>
+            <div style={{
+              background: Y, 
+              height: "100%", 
+              width: `${totalPortions > 0 ? (donePortions / totalPortions) * 100 : 0}%`, 
+              transition: "width .3s"
+            }}/>
            </div>
            
            {kitchenItems.map((item, i) => {
-            // Mejora Punto 1: Acceso seguro a la cantidad lista por ítem
-            let doneQty = checks?.[i]; 
+            // Acceso seguro: si checks[i] no existe, devolvemos 0
+            let doneQty = checks?.[i] ?? 0; 
             if (doneQty === true) doneQty = item.qty;
             doneQty = Number(doneQty) || 0;
             
             const isDone = doneQty === item.qty;
-            const validNotes = (item.individualNotes || []).filter(n => n.trim() !== "");
+            const validNotes = (item.individualNotes || []).filter(n => n?.trim() !== "");
             
             return (
              <div key={i} onClick={() => toggleCheck(order, i, item.qty)}
-              style={{display:"flex", alignItems:"center", gap:10, padding:"9px 10px", marginBottom:5, borderRadius:8, background:isDone?"#0a2a0a":"#252525", border:`1px solid ${isDone?"#27ae6055":"#333"}`, cursor:"pointer", transition:"all .2s", opacity:isDone?0.6:1}}>
+              style={{
+                display: "flex", 
+                alignItems: "center", 
+                gap: 10, 
+                padding: "9px 10px", 
+                marginBottom: 5, 
+                borderRadius: 8, 
+                background: isDone ? "#0a2a0a" : "#252525", 
+                border: `1px solid ${isDone ? "#27ae6055" : "#333"}`, 
+                cursor: "pointer", 
+                transition: "all .2s", 
+                opacity: isDone ? 0.6 : 1
+              }}>
               
               <div style={{minWidth:26, height:26, borderRadius:6, border:`2px solid ${isDone?"#27ae60":"#555"}`, background:isDone?"#27ae60":"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:13, color:isDone?"#fff":"#aaa", fontWeight:"bold"}}>
                {item.qty > 1 ? `${doneQty}/${item.qty}` : (isDone ? "✓" : "")}
               </div>
               
-              <div style={{flex:1}}>
-               <span style={{fontWeight:800, fontSize:isMobile?13:15, textDecoration:isDone?"line-through":"none", color:isDone?"#555":"#eee"}}>
-                {item.qty>1&&<span style={{color:Y, marginRight:4}}>{item.qty}×</span>}
+              <div style={{flex:1, minWidth: 0}}>
+               <span style={{fontWeight:800, fontSize:isMobile?13:15, textDecoration:isDone?"line-through":"none", color:isDone?"#555":"#eee", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>
+                {item.qty > 1 && <span style={{color:Y, marginRight:4}}>{item.qty}×</span>}
                 {item.name}
                 {item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:10}}> Llevar</span>}
                 {item._isAdicion && <span style={{marginLeft:6, background:"#2d1a4a", color:"#c39bd3", borderRadius:4, padding:"1px 6px", fontSize:10, fontWeight:900}}>+ADICIONAL</span>}
