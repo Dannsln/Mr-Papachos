@@ -3319,13 +3319,7 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
         {(() => {
          const kitchenItems = (order.items || []).filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
          const totalPortions = kitchenItems.reduce((sum, item) => sum + item.qty, 0);
-      {/* --- SECCIÓN CORREGIDA Y BLINDADA --- */}
-        {(() => {
-         const kitchenItems = (order.items || []).filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
-         const totalPortions = kitchenItems.reduce((sum, item) => sum + item.qty, 0);
-         
-         // Mejora Punto 1: Cálculo seguro del subtotal de platos listos
-         const donePortions = kitchenItems.reduce((sum, item, i) => {
+      const donePortions = kitchenItems.reduce((sum, item, i) => {
           const checkValue = (checks && typeof checks === 'object') ? checks[i] : 0;
           const val = (checkValue === true) ? item.qty : (Number(checkValue) || 0);
           return sum + val;
