@@ -3319,24 +3319,41 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
         {(() => {
          const kitchenItems = (order.items || []).filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
          const totalPortions = kitchenItems.reduce((sum, item) => sum + item.qty, 0);
-         const donePortions = kitchenItems.reduce((sum, item, i) => sum + (Number(checks[i]===true?item.qty:checks[i]) || 0), 0);
+      {/* --- SECCIÓN CORREGIDA Y BLINDADA --- */}
+        {(() => {
+         const kitchenItems = (order.items || []).filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
+         const totalPortions = kitchenItems.reduce((sum, item) => sum + item.qty, 0);
+         
+         // Mejora Punto 1: Cálculo seguro del subtotal de platos listos
+         const donePortions = kitchenItems.reduce((sum, item, i) => {
+          const checkValue = (checks && typeof checks === 'object') ? checks[i] : 0;
+          const val = (checkValue === true) ? item.qty : (Number(checkValue) || 0);
+          return sum + val;
+         }, 0);
+
          return (
           <>
            <div style={{background:"#2a2a2a", borderRadius:4, height:5, marginBottom:12, overflow:"hidden"}}>
             <div style={{background:Y, height:"100%", width:`${totalPortions > 0 ? (donePortions/totalPortions)*100 : 0}%`, transition:"width .3s"}}/>
            </div>
+           
            {kitchenItems.map((item, i) => {
-            let doneQty = checks[i];
+            // Mejora Punto 1: Acceso seguro a la cantidad lista por ítem
+            let doneQty = checks?.[i]; 
             if (doneQty === true) doneQty = item.qty;
             doneQty = Number(doneQty) || 0;
+            
             const isDone = doneQty === item.qty;
             const validNotes = (item.individualNotes || []).filter(n => n.trim() !== "");
+            
             return (
              <div key={i} onClick={() => toggleCheck(order, i, item.qty)}
               style={{display:"flex", alignItems:"center", gap:10, padding:"9px 10px", marginBottom:5, borderRadius:8, background:isDone?"#0a2a0a":"#252525", border:`1px solid ${isDone?"#27ae6055":"#333"}`, cursor:"pointer", transition:"all .2s", opacity:isDone?0.6:1}}>
+              
               <div style={{minWidth:26, height:26, borderRadius:6, border:`2px solid ${isDone?"#27ae60":"#555"}`, background:isDone?"#27ae60":"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:13, color:isDone?"#fff":"#aaa", fontWeight:"bold"}}>
                {item.qty > 1 ? `${doneQty}/${item.qty}` : (isDone ? "✓" : "")}
               </div>
+              
               <div style={{flex:1}}>
                <span style={{fontWeight:800, fontSize:isMobile?13:15, textDecoration:isDone?"line-through":"none", color:isDone?"#555":"#eee"}}>
                 {item.qty>1&&<span style={{color:Y, marginRight:4}}>{item.qty}×</span>}
@@ -3344,6 +3361,7 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
                 {item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:10}}> Llevar</span>}
                 {item._isAdicion && <span style={{marginLeft:6, background:"#2d1a4a", color:"#c39bd3", borderRadius:4, padding:"1px 6px", fontSize:10, fontWeight:900}}>+ADICIONAL</span>}
                </span>
+               
                {item.salsas?.length > 0 && <div style={{color:Y, fontSize:11, fontStyle:"italic", marginTop:2}}> {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>}
                {item._comboNote && <div style={{color:"#3498db", fontSize:11, fontStyle:"italic", marginTop:2}}>🎯 {item._comboNote}</div>}
                {validNotes.map((n, idx) => <div key={idx} style={{fontSize:11, color:"#aaa", marginTop:3, fontStyle:"italic", whiteSpace:"pre-wrap"}}> Plato {idx+1}: {n}</div>)}
@@ -4451,6 +4469,11 @@ export default function App() {
   }
  };
  const toggleItemCheck = async (order, itemIdx, isFood) => {
+
+  if (!order || !order.items || !order.items[itemIdx]) {
+    console.warn("Pedido o ítem no encontrado para actualizar check");
+    return;
+  }
   const item = order.items[itemIdx];
   const maxQty = item.qty;
   const checks = order.itemChecks || {};
@@ -4499,20 +4522,18 @@ export default function App() {
  useEffect(() => { cajaRef2.current = caja; }, [caja]);
 
  // saveCaja: guarda en Firestore con hasta 3 reintentos. Retorna true si tuvo éxito.
- const saveCaja = async (data) => {
-  // ─── Eliminar campos undefined que Firestore no acepta ───
-  const clean = JSON.parse(JSON.stringify(data, (_, v) => v === undefined ? null : v));
+const saveCaja = async (data) => {
+  // Limpieza profunda de datos para asegurar que no viajen undefineds a Firebase
+  const cleanData = JSON.parse(JSON.stringify(data));
   
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      await setDoc(FS(currentUser.localId).cajaRef(), clean);
-      return true;
-    } catch(e) {
-      console.error(`saveCaja intento ${attempt}/3 falló:`, e);
-      if (attempt < 3) await new Promise(r => setTimeout(r, 600 * attempt));
-    }
+  try {
+    const docRef = FS(currentUser.localId).cajaRef();
+    await setDoc(docRef, cleanData, { merge: false }); // No usar merge para asegurar estado total
+    return true;
+  } catch (e) {
+    console.error("Error crítico al guardar estado de caja:", e);
+    return false;
   }
-  return false;
 };
 
  const abrirCaja = async (fondoInicial) => {
@@ -5068,7 +5089,8 @@ export default function App() {
  const anularPedido = async (originalOrder, replacementItems, motivo, _skip=false) => {
  const cur = ordersRef.current;
  const now = new Date().toISOString();
- const newId = Date.now().toString();
+// En submitOrder y anularPedido:
+const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
  const hasReplacement = replacementItems && replacementItems.length > 0;
  // Mark as anulado in orders array (needed for 25-sec kitchen flash in CocinaComponent)
  const anuladoOrder = { ...originalOrder, anulado:true, status:"anulado", isPaid:false, anuladoAt:now, motivoAnulacion:motivo||"", replacedById:hasReplacement?newId:null };
