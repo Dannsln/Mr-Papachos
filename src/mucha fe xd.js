@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, Component } from "react";
 import { initializeApp, getApps } from "firebase/app";
 import {
- getFirestore, doc, setDoc, getDoc, collection, addDoc, query, orderBy, limit, onSnapshot
+ getFirestore, doc, setDoc, getDoc, collection, addDoc, query, orderBy, limit, onSnapshot, deleteDoc
 } from "firebase/firestore";
 
 const FIREBASE_CONFIG = {
@@ -79,7 +79,10 @@ const FS = (localId) => ({
  try { await setDoc(this.configRef(), data, { merge: true }); } catch (e) { console.error(e); }
  },
  async addHistory(order) {
- try { await addDoc(this.historyCol(), order); } catch (e) { console.error(e); }
+  try { 
+   // Usamos order.id para que, si se envía 2 veces, simplemente se sobreescriba a sí mismo
+   await setDoc(doc(this.historyCol(), order.id), order); 
+  } catch (e) { console.error(e); }
  },
  async getStaff() {
   try {
@@ -268,6 +271,7 @@ const MENU_BASE = [
 ];
 
 const ALL_CATS = [...new Set(MENU_BASE.map(i => i.cat))];
+const BEVERAGE_CATS = ["Bebidas", "Cervezas", "Chilcanos", "Gaseosas", "Otros"]; // <-- AGREGA ESTO
 const SALSAS_ALITAS = ["Clásica", "Maracuyá", "BBQ", "Picante", "Huancaina", "Mango Abanero", "Broaster", "Hawaiana", "Acevichada", "Maracumango", "Aguaimanto"];
 
 const fmt = (n) => `S/.${Number(n).toFixed(2)}`;
@@ -2992,18 +2996,45 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  </div>
  </div>
  {/* Items */}
+ {/* Items */}
  <div style={{marginBottom:8, paddingLeft:2}}>
  {(o.items||[]).map((item,i) => {
+ const isDrink = BEVERAGE_CATS.includes(item.cat);
+ const checks = o.itemChecks || {};
+ let doneQty = checks[i];
+ if (doneQty === true) doneQty = item.qty;
+ doneQty = Number(doneQty) || 0;
+ const isDone = doneQty === item.qty;
  const notes = (item.individualNotes||[]).filter(n=>n.trim());
+ 
+ // Seguridad: Solo el dueño del pedido, o el admin, pueden marcar la bebida
+ const canWaiterCheck = isDrink && (currentUser?.id === 'admin' || currentUser?.name === o._mesero || currentUser?.name === o._adicionPor);
+
  return (
  <div key={i} style={{marginBottom:4}}>
  <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", fontSize:isMobile?12:13, padding:"3px 0", borderBottom:"1px solid #1e1e1e"}}>
- <span style={{color:"#ccc"}}>
-  <span style={{color:"#888", marginRight:4}}>{item.qty}×</span>
-  {item.name}
-  {item.isLlevar && <span style={{marginLeft:6,background:"#154360",color:"#3498db",borderRadius:4,padding:"1px 5px",fontSize:9,fontWeight:700}}>Llevar</span>}
-  {item._isAdicion && <span style={{marginLeft:6,background:"#2d1a4a",color:"#c39bd3",borderRadius:4,padding:"1px 5px",fontSize:9,fontWeight:900}}>+ADICIONAL</span>}
- </span>
+ 
+ <div style={{display:"flex", alignItems:"center", gap:8, flex:1}}>
+   {/* Botón de barra interactivo para meseros */}
+   {isDrink && canWaiterCheck ? (
+     <button onClick={(e) => { e.stopPropagation(); toggleItemCheck(o, i, false); }} 
+       style={{...s.btn(isDone?"success":"secondary"), padding:"2px 8px", fontSize:10}}>
+       {isDone ? "✓ Servido" : "Servir"}
+     </button>
+   ) : isDrink ? (
+     <span style={{fontSize:10, color:isDone?"#27ae60":"#e67e22", border:`1px solid ${isDone?"#27ae6044":"#e67e2244"}`, padding:"1px 4px", borderRadius:4}}>
+       {isDone?"✓ Listo":"⏳ Barra"}
+     </span>
+   ) : null}
+
+   <span style={{color: isDone && isDrink ? "#555" : "#ccc", textDecoration: isDone && isDrink ? "line-through" : "none"}}>
+    <span style={{color:"#888", marginRight:4}}>{item.qty}×</span>
+    {item.name}
+    {item.isLlevar && <span style={{marginLeft:6,background:"#154360",color:"#3498db",borderRadius:4,padding:"1px 5px",fontSize:9,fontWeight:700}}>Llevar</span>}
+    {item._isAdicion && <span style={{marginLeft:6,background:"#2d1a4a",color:"#c39bd3",borderRadius:4,padding:"1px 5px",fontSize:9,fontWeight:900}}>+ADICIONAL</span>}
+   </span>
+ </div>
+ 
  <span style={{color:"#FFD700", fontWeight:900, fontSize:12, marginLeft:8, whiteSpace:"nowrap"}}>{fmt(item.price*item.qty)}</span>
  </div>
  {item.salsas?.length>0 && <div style={{fontSize:10,color:Y,paddingLeft:8,marginTop:1,fontStyle:"italic"}}>↳ {item.salsas.map(sa=>`${sa.name} (${sa.style})`).join(', ')}</div>}
@@ -4311,7 +4342,6 @@ export default function App() {
  const [confirmDelete, setConfirmDelete] = useState(null);
  const [anulacionModal, setAnulacionModal] = useState(null); // order to annul
  const [mesaModal, setMesaModal] = useState(null);
- const [kitchenChecks, setKitchenChecks] = useState({});
  const [solicitudes, setSolicitudes] = useState([]);
  const [staff, setStaff] = useState([]);
  const [caja, setCaja] = useState(null); // null = no abierta
@@ -4337,8 +4367,8 @@ export default function App() {
  let unsubOrders, unsubHistory, unsubMenu, unsubConfig, unsubSolicitudes, unsubStaff, unsubCaja;
 
  const setupListeners = () => {
-  unsubOrders = onSnapshot(localFS.ordersRef(), (docSnap) => {
-   if (docSnap.exists()) setOrders(docSnap.data().list || []); else setOrders([]);
+  unsubOrders = onSnapshot(collection(db, `mrpapachos_${currentUser.localId}_activos`), (snapshot) => {
+   setOrders(snapshot.docs.map(d => d.data()));
   });
   unsubMenu = onSnapshot(localFS.menuRef(), (docSnap) => {
    if (docSnap.exists()) setMenu([...MENU_BASE, ...(docSnap.data().list || [])]); else setMenu(MENU_BASE);
@@ -4394,11 +4424,62 @@ export default function App() {
  
  // Queued saveOrders: each write waits for the previous one to finish,
  // preventing the classic read-modify-overwrite race that deletes active orders.
- const saveOrders = (v) => {
-  saveQueueRef.current = saveQueueRef.current
-   .then(() => FS(currentUser.localId).saveOrders(v))
-   .catch(e => console.error("saveOrders queue error:", e));
-  return saveQueueRef.current;
+ const saveOrders = async (newOrdersArray) => {
+  const oldOrders = ordersRef.current;
+  const colRef = collection(db, `mrpapachos_${currentUser.localId}_activos`);
+  const promises = [];
+
+  // 1. Guardar pedidos nuevos o actualizados (sin pisar los de otros)
+  newOrdersArray.forEach(newObj => {
+    const oldObj = oldOrders.find(o => o.id === newObj.id);
+    if (!oldObj || JSON.stringify(oldObj) !== JSON.stringify(newObj)) {
+      promises.push(setDoc(doc(colRef, newObj.id), newObj));
+    }
+  });
+
+  // 2. Borrar pedidos que ya se cobraron o anularon y salen de la lista activa
+  oldOrders.forEach(oldObj => {
+    if (!newOrdersArray.some(newObj => newObj.id === oldObj.id)) {
+      promises.push(deleteDoc(doc(colRef, oldObj.id)));
+    }
+  });
+
+  try {
+    await Promise.all(promises);
+  } catch (e) {
+    console.error("Error sincronizando en tiempo real:", e);
+  }
+ };
+ const toggleItemCheck = async (order, itemIdx, isFood) => {
+  const item = order.items[itemIdx];
+  const maxQty = item.qty;
+  const checks = order.itemChecks || {};
+  
+  // Ciclo de marcación: 0 -> 1 -> 2 ... -> Máximo -> 0
+  let valAnterior = checks[itemIdx];
+  if (valAnterior === true) valAnterior = maxQty;
+  let next = (Number(valAnterior) || 0) + 1;
+  if (next > maxQty) next = 0;
+  
+  const newItemChecks = { ...checks, [itemIdx]: next };
+  const updatedOrder = { ...order, itemChecks: newItemChecks };
+
+  // Si es comida, actualizamos automáticamente el estado general (Listo/Pendiente)
+  if (isFood) {
+   const kitchenItems = order.items.filter(i => i.cat !== "Tapers" && i.id !== "TAPER" && !BEVERAGE_CATS.includes(i.cat));
+   const isFullyDone = kitchenItems.length > 0 && kitchenItems.every((ki) => {
+    const kiIdx = order.items.indexOf(ki);
+    let val = (kiIdx === itemIdx) ? next : newItemChecks[kiIdx];
+    return Number(val || 0) === ki.qty;
+   });
+   updatedOrder.kitchenStatus = isFullyDone ? 'listo' : 'pendiente';
+  }
+
+  // Guardamos el cambio en Firebase para que el otro local/dispositivo lo vea
+  try {
+   const colRef = collection(db, `mrpapachos_${currentUser.localId}_activos`);
+   await setDoc(doc(colRef, order.id), updatedOrder);
+  } catch(e) { console.error("Error al marcar item:", e); }
  };
  const saveMenu = async (v) => { setMenu(v); await FS(currentUser.localId).saveMenu(v.filter(i=>i.id.startsWith("CUSTOM_")||i.id.startsWith("TP")&&!["TP01","TP02","TP03","TP04","TP05"].includes(i.id))); };
  const addHistory = async (o) => { await FS(currentUser.localId).addHistory(o); };
@@ -5276,8 +5357,8 @@ export default function App() {
   {tab==="dashboard" && <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} caja={caja} abrirCaja={abrirCaja} cerrarCaja={cerrarCaja} currentUser={currentUser} getPay={getPay} soundConfig={soundConfig} setSoundConfig={setSoundConfig} />}
   {tab==="mesas" && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setAnulacionModal={setAnulacionModal} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} mesasArr={mesasArr} addMesa={addMesa} removeMesa={removeMesa} currentUser={currentUser} />}
   {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} isTablet={isTablet} mesasArr={mesasArr} cajaAbierta={cajaAbierta} currentUser={currentUser} />}
-  {tab==="pedidos" && <PedidosComponent orders={orders} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
-  {tab==="cocina" && <CocinaComponent orders={orders} kitchenChecks={kitchenChecks} setKitchenChecks={setKitchenChecks} markKitchenListo={markKitchenListo} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} soundConfig={soundConfig} />}
+  {tab==="pedidos" && <PedidosComponent orders={orders} toggleItemCheck={toggleItemCheck} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
+{tab==="cocina" && <CocinaComponent orders={orders} toggleItemCheck={toggleItemCheck} markKitchenListo={markKitchenListo} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} soundConfig={soundConfig} />}
   {tab==="historial"    && <HistorialComponent history={history} activeOrders={orders} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} />}
   {tab==="inventario"   && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/>}
   {tab==="carta"        && <CartaComponent menu={menu} cartaCatFilter={cartaCatFilter} setCartaCatFilter={setCartaCatFilter} showAdd={showAdd} setShowAdd={setShowAdd} newItem={newItem} setNewItem={setNewItem} addMenuItem={addMenuItem} deleteMenuItem={deleteMenuItem} isMobile={isMobile} s={s} Y={Y} fmt={fmt} ALL_CATS={ALL_CATS} />}
