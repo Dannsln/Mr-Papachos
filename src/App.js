@@ -2862,7 +2862,7 @@ function AnulacionModal({ order, onConfirm, onRequest, onClose, menu, s, Y, fmt,
  );
 }
 
-function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, setSplitTarget, setEditingOrder, printOrder, cancelOrder, setConfirmDelete, setAnulacionModal, currentUser, isMobile, s, Y, fmt }) {
+function PedidosComponent({ orders, toggleItemCheck, setTab, finishPaidOrder, setCobrarTarget, setSplitTarget, setEditingOrder, printOrder, cancelOrder, setConfirmDelete, setAnulacionModal, currentUser, isMobile, s, Y, fmt }) {
  const [splitOpenId, setSplitOpenId] = useState(null);
  const isAdmin = currentUser?.id === 'admin';
  const isCajero = currentUser?.id === 'cajero';
@@ -2893,7 +2893,108 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  {(isAdmin || isMesero) && <button style={s.btn()} onClick={() => setTab("nuevo")}>+ Nuevo</button>}
  </div>
 
- {/* ── SECCIÓN: Para llevar esperando cobro ── */}
+ {/* ── SECCIÓN BARRA: Solo para meseros — sus bebidas pendientes ── */}
+ {currentUser?.id === 'mesero' && (() => {
+  const myDrinkOrders = activeOrders
+   .filter(o => o._mesero === currentUser?.name || o._adicionPor === currentUser?.name)
+   .map(o => {
+    const drinks = (o.items||[]).map((item,i) => ({item,i}))
+     .filter(({item}) => BEVERAGE_CATS.includes(item.cat));
+    return { order: o, drinks };
+   })
+   .filter(({drinks}) => drinks.length > 0);
+
+  if (myDrinkOrders.length === 0) return null;
+
+  const totalDrinks = myDrinkOrders.reduce((s,{drinks})=>s+drinks.length,0);
+  const doneDrinks  = myDrinkOrders.reduce((s,{order,drinks}) => {
+   const checks = order.itemChecks||{};
+   return s + drinks.filter(({item,i}) => {
+    let v=checks[i]; if(v===true) v=item.qty;
+    return Number(v||0)===item.qty;
+   }).length;
+  },0);
+
+  return (
+   <div style={{marginBottom:20}}>
+    <div style={{display:"flex", alignItems:"center", gap:10, marginBottom:10}}>
+     <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:isMobile?17:20, color:"#3498db", letterSpacing:1}}>
+      🥤 BARRA — TUS BEBIDAS
+     </div>
+     <span style={{background:"#3498db22", color:"#3498db", borderRadius:12, padding:"2px 10px", fontSize:11, fontWeight:900, border:"1px solid #3498db44"}}>
+      {doneDrinks}/{totalDrinks} servidas
+     </span>
+    </div>
+
+    {myDrinkOrders.map(({order, drinks}) => {
+     const checks = order.itemChecks||{};
+     const allDone = drinks.every(({item,i}) => {
+      let v=checks[i]; if(v===true) v=item.qty; return Number(v||0)===item.qty;
+     });
+
+     return (
+      <div key={order.id} style={{
+       background: allDone?"#0a1a0a":"#111",
+       borderRadius:12, marginBottom:8, padding:"10px 14px",
+       border:`2px solid ${allDone?"#27ae6055":"#3498db44"}`
+      }}>
+       <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
+        <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:16, color: allDone?"#27ae60":"#3498db"}}>
+         {order.orderType==="llevar"?`🥡 ${order.table||"Sin nombre"}`:`Mesa ${order.table}`}
+        </span>
+        {allDone && <span style={{fontSize:11, color:"#27ae60", fontWeight:900}}>✓ Todo servido</span>}
+       </div>
+
+       {drinks.map(({item,i}) => {
+        let doneQty = checks[i];
+        if (doneQty===true) doneQty=item.qty;
+        doneQty=Number(doneQty)||0;
+        const isDone = doneQty===item.qty;
+        const markedByCocina = order._drinkServedByCocina?.[i];
+        return (
+         <div key={i}
+          onClick={() => toggleItemCheck(order, i, false)}
+          style={{
+           display:"flex", alignItems:"center", gap:10,
+           padding:"8px 10px", marginBottom:4, borderRadius:8,
+           background: isDone?"#0a2a0a":"#1e1e1e",
+           border:`1px solid ${isDone?"#27ae6055":"#2a2a2a"}`,
+           cursor:"pointer", transition:"all .2s"
+          }}>
+          <div style={{
+           minWidth:26, height:26, borderRadius:6, flexShrink:0,
+           border:`2px solid ${isDone?"#27ae60":"#3498db"}`,
+           background:isDone?"#27ae60":"transparent",
+           display:"flex", alignItems:"center", justifyContent:"center",
+           fontSize:13, color:isDone?"#fff":"#3498db", fontWeight:"bold"
+          }}>
+           {item.qty>1?`${doneQty}/${item.qty}`:(isDone?"✓":"")}
+          </div>
+          <div style={{flex:1}}>
+           <span style={{fontWeight:800, fontSize:isMobile?13:14, color:isDone?"#555":"#eee", textDecoration:isDone?"line-through":"none"}}>
+            {item.qty>1&&<span style={{color:"#3498db",marginRight:4}}>{item.qty}×</span>}
+            {item.name}
+           </span>
+           {markedByCocina && !isDone && (
+            <div style={{fontSize:10, color:"#e67e22", marginTop:2}}>⚠️ Marcado por cocina</div>
+           )}
+          </div>
+          {isDone
+           ? <span style={{fontSize:10,color:"#27ae60",background:"#0a2a0a",padding:"2px 6px",borderRadius:4,border:"1px solid #27ae6044",flexShrink:0}}>✓ Servido</span>
+           : <span style={{fontSize:10,color:"#3498db",background:"#1a2a3a",padding:"2px 6px",borderRadius:4,border:"1px solid #3498db44",flexShrink:0}}>Toca para servir</span>
+          }
+         </div>
+        );
+       })}
+      </div>
+     );
+    })}
+    <div style={{height:1, background:"#1e1e1e", marginBottom:16}}/>
+   </div>
+  );
+ })()}
+
+
  {esperandoCobro.length > 0 && (
   <div style={{marginBottom:18}}>
    <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:10}}>
@@ -3008,7 +3109,8 @@ function PedidosComponent({ orders, setTab, finishPaidOrder, setCobrarTarget, se
  const notes = (item.individualNotes||[]).filter(n=>n.trim());
  
  // Seguridad: Solo el dueño del pedido, o el admin, pueden marcar la bebida
- const canWaiterCheck = isDrink && (currentUser?.id === 'admin' || currentUser?.name === o._mesero || currentUser?.name === o._adicionPor);
+ // Para meseros, el check de bebidas va en la sección BARRA de arriba — no aquí
+ const canWaiterCheck = isDrink && !isMesero && (currentUser?.id === 'admin' || currentUser?.name === o._mesero || currentUser?.name === o._adicionPor);
 
  return (
  <div key={i} style={{marginBottom:4}}>
@@ -3160,7 +3262,7 @@ function speak(text) {
  } catch(e) {}
 }
 
-function CocinaComponent({ orders, markKitchenListo, isMobile, isDesktop, s, Y, soundConfig }) {
+function CocinaComponent({ orders, markKitchenListo, toggleItemCheck, crearSolicitud, currentUser, isMobile, isDesktop, s, Y, soundConfig }) {
  const [kitchenChecks, setKitchenChecks] = useState({});
  const sorted = [...orders].sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
 
@@ -3418,6 +3520,115 @@ function CocinaComponent({ orders, markKitchenListo, isMobile, isDesktop, s, Y, 
     </div>
    </div>
   )}
+
+  {/* ── SECCIÓN BARRA: Bebidas para que cocina sirva y avise al mesero ── */}
+  {(() => {
+   const drinkOrders = sorted.filter(o =>
+    o.kitchenStatus !== 'esperando_cobro' && !o.anulado &&
+    (o.items||[]).some(i => BEVERAGE_CATS.includes(i.cat))
+   );
+   if (drinkOrders.length === 0) return null;
+
+   return (
+    <div style={{marginTop: activeOrders.length > 0 ? 24 : 0}}>
+     <div style={{display:"flex", alignItems:"center", gap:10, marginBottom:12}}>
+      <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:20, color:"#3498db", letterSpacing:1}}>
+       🥤 BARRA — BEBIDAS
+      </div>
+      <span style={{fontSize:11, color:"#3498db", background:"#3498db11", border:"1px solid #3498db33", borderRadius:12, padding:"2px 10px", fontWeight:800}}>
+       Marcar aquí avisa al mesero
+      </span>
+     </div>
+     <div style={{display:"grid", gridTemplateColumns:isDesktop?"1fr 1fr":"1fr", gap:12}}>
+      {drinkOrders.map(order => {
+       const drinkItems = (order.items||[]).map((item,i)=>({item,i}))
+        .filter(({item}) => BEVERAGE_CATS.includes(item.cat));
+       const checks = order.itemChecks||{};
+       const allDone = drinkItems.every(({item,i}) => {
+        let v=checks[i]; if(v===true) v=item.qty; return Number(v||0)===item.qty;
+       });
+       const mins = Math.floor((Date.now()-new Date(order.createdAt))/60000);
+
+       return (
+        <div key={order.id} style={{
+         background: allDone?"#0a1a0a":"#111b2a",
+         borderRadius:12, padding:14,
+         border:`2px solid ${allDone?"#27ae6055":"#3498db44"}`
+        }}>
+         <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
+          <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:18, color: allDone?"#27ae60":"#3498db"}}>
+           {order.orderType==="llevar"?`🥡 ${order.table||"Sin nombre"}`:`Mesa ${order.table}`}
+          </span>
+          <div style={{display:"flex", alignItems:"center", gap:6}}>
+           {order._mesero && (
+            <span style={{fontSize:11, color:"#888", background:"#1a1a1a", borderRadius:6, padding:"2px 8px", border:"1px solid #2a2a2a"}}>
+             👤 {order._mesero}
+            </span>
+           )}
+           <span style={{fontSize:10, color:mins>=15?"#e74c3c":mins>=8?"#e67e22":"#555"}}>
+            {mins<1?"ahora":`${mins}m`}
+           </span>
+          </div>
+         </div>
+
+         {drinkItems.map(({item,i}) => {
+          let doneQty=checks[i]; if(doneQty===true) doneQty=item.qty;
+          doneQty=Number(doneQty)||0;
+          const isDone=doneQty===item.qty;
+          return (
+           <div key={i}
+            onClick={() => {
+             const willMark = doneQty < item.qty;
+             if (toggleItemCheck) toggleItemCheck(order, i, false);
+             // Avisar al mesero cuando cocina sirve una bebida
+             if (willMark && order._mesero && crearSolicitud) {
+              crearSolicitud({
+               type: 'aviso_bebida',
+               orderId: order.id,
+               orderTable: order.table,
+               orderType: order.orderType,
+               forMesero: order._mesero,
+               itemName: item.name,
+               itemIdx: i,
+               requestedBy: currentUser?.id || 'cocina',
+               requestedByName: currentUser?.name || 'Cocina',
+              });
+             }
+            }}
+            style={{
+             display:"flex", alignItems:"center", gap:10,
+             padding:"8px 10px", marginBottom:4, borderRadius:8,
+             background:isDone?"#0a2a0a":"#1e2a3a",
+             border:`1px solid ${isDone?"#27ae6055":"#3498db33"}`,
+             cursor:"pointer", transition:"all .2s", opacity:isDone?0.7:1
+            }}>
+            <div style={{
+             minWidth:26, height:26, borderRadius:6, flexShrink:0,
+             border:`2px solid ${isDone?"#27ae60":"#3498db"}`,
+             background:isDone?"#27ae60":"transparent",
+             display:"flex", alignItems:"center", justifyContent:"center",
+             fontSize:13, color:isDone?"#fff":"#3498db", fontWeight:"bold"
+            }}>
+             {item.qty>1?`${doneQty}/${item.qty}`:(isDone?"✓":"")}
+            </div>
+            <span style={{flex:1, fontWeight:800, fontSize:isMobile?13:14, color:isDone?"#555":"#dde", textDecoration:isDone?"line-through":"none"}}>
+             {item.qty>1&&<span style={{color:"#3498db",marginRight:4}}>{item.qty}×</span>}
+             {item.name}
+            </span>
+            {isDone
+             ? <span style={{fontSize:10,color:"#27ae60",flexShrink:0}}>✓ Servido</span>
+             : <span style={{fontSize:10,color:"#3498db",flexShrink:0}}>Toca → avisa mesero</span>
+            }
+           </div>
+          );
+         })}
+        </div>
+       );
+      })}
+     </div>
+    </div>
+   );
+  })()}
  </div>
  );
 }
@@ -3978,7 +4189,11 @@ function SolicitudesPanel({ solicitudes, onResolve, currentUser, isMobile, s, Y,
  const isAdmin = currentUser?.id === 'admin';
  const visibleSols = isAdmin
   ? solicitudes
-  : solicitudes.filter(x => x.requestedBy === currentUser?.userId || x.requestedBy === currentUser?.id);
+  : solicitudes.filter(x =>
+      x.requestedBy === currentUser?.userId ||
+      x.requestedBy === currentUser?.id ||
+      (x.type === 'aviso_bebida' && x.forMesero === currentUser?.name)
+    );
  const [rejectModal, setRejectModal] = useState(null);
  const [rejectReason, setRejectReason] = useState("");
  const [expandedId, setExpandedId] = useState(null);
@@ -3988,7 +4203,7 @@ function SolicitudesPanel({ solicitudes, onResolve, currentUser, isMobile, s, Y,
  const pendientes = visibleSols.filter(x => x.status === "pendiente");
  const resueltas  = visibleSols.filter(x => x.status !== "pendiente").slice(0, 20);
 
- const typeLabel  = (t) => t === "anulacion" ? "🚫 Anulación" : t === "cobro" ? "💰 Corrección de cobro" : "✏️ Cambio de precio";
+ const typeLabel  = (t) => t === "anulacion" ? "🚫 Anulación" : t === "cobro" ? "💰 Corrección de cobro" : t === "aviso_bebida" ? "🥤 Aviso de barra" : "✏️ Cambio de precio";
  const statusInfo = (st) => st === "aprobada"  ? { label:"Aprobada",  color:"#27ae60" }
                            : st === "rechazada" ? { label:"Rechazada", color:"#e74c3c" }
                            : { label:"Pendiente", color:"#f39c12" };
@@ -4001,9 +4216,37 @@ function SolicitudesPanel({ solicitudes, onResolve, currentUser, isMobile, s, Y,
     ? <div style={{...s.card, textAlign:"center", color:"#444", padding:"24px 0", fontSize:13}}>✅ No hay solicitudes pendientes</div>
     : <>
        <div style={{fontSize:11, color:"#f39c12", textTransform:"uppercase", letterSpacing:1, marginBottom:10, fontWeight:800}}>
-        {pendientes.length} pendiente{pendientes.length>1?"s":""} — requieren tu aprobación
+        {pendientes.filter(x=>x.type!=='aviso_bebida').length > 0
+         ? `${pendientes.length} pendiente${pendientes.length>1?"s":""} — requieren atención`
+         : `${pendientes.length} aviso${pendientes.length>1?"s":""} de barra`}
        </div>
        {pendientes.map(sol => {
+        // ── Aviso de barra: tarjeta informativa simple, solo "Entendido" ──
+        if (sol.type === 'aviso_bebida') {
+         const mesa = sol.orderType==="llevar"?`🥡 ${sol.orderTable}`:`Mesa ${sol.orderTable}`;
+         return (
+          <div key={sol.id} style={{...s.card, border:"1px solid #3498db55", marginBottom:10, padding:isMobile?10:14, background:"#111b2a"}}>
+           <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+            <div>
+             <div style={{fontWeight:900, fontSize:14, color:"#3498db"}}>🥤 Cocina sirvió una bebida</div>
+             <div style={{fontSize:13, color:"#eee", marginTop:4}}>
+              <b>{sol.itemName}</b> · {mesa}
+             </div>
+             <div style={{fontSize:11, color:"#888", marginTop:2}}>
+              Por: <b style={{color:"#ddd"}}>{sol.requestedByName}</b>
+              {" · "}{new Date(sol.createdAt).toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})}
+             </div>
+            </div>
+            <button
+             style={{...s.btn("success"), padding:"8px 14px", fontSize:12, fontWeight:900, flexShrink:0}}
+             onClick={() => onResolve(sol.id, "aprobada")}>
+             ✓ Entendido
+            </button>
+           </div>
+          </div>
+         );
+        }
+
         const isEditingThis = editingSol?.sol?.id === sol.id;
         return (
         <div key={sol.id} style={{...s.card, border:"1px solid #f39c1255", marginBottom:10, padding:isMobile?10:14}}>
@@ -4684,12 +4927,14 @@ const saveCaja = async (data) => {
 
  // Crear solicitud de aprobación (para no-admins)
  const crearSolicitud = async (solicitud) => {
-  // Evitar duplicados: si ya hay una solicitud pendiente del mismo tipo para el mismo pedido
+  // Evitar duplicados: si ya hay una solicitud pendiente del mismo tipo para el mismo pedido/ítem
   const existe = solicitudes.find(s =>
    s.status === "pendiente" &&
    s.type === solicitud.type &&
    s.orderId === solicitud.orderId &&
-   (solicitud.type !== "precio" || s.cartId === solicitud.cartId)
+   (solicitud.type === "aviso_bebida"
+    ? s.itemIdx === solicitud.itemIdx   // para bebidas, dedup por ítem específico
+    : solicitud.type !== "precio" || s.cartId === solicitud.cartId)
   );
   if (existe) {
    showToast("⚠️ Ya existe una solicitud pendiente para este pedido", "#e67e22");
@@ -4699,7 +4944,11 @@ const saveCaja = async (data) => {
   const updated = [...solicitudes, newSol];
   setSolicitudes(updated);
   await saveSolicitudes(updated);
-  showToast("📨 Solicitud enviada al Administrador", "#8e44ad");
+  if (solicitud.type === 'aviso_bebida') {
+   showToast(`🥤 Bebida marcada — aviso enviado a ${solicitud.forMesero}`, "#3498db");
+  } else {
+   showToast("📨 Solicitud enviada al Administrador", "#8e44ad");
+  }
  };
 
  // Resolver solicitud (admin aprueba o rechaza)
@@ -5409,7 +5658,7 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
   {tab==="mesas" && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setAnulacionModal={setAnulacionModal} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} mesasArr={mesasArr} addMesa={addMesa} removeMesa={removeMesa} currentUser={currentUser} />}
   {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} isTablet={isTablet} mesasArr={mesasArr} cajaAbierta={cajaAbierta} currentUser={currentUser} />}
   {tab==="pedidos" && <PedidosComponent orders={orders} toggleItemCheck={toggleItemCheck} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
-{tab==="cocina" && <CocinaComponent orders={orders} markKitchenListo={markKitchenListo} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} soundConfig={soundConfig} />}
+{tab==="cocina" && <CocinaComponent orders={orders} markKitchenListo={markKitchenListo} toggleItemCheck={toggleItemCheck} crearSolicitud={crearSolicitud} currentUser={currentUser} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} soundConfig={soundConfig} />}
   {tab==="historial"    && <HistorialComponent history={history} activeOrders={orders} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} />}
   {tab==="inventario"   && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/>}
   {tab==="carta"        && <CartaComponent menu={menu} cartaCatFilter={cartaCatFilter} setCartaCatFilter={setCartaCatFilter} showAdd={showAdd} setShowAdd={setShowAdd} newItem={newItem} setNewItem={setNewItem} addMenuItem={addMenuItem} deleteMenuItem={deleteMenuItem} isMobile={isMobile} s={s} Y={Y} fmt={fmt} ALL_CATS={ALL_CATS} />}
