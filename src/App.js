@@ -3317,15 +3317,16 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
 
         {/* Progreso */}
         {(() => {
-        const kitchenItems = (order?.items || []).filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
+       const kitchenItems = (order?.items || []).filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
          const totalPortions = kitchenItems.reduce((sum, item) => sum + (item?.qty || 0), 0);
          
-         // ESCUDO RAÍZ: Si kitchenChecks o el ID no existen, usamos un objeto vacío
-         const checks = (kitchenChecks && order?.id) ? (kitchenChecks[order.id] || {}) : {};
+         // 2. ESCUDO CRÍTICO: El error 'reading 1777...' ocurre aquí. 
+         // Forzamos a que checks sea un objeto vacío si kitchenChecks es undefined.
+         const checks = (kitchenChecks && order?.id && kitchenChecks[order.id]) ? kitchenChecks[order.id] : {};
 
-         // Cálculo seguro del subtotal de platos listos
+         // 3. Cálculo de progreso con validación de tipo para cada índice
          const donePortions = kitchenItems.reduce((sum, item, i) => {
-          const checkValue = checks[i]; // Ahora checks siempre es al menos {}
+          const checkValue = checks[i]; 
           const val = (checkValue === true) ? item.qty : (Number(checkValue) || 0);
           return sum + val;
          }, 0);
@@ -3334,16 +3335,17 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
           <>
            <div style={{background:"#2a2a2a", borderRadius:4, height:5, marginBottom:12, overflow:"hidden"}}>
             <div style={{
-              background: Y, 
-              height: "100%", 
-              width: `${totalPortions > 0 ? (donePortions / totalPortions) * 100 : 0}%`, 
-              transition: "width .3s"
+                background: Y, 
+                height: "100%", 
+                width: `${totalPortions > 0 ? (donePortions / totalPortions) * 100 : 0}%`, 
+                transition: "width .3s"
             }}/>
            </div>
            
            {kitchenItems.map((item, i) => {
-            // Acceso seguro: si checks[i] no existe, devolvemos 0
-            let doneQty = checks?.[i] ?? 0; 
+            // 4. Protección adicional en el mapeo de cada plato
+            let doneQty = (checks && typeof checks === 'object') ? checks[i] : 0;
+            
             if (doneQty === true) doneQty = item.qty;
             doneQty = Number(doneQty) || 0;
             
@@ -3371,8 +3373,17 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
               </div>
               
               <div style={{flex:1, minWidth: 0}}>
-               <span style={{fontWeight:800, fontSize:isMobile?13:15, textDecoration:isDone?"line-through":"none", color:isDone?"#555":"#eee", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>
-                {item.qty > 1 && <span style={{color:Y, marginRight:4}}>{item.qty}×</span>}
+               <span style={{
+                   fontWeight: 800, 
+                   fontSize: isMobile ? 13 : 15, 
+                   textDecoration: isDone ? "line-through" : "none", 
+                   color: isDone ? "#555" : "#eee",
+                   display: "block",
+                   overflow: "hidden",
+                   textOverflow: "ellipsis",
+                   whiteSpace: "nowrap"
+               }}>
+                {item.qty > 1 && <span style={{color: Y, marginRight: 4}}>{item.qty}×</span>}
                 {item.name}
                 {item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:10}}> Llevar</span>}
                 {item._isAdicion && <span style={{marginLeft:6, background:"#2d1a4a", color:"#c39bd3", borderRadius:4, padding:"1px 6px", fontSize:10, fontWeight:900}}>+ADICIONAL</span>}
@@ -3388,6 +3399,7 @@ function CocinaComponent({ orders, kitchenChecks, setKitchenChecks, markKitchenL
           </>
          );
         })()}
+       
 
         {order.notes && <div style={{marginTop:8, padding:"8px 10px", background:"#1a1500", borderRadius:8, border:"1px solid #3a3000", fontSize:12, color:"#e6c200", whiteSpace:"pre-wrap"}}> General: {order.notes}</div>}
 
