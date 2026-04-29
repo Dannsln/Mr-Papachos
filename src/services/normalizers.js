@@ -180,7 +180,8 @@ export const normalizeSolicitud = (solicitud = {}) => {
   const payload = parseJson(solicitud.payload, {});
   const status = String(solicitud.status ?? solicitud.estado ?? "PENDIENTE").toLowerCase();
   const typeRaw = solicitud.type ?? solicitud.tipo ?? payload.type ?? "";
-  const type = String(typeRaw).toLowerCase();
+  const rawType = String(typeRaw).toLowerCase();
+  const type = rawType === "acceso_dispositivo" ? "acceso" : rawType === "acceso_jornada" ? "jornada" : rawType;
 
   return {
     ...payload,
@@ -188,7 +189,7 @@ export const normalizeSolicitud = (solicitud = {}) => {
     payload,
     id: solicitud.id ?? solicitud.id_solicitud,
     id_solicitud: solicitud.id_solicitud ?? solicitud.id,
-    type: type === "acceso_dispositivo" ? "acceso" : type,
+    type,
     status: status === "aprobado" ? "aprobada" : status === "rechazado" ? "rechazada" : status,
     requestedBy: solicitud.requestedBy ?? solicitud.id_usuario_origen,
     requestedByName: solicitud.requestedByName ?? solicitud.nombre_origen ?? "Usuario",

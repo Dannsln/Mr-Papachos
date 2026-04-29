@@ -443,6 +443,19 @@ const loadLocal = useCallback(async () => {
 // ═══════════════════════════════════════════════════════════════════
 // LOGIN SCREEN — Flujo: Sucursal → Rol → Usuario → PIN
 // ═══════════════════════════════════════════════════════════════════
+const FingerprintIcon = ({ size = 22, color = "currentColor" }) => (
+ <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+  <path d="M7.2 11.1a4.9 4.9 0 0 1 9.8 0" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
+  <path d="M5 8.8a7.5 7.5 0 0 1 14 0" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
+  <path d="M9.4 13.1c0 3.2-1.2 5.1-2.6 6.7" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
+  <path d="M12 13.1c0 3.8-.9 6.2-2.2 8" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
+  <path d="M14.6 13.1c0 2.5-.2 4.9-1.1 7.2" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
+  <path d="M17.1 13.1c0 1.6-.1 3.1-.4 4.5" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
+  <path d="M9.7 3.4a9.2 9.2 0 0 1 8.4 2.3" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
+  <path d="M4.6 5.8a9.2 9.2 0 0 1 2-1.5" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
+ </svg>
+);
+
 function LoginScreen({ onLogin, s, Y, isMobile }) {
  const [step, setStep] = useState("codigo");
  const [codigo, setCodigo] = useState("");
@@ -545,7 +558,7 @@ function LoginScreen({ onLogin, s, Y, isMobile }) {
   } catch (err) {
    const data = err.data || {};
    if (data.token_dispositivo) localStorage.setItem(deviceKey(usuario.id_usuario), data.token_dispositivo);
-   if (data.estado === "DISPOSITIVO_PENDIENTE") setPendingMsg(data.mensaje || "Solicitud enviada al administrador.");
+   if (["DISPOSITIVO_PENDIENTE", "JORNADA_PENDIENTE"].includes(data.estado)) setPendingMsg(data.mensaje || "Solicitud enviada al administrador.");
    else setError(err.message || "No se pudo iniciar sesion");
    setPin("");
   }
@@ -570,19 +583,19 @@ function LoginScreen({ onLogin, s, Y, isMobile }) {
  if (showDev) return <DevPanel onClose={() => setShowDev(false)} onDevLogin={onLogin} s={s} Y={Y} isMobile={isMobile} />;
 
  return (
-  <div style={{background:"#111",minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:"#fff",padding:20}}>
-   <img src="/logo.png" alt="MR. Papachos" style={{width:isMobile?"68vw":"260px",maxWidth:"340px",marginBottom:10,filter:`drop-shadow(0 0 10px ${Y}66)`}} />
-   <div onClick={handleDevTap} style={{fontSize:10,color:"#333",letterSpacing:2,marginBottom:36,textTransform:"uppercase",cursor:"default",userSelect:"none"}}>Sistema de Gestion</div>
+  <div style={{background:"linear-gradient(180deg,#111 0%,#0b0b0b 58%,#070707 100%)",minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:"#fff",padding:isMobile?18:24,fontFamily:"'Nunito',sans-serif"}}>
+   <div style={{width:"100%",maxWidth:460}}>
+    <div style={{textAlign:"center",marginBottom:isMobile?24:30}}>
+     <img onClick={handleDevTap} src="/logo.png" alt="MR. Papachos" style={{width:isMobile?"62vw":"250px",maxWidth:"320px",marginBottom:18,filter:`drop-shadow(0 0 12px ${Y}55)`,cursor:"default",userSelect:"none"}} />
+     <div style={{fontSize:22,fontWeight:900,letterSpacing:0,marginBottom:5}}>Inicio de sesion</div>
+     <div style={{fontSize:12,color:"#7b7b7b"}}>Accede con tu nombre asignado o nombre en clave.</div>
+    </div>
 
    {step === "codigo" && (
-    <div style={{width:"100%",maxWidth:440}}>
-     <div style={{fontSize:11,color:"#666",textTransform:"uppercase",letterSpacing:1,marginBottom:14,textAlign:"center"}}>Ingresa el nombre de acceso asignado</div>
-     <input style={{...s.input, textAlign:"center", fontSize:16, padding:13, marginBottom:10}} placeholder="Ej. DanyDNI" value={codigo} onChange={e=>setCodigo(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleIdentify()} autoComplete="off" spellCheck="false" autoFocus />
+    <div style={{width:"100%"}}>
+     <div style={{fontSize:11,color:"#8a8a8a",textTransform:"uppercase",letterSpacing:1,marginBottom:9,fontWeight:900}}>Nombre de acceso</div>
+     <input style={{...s.input,textAlign:"left",fontSize:18,padding:"16px 15px",marginBottom:10,border:"1px solid #3a3a3a",background:"#1b1b1b",borderRadius:8}} placeholder="Ej. GatitoFeliz01" value={codigo} onChange={e=>setCodigo(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleIdentify()} autoComplete="username" spellCheck="false" autoFocus />
      {error && <div style={{color:"#e74c3c",fontSize:12,fontWeight:700,marginBottom:10,textAlign:"center"}}>{error}</div>}
-     <div style={{...s.card,textAlign:"center",color:"#777",marginBottom:10,padding:"14px 16px"}}>
-      <div style={{fontWeight:900,color:"#eee",fontSize:13,marginBottom:4}}>Primer acceso</div>
-      <div style={{fontSize:11,color:"#666"}}>Usa el nombre que te asignaron. Luego podras activar nombre en clave y huella.</div>
-     </div>
      <div style={{display:"none"}}>
       {loadingUsers ? <div style={{...s.card,textAlign:"center",color:"#777"}}>Cargando usuarios...</div> : visibleLoginUsers.map(user => (
        <button key={user.id} onClick={() => pickUser(user)} style={{...cardBtn,justifyContent:"space-between",padding:"12px 14px"}}>
@@ -595,12 +608,12 @@ function LoginScreen({ onLogin, s, Y, isMobile }) {
       ))}
       {!loadingUsers && visibleLoginUsers.length === 0 && <div style={{...s.card,textAlign:"center",color:"#777"}}>No hay coincidencias</div>}
      </div>
-     <button onClick={handleIdentify} disabled={!codigo.trim() || checking} style={{...s.btn("secondary"),width:"100%",padding:12,fontSize:13,opacity:!codigo.trim()?0.45:1}}>{checking ? "Verificando..." : "Continuar"}</button>
+     <button onClick={handleIdentify} disabled={!codigo.trim() || checking} style={{...s.btn("primary"),width:"100%",padding:"15px 16px",fontSize:15,opacity:!codigo.trim()?0.45:1,boxShadow:`0 10px 26px ${Y}22`}}>{checking ? "Verificando..." : "Continuar"}</button>
     </div>
    )}
 
    {step === "local" && usuario && (
-    <div style={{width:"100%",maxWidth:340}}>
+    <div style={{width:"100%"}}>
      <button onClick={() => { setStep("codigo"); setUsuario(null); }} style={{...s.btn("secondary"),marginBottom:16,fontSize:11,padding:"4px 12px"}}>Volver</button>
      <div style={{fontSize:11,color:"#666",textTransform:"uppercase",letterSpacing:1,marginBottom:14,textAlign:"center"}}>Locales habilitados para {usuario.nombre}</div>
      <div style={{display:"flex",flexDirection:"column",gap:10}}>{locales.map(loc => <button key={loc.id_local} onClick={() => handleSelectLocal(usuario, loc)} style={{...cardBtn, justifyContent:"center", fontSize:17, padding:18}}>{loc.nombre}</button>)}</div>
@@ -608,7 +621,7 @@ function LoginScreen({ onLogin, s, Y, isMobile }) {
    )}
 
    {step === "role" && usuario && selectedLocal && (
-    <div style={{width:"100%",maxWidth:330}}>
+    <div style={{width:"100%"}}>
      <button onClick={() => locales.length > 1 ? setStep("local") : setStep("codigo")} style={{...s.btn("secondary"),marginBottom:16,fontSize:11,padding:"4px 12px"}}>Volver</button>
      <div style={{fontSize:11,color:"#666",textTransform:"uppercase",letterSpacing:1,marginBottom:14,textAlign:"center"}}>Rol de ingreso</div>
      <div style={{display:"flex",flexDirection:"column",gap:10}}>{currentRoles.map(role => { const info = ROLE_INFO[role] || { label: role, color: Y }; return <button key={role} onClick={() => { setSelectedRole(role); setStep("pin"); }} style={{...cardBtn, border:`2px solid ${info.color}33`, padding:"16px 20px"}}><div><div style={{color:info.color,fontWeight:900,fontSize:15}}>{info.label}</div><div style={{fontSize:10,color:"#555",marginTop:2}}>{selectedLocal.nombre}</div></div></button>; })}</div>
@@ -616,7 +629,7 @@ function LoginScreen({ onLogin, s, Y, isMobile }) {
    )}
 
    {step === "pin" && usuario && selectedLocal && (
-    <div style={{width:"100%",maxWidth:300,textAlign:"center"}}>
+    <div style={{width:"100%",maxWidth:330,margin:"0 auto",textAlign:"center"}}>
      <button onClick={() => { setStep(locales.length > 1 ? "local" : "codigo"); setPin(""); setError(""); setPendingMsg(""); }} style={{...s.btn("secondary"),marginBottom:16,fontSize:11,padding:"4px 12px"}}>Volver</button>
      <div style={{fontSize:19,fontWeight:900,marginBottom:3}}>{usuario.nombre}</div>
      <div style={{fontSize:11,color:"#555",marginBottom:20}}>{selectedLocal.nombre}<br/>DNI {usuario.numero_documento || "sin DNI"} · {roleLabels(currentRoles)}</div>
@@ -624,10 +637,21 @@ function LoginScreen({ onLogin, s, Y, isMobile }) {
      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>{["1","2","3","4","5","6","7","8","9","","0","Borrar"].map((d,i)=><button key={i} onClick={()=>d==="Borrar"?handlePinDel():d?handlePinDigit(d):null} disabled={!d&&d!=="0"} style={{height:54,borderRadius:12,fontSize:d==="Borrar"?12:22,fontWeight:700,cursor:d===""?"default":"pointer",background:d==="Borrar"?"#222":d===""?"transparent":"#1e1e1e",border:d===""?"none":"1px solid #333",color:"#eee",opacity:d===""?0:1}}>{d}</button>)}</div>
      {pendingMsg && <div style={{color:"#f39c12",fontSize:12,fontWeight:700,marginBottom:10}}>{pendingMsg}</div>}
      {error && <div style={{color:"#e74c3c",fontSize:12,fontWeight:700,marginBottom:10}}>{error}</div>}
-     <button onClick={()=>submitLogin()} disabled={pin.length<4||checking||!selectedRole} style={{...s.btn("primary"),width:"100%",padding:14,fontSize:16,opacity:pin.length<4||!selectedRole?0.4:1,marginBottom:8}}>{checking ? "Verificando..." : "Entrar"}</button>
-     <button onClick={()=>submitLogin({biometrico:true})} disabled={checking || !hasSavedDevice} style={{...s.btn("secondary"),width:"100%",padding:12,fontSize:13,opacity:hasSavedDevice?1:0.45}}>{hasSavedDevice ? "Huella / Passkey" : "Huella no registrada"}</button>
+     <div style={{display:"flex",gap:10,alignItems:"stretch"}}>
+      <button onClick={()=>submitLogin()} disabled={pin.length<4||checking||!selectedRole} style={{...s.btn("primary"),flex:1,padding:14,fontSize:16,opacity:pin.length<4||!selectedRole?0.4:1}}>{checking ? "Verificando..." : "Entrar"}</button>
+      <button
+       onClick={()=>submitLogin({biometrico:true})}
+       disabled={checking || !hasSavedDevice}
+       title={hasSavedDevice ? "Ingresar con huella digital" : "Huella no registrada en este equipo"}
+       aria-label={hasSavedDevice ? "Ingresar con huella digital" : "Huella no registrada en este equipo"}
+       style={{width:56,borderRadius:10,background:hasSavedDevice?"#1f1f1f":"#171717",border:`1px solid ${hasSavedDevice ? `${Y}77` : "#303030"}`,color:hasSavedDevice?Y:"#555",display:"flex",alignItems:"center",justifyContent:"center",cursor:hasSavedDevice?"pointer":"not-allowed",boxShadow:hasSavedDevice?`0 8px 20px ${Y}16`:"none"}}
+      >
+       <FingerprintIcon size={24} color="currentColor" />
+      </button>
+     </div>
     </div>
-   )}
+    )}
+   </div>
   </div>
  );
 }
@@ -3931,14 +3955,15 @@ function SolicitudesPanel({ solicitudes, onResolve, currentUser, isMobile, s, Y,
  const normalizeSol = (raw) => {
   const payload = parsePayload(raw.payload);
   const typeRaw = raw.type || raw.tipo || payload.type || "";
-  const type = String(typeRaw).toLowerCase();
+  const rawType = String(typeRaw).toLowerCase();
+  const type = rawType === "acceso_dispositivo" ? "acceso" : rawType === "acceso_jornada" ? "jornada" : rawType;
   const status = String(raw.status || raw.estado || "PENDIENTE").toLowerCase();
   return {
    ...payload,
    ...raw,
    payload,
    id: raw.id || raw.id_solicitud,
-   type: type === "acceso_dispositivo" ? "acceso" : type,
+   type,
    status: status === "aprobado" ? "aprobada" : status === "rechazado" ? "rechazada" : status,
    requestedBy: raw.requestedBy || raw.id_usuario_origen,
    requestedByName: raw.requestedByName || raw.nombre_origen || "Usuario",
@@ -3949,11 +3974,14 @@ function SolicitudesPanel({ solicitudes, onResolve, currentUser, isMobile, s, Y,
  const visibleSols = (solicitudes || []).map(normalizeSol).filter(sol => isAdmin || sol.requestedBy === currentUser?.userId || sol.requestedBy === currentUser?.id);
  const pendientes = visibleSols.filter(x => x.status === "pendiente");
  const resueltas = visibleSols.filter(x => x.status !== "pendiente").slice(0, 20);
- const typeLabel = (t) => t === "acceso" ? "Acceso de equipo" : t === "anulacion" || t === "anulacion_pedido" ? "Anulacion" : t === "cobro" ? "Correccion de cobro" : t === "precio" || t === "cambio_precio" ? "Cambio de precio" : t || "Solicitud";
+ const typeLabel = (t) => t === "acceso" ? "Acceso de equipo" : t === "jornada" ? "Acceso de jornada" : t === "anulacion" || t === "anulacion_pedido" ? "Anulacion" : t === "cobro" ? "Correccion de cobro" : t === "precio" || t === "cambio_precio" ? "Cambio de precio" : t || "Solicitud";
  const statusInfo = (st) => st === "aprobada" ? { label:"Aprobada", color:"#27ae60" } : st === "rechazada" ? { label:"Rechazada", color:"#e74c3c" } : { label:"Pendiente", color:"#f39c12" };
  const renderDetail = (sol) => {
   if (sol.type === "acceso") {
    return <div style={{fontSize:12,color:"#aaa"}}><b style={{color:"#eee"}}>Equipo:</b> {sol.payload?.nombre_equipo || sol.nombre_equipo || "Sin nombre"}<br/><span style={{color:"#666"}}>Dispositivo #{sol.payload?.id_dispositivo || sol.id_dispositivo}</span></div>;
+  }
+  if (sol.type === "jornada") {
+   return <div style={{fontSize:12,color:"#aaa"}}><b style={{color:"#eee"}}>Jornada:</b> {sol.payload?.jornada_fecha || sol.jornada_fecha || "Hoy"}<br/><span style={{color:"#666"}}>Metodo {sol.payload?.metodo || sol.metodo || "PIN"}{(sol.payload?.nombre_equipo || sol.nombre_equipo) ? ` - ${sol.payload?.nombre_equipo || sol.nombre_equipo}` : ""}</span></div>;
   }
   if (sol.itemName || sol.newPrice) {
    return (
@@ -4094,7 +4122,7 @@ function ReportesComponent({ s, Y, fmt, isAdmin }) {
      )}
     </>
    )}
-  </div>
+   </div>
  );
 }
 
@@ -4112,7 +4140,7 @@ export default function App() {
  const [cartaCatFilter, setCartaCatFilter] = useState("Todos");
  const [showAdd, setShowAdd] = useState(false);
  const [newItem, setNewItem] = useState({ name:"", cat:"Sin categoria", price:"" });
- const [splash, setSplash] = useState(true);
+ const [splash, setSplash] = useState(false);
  const [toast, setToast] = useState(null);
  const [editingOrder, setEditingOrder] = useState(null);
  const [confirmDelete, setConfirmDelete] = useState(null);
