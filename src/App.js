@@ -3283,7 +3283,7 @@ function CocinaComponent({ orders, markKitchenListo, toggleItemCheck, crearSolic
   const next = {};
 
   orders.forEach(o => {
-   next[o.id] = { status: o.status, kitchenStatus: o.kitchenStatus, isAnulado: !!o.anulado, itemCount: (o.items||[]).length };
+   next[o.id] = { status: o.status, kitchenStatus: o.kitchenStatus, isAnulado: !!o.anulado, itemCount: (o.items||[]).length, adicionAt: o._adicionAt || null };
    const p = prev[o.id];
 
    if (!p) {
@@ -3294,9 +3294,9 @@ function CocinaComponent({ orders, markKitchenListo, toggleItemCheck, crearSolic
      setTimeout(() => speak(`Nuevo pedido de ${waiter}`), 200);
     }
    } else {
-    // Additional items added (merge) — item count grew
-    if (!o.anulado && o._adicionPor && (o.items||[]).length > p.itemCount) {
-     // Solo los ítems realmente nuevos en esta actualización (por índice)
+    // Additional items added — triggered ONLY when _adicionAt changes (evita falsos positivos)
+    if (!o.anulado && o._adicionPor && o._adicionAt && o._adicionAt !== p.adicionAt) {
+     // Los ítems nuevos son los que están después del índice que teníamos al ver el adicionAt anterior
      const newlyAdded = (o.items||[]).slice(p.itemCount);
      const nonTaperItems = newlyAdded.filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
      if (nonTaperItems.length > 0) {
