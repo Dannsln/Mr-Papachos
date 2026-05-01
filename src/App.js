@@ -15,7 +15,6 @@ const FIREBASE_CONFIG = {
  appId: process.env.REACT_APP_FIREBASE_APP_ID,
 };
 
-c
 const _fbApp = getApps().length ? getApps()[0] : initializeApp(FIREBASE_CONFIG);
 const db = getFirestore(_fbApp);
 const auth = getAuth(_fbApp); // <-- 1. INICIALIZA AUTH
@@ -3297,9 +3296,21 @@ function CocinaComponent({ orders, markKitchenListo, toggleItemCheck, crearSolic
    } else {
     // Additional items added (merge) — item count grew
     if (!o.anulado && o._adicionPor && (o.items||[]).length > p.itemCount) {
-     const waiter = o._adicionPor || "Mesero";
-     playBeeps({ ...(soundConfig||{}), freq: 660, beeps: 2 });
-     setTimeout(() => speak(`Pedido adicional de ${waiter}`), 200);
+     const adicionItems = (o.items||[]).filter(i => i._isAdicion);
+     const nonTaperItems = adicionItems.filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
+     if (nonTaperItems.length > 0) {
+      const foodItems = nonTaperItems.filter(i => !BEVERAGE_CATS.includes(i.cat));
+      const tableRef = o.orderType === 'llevar' ? `para llevar ${o.table||""}`.trim() : `mesa ${o.table}`;
+      playBeeps({ ...(soundConfig||{}), freq: 660, beeps: 2 });
+      if (foodItems.length > 0) {
+       const plateName = foodItems[0].name;
+       setTimeout(() => speak(`${plateName} adicional, ${tableRef}`), 200);
+      } else {
+       const itemName = nonTaperItems[0].name;
+       setTimeout(() => speak(`${itemName} adicional`), 200);
+      }
+     }
+     // Si solo hay tapers → sin sonido ni alerta
     }
     // Order became ready
     if (p.kitchenStatus !== 'listo' && o.kitchenStatus === 'listo') {
@@ -3338,7 +3349,7 @@ function CocinaComponent({ orders, markKitchenListo, toggleItemCheck, crearSolic
    let next = (Number(valAnterior) || 0) + 1;
    if (next > maxQty) next = 0;
    const newOrderChecks = {...oc, [itemIdx]: next};
-   const kitchenItems = (order.items || []).filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
+   const kitchenItems = (order.items || []).filter(i => i.cat !== "Tapers" && i.id !== "TAPER" && !BEVERAGE_CATS.includes(i.cat));
    const isFullyDone = kitchenItems.length > 0 && kitchenItems.every((item, i) => {
     let val = (i === itemIdx) ? next : newOrderChecks[i];
     if (val === true) val = item.qty;
@@ -3428,7 +3439,7 @@ function CocinaComponent({ orders, markKitchenListo, toggleItemCheck, crearSolic
 
         {/* Progreso */}
         {(() => {
-       const kitchenItems = (order?.items || []).filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
+       const kitchenItems = (order?.items || []).filter(i => i.cat !== "Tapers" && i.id !== "TAPER" && !BEVERAGE_CATS.includes(i.cat));
          const totalPortions = kitchenItems.reduce((sum, item) => sum + (item?.qty || 0), 0);
          
          // 2. ESCUDO CRÍTICO: El error 'reading 1777...' ocurre aquí. 
