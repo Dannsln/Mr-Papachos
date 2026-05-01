@@ -279,6 +279,53 @@ const MENU_BASE = [
 
 const ALL_CATS = [...new Set(MENU_BASE.map(i => i.cat))];
 const BEVERAGE_CATS = ["Bebidas", "Cervezas", "Chilcanos", "Gaseosas", "Otros"]; // <-- AGREGA ESTO
+
+const isTaperItem = (item = {}) => item.cat === "Tapers" || item.id === "TAPER";
+const isBeverageItem = (item = {}) => BEVERAGE_CATS.includes(item.cat);
+const isKitchenFoodItem = (item = {}) => !isTaperItem(item) && !isBeverageItem(item);
+const orderDisplayName = (order = {}) =>
+ order.orderType === "llevar" ? `para llevar ${order.table || "sin nombre"}` : `mesa ${order.table || ""}`.trim();
+const itemSignature = (item = {}) => JSON.stringify({
+ id: item.id,
+ cartId: item.cartId,
+ cat: item.cat,
+ name: item.name,
+ price: item.price,
+ isLlevar: !!item.isLlevar,
+ salsas: item.salsas || [],
+ combo: item._comboNote || "",
+});
+const addedItemsBetween = (prevItems = [], nextItems = []) => {
+ const remainingPrev = {};
+ prevItems.forEach(item => {
+  const key = itemSignature(item);
+  remainingPrev[key] = (remainingPrev[key] || 0) + (Number(item.qty) || 0);
+ });
+ const added = [];
+ nextItems.forEach(item => {
+  const key = itemSignature(item);
+  const qty = Number(item.qty) || 0;
+  const prevQty = remainingPrev[key] || 0;
+  if (prevQty >= qty) {
+   remainingPrev[key] = prevQty - qty;
+   return;
+  }
+  const addedQty = qty - Math.max(prevQty, 0);
+  remainingPrev[key] = 0;
+  if (addedQty > 0) added.push({ ...item, qty: addedQty });
+ });
+ return added;
+};
+const summarizeItems = (items = []) => {
+ const visible = items.filter(item => Number(item.qty || 0) > 0);
+ if (visible.length === 0) return "";
+ const names = visible.slice(0, 2).map(item => `${item.qty > 1 ? `${item.qty} ` : ""}${item.name}`);
+ return visible.length > 2 ? `${names.join(", ")} y ${visible.length - 2} mas` : names.join(", ");
+};
+const itemBelongsToWaiter = (order, item, user) => {
+ if (user?.id !== "mesero") return false;
+ return item?._addedBy === user.name || order?._mesero === user.name || (!item?._addedBy && order?._adicionPor === user.name);
+};
 const SALSAS_ALITAS = ["Clásica", "Maracuyá", "BBQ", "Picante", "Huancaina", "Mango Abanero", "Broaster", "Hawaiana", "Acevichada", "Maracumango", "Aguaimanto"];
 
 const fmt = (n) => `S/.${Number(n).toFixed(2)}`;
@@ -2402,6 +2449,104 @@ const totalEnCaja = (caja?.fondoInicial||0) + cashRev;
  );
 }
 
+function MeseroDashboardComponent({ orders, currentUser, setTab, toggleItemCheck, isMobile, s, Y, fmt }) {
+ const myOrders = orders
+  .filter(o => !o.anulado && o.status !== "esperando_cobro" && (
+   o._mesero === currentUser?.name ||
+   o._adicionPor === currentUser?.name ||
+   (o.items || []).some(item => itemBelongsToWaiter(o, item, currentUser))
+  ))
+  .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+ const drinkOrders = myOrders.map(order => {
+  const drinks = (order.items || []).map((item, i) => ({ item, i }))
+   .filter(({ item }) => isBeverageItem(item) && itemBelongsToWaiter(order, item, currentUser));
+  return { order, drinks };
+ }).filter(({ drinks }) => drinks.length > 0);
+
+ const pendingDrinkOrders = drinkOrders.map(({ order, drinks }) => {
+  const checks = order.itemChecks || {};
+  const pending = drinks.map(({ item, i }) => {
+   let doneQty = checks[i];
+   if (doneQty === true) doneQty = item.qty;
+   doneQty = Number(doneQty) || 0;
+   return { item, i, doneQty, pendingQty: Math.max(0, (Number(item.qty) || 0) - doneQty) };
+  }).filter(x => x.pendingQty > 0);
+  return { order, pending };
+ }).filter(({ pending }) => pending.length > 0);
+
+ const readyOrders = myOrders.filter(o => o.kitchenStatus === "listo" && !o.isPaid).slice(0, 6);
+ const pendingDrinkQty = pendingDrinkOrders.reduce((sum, { pending }) => sum + pending.reduce((s, x) => s + x.pendingQty, 0), 0);
+ const activeTables = new Set(myOrders.filter(o => o.orderType === "mesa").map(o => o.table)).size;
+
+ return (
+  <div>
+   <div style={{...s.row, marginBottom:14}}>
+    <div style={s.title}>INICIO MESERO</div>
+    <button style={s.btn()} onClick={() => setTab("nuevo")}>+ Nuevo</button>
+   </div>
+
+   <div style={s.grid(isMobile ? 120 : 150)}>
+    <div style={{...s.statCard, border:`1px solid ${pendingDrinkQty ? "#3498db88" : "#2a2a2a"}`}}>
+     <div style={{...s.statNum, color: pendingDrinkQty ? "#3498db" : Y}}>{pendingDrinkQty}</div>
+     <div style={s.statLbl}>Bebidas pendientes</div>
+    </div>
+    <div style={s.statCard}><div style={s.statNum}>{readyOrders.length}</div><div style={s.statLbl}>Listos</div></div>
+    <div style={s.statCard}><div style={s.statNum}>{activeTables}</div><div style={s.statLbl}>Mesas activas</div></div>
+   </div>
+
+   <div style={{...s.row, margin:"18px 0 10px"}}>
+    <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:isMobile?18:21, color:"#3498db", letterSpacing:1}}>BARRA PARA SERVIR</div>
+    <button style={{...s.btn("secondary"), padding:"5px 10px"}} onClick={() => setTab("pedidos")}>Ver pedidos</button>
+   </div>
+   {pendingDrinkOrders.length === 0 ? (
+    <div style={{...s.card, textAlign:"center", color:"#555", padding:"22px 12px"}}>Sin bebidas pendientes</div>
+   ) : pendingDrinkOrders.map(({ order, pending }) => (
+    <div key={order.id} style={{...s.card, border:"1px solid #3498db55", background:"#101a24"}}>
+     <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
+      <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:18, color:"#3498db", letterSpacing:1}}>
+       {order.orderType === "llevar" ? `Para llevar ${order.table || "Sin nombre"}` : `Mesa ${order.table}`}
+      </div>
+      <span style={{fontSize:10, color:"#888"}}>{timeStr(order._adicionAt || order.createdAt)}</span>
+     </div>
+     {pending.map(({ item, i, doneQty, pendingQty }) => (
+      <div key={`${order.id}-${item.cartId || item.id}-${i}`} style={{display:"flex", alignItems:"center", gap:8, padding:"8px 0", borderTop:"1px solid #1d344a"}}>
+       <div style={{flex:1, minWidth:0}}>
+        <div style={{fontWeight:900, fontSize:13, color:"#eee"}}>
+         {pendingQty > 1 && <span style={{color:"#3498db", marginRight:4}}>{pendingQty}x</span>}
+         {item.name}
+        </div>
+        <div style={{fontSize:10, color:"#789"}}>{doneQty}/{item.qty} servidas</div>
+       </div>
+       <button style={{...s.btn("blue"), padding:"6px 10px", fontSize:11}} onClick={() => toggleItemCheck(order, i, false)}>
+        Servir
+       </button>
+      </div>
+     ))}
+    </div>
+   ))}
+
+   <div style={{...s.row, margin:"18px 0 10px"}}>
+    <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:isMobile?18:21, color:Y, letterSpacing:1}}>PEDIDOS LISTOS</div>
+    <button style={{...s.btn("secondary"), padding:"5px 10px"}} onClick={() => setTab("pedidos")}>Abrir lista</button>
+   </div>
+   {readyOrders.length === 0 ? (
+    <div style={{...s.card, textAlign:"center", color:"#555", padding:"18px 12px"}}>Sin pedidos listos por entregar</div>
+   ) : readyOrders.map(order => (
+    <div key={order.id} style={{...s.card, display:"flex", justifyContent:"space-between", alignItems:"center", borderLeft:`4px solid ${Y}`}}>
+     <div>
+      <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:18, color:Y}}>
+       {order.orderType === "llevar" ? `Para llevar ${order.table || "Sin nombre"}` : `Mesa ${order.table}`}
+      </div>
+      <div style={{fontSize:11, color:"#777"}}>{(order.items || []).reduce((s0, item) => s0 + (item.qty || 0), 0)} items</div>
+     </div>
+     <div style={{fontWeight:900, color:Y}}>{fmt(order.total)}</div>
+    </div>
+   ))}
+  </div>
+ );
+}
+
 function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, finishPaidOrder, setCobrarTarget, setSplitTarget, setEditingOrder, printOrder, cancelOrder, setAnulacionModal, isMobile, isTablet, s, Y, fmt, mesasArr, addMesa, removeMesa, currentUser }) {
  const llevarOrders = orders.filter(o => o.orderType==="llevar" && !o.anulado);
  // Solo admin y cajero pueden cobrar pedidos para llevar
@@ -2903,10 +3048,9 @@ function PedidosComponent({ orders, toggleItemCheck, setTab, finishPaidOrder, se
  {/* ── SECCIÓN BARRA: Solo para meseros — sus bebidas pendientes ── */}
  {currentUser?.id === 'mesero' && (() => {
   const myDrinkOrders = activeOrders
-   .filter(o => o._mesero === currentUser?.name || o._adicionPor === currentUser?.name)
    .map(o => {
     const drinks = (o.items||[]).map((item,i) => ({item,i}))
-     .filter(({item}) => BEVERAGE_CATS.includes(item.cat));
+     .filter(({item}) => isBeverageItem(item) && itemBelongsToWaiter(o, item, currentUser));
     return { order: o, drinks };
    })
    .filter(({drinks}) => drinks.length > 0);
@@ -3274,7 +3418,7 @@ function CocinaComponent({ orders, markKitchenListo, toggleItemCheck, crearSolic
  const sorted = [...orders].sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
 
  // ── Track previous state for change detection ─────────────────────
- const prevOrdersRef = useRef({});        // id -> { status, itemCount, kitchenStatus, isAnulado }
+ const prevOrdersRef = useRef({});        // id -> { status, items, kitchenStatus, isAnulado }
  const [anuladoFlash, setAnuladoFlash] = useState([]); // [{ id, order, expiresAt }]
 
  useEffect(() => {
@@ -3283,12 +3427,14 @@ function CocinaComponent({ orders, markKitchenListo, toggleItemCheck, crearSolic
   const next = {};
 
   orders.forEach(o => {
-   next[o.id] = { status: o.status, kitchenStatus: o.kitchenStatus, isAnulado: !!o.anulado, itemCount: (o.items||[]).length, adicionAt: o._adicionAt || null };
+   const orderItems = o.items || [];
+   next[o.id] = { status: o.status, kitchenStatus: o.kitchenStatus, isAnulado: !!o.anulado, items: orderItems, adicionAt: o._adicionAt || null, foodReadyBeforeLastAddition: !!o._foodReadyBeforeLastAddition };
    const p = prev[o.id];
 
    if (!p) {
     // Brand new order
-    if (!o.anulado && o.kitchenStatus !== 'listo') {
+    const kitchenFoodItems = orderItems.filter(isKitchenFoodItem);
+    if (!o.anulado && o.kitchenStatus !== 'listo' && kitchenFoodItems.length > 0) {
      const waiter = o._mesero || "Mesero";
      playBeeps(soundConfig);
      setTimeout(() => speak(`Nuevo pedido de ${waiter}`), 200);
@@ -3297,24 +3443,20 @@ function CocinaComponent({ orders, markKitchenListo, toggleItemCheck, crearSolic
     // Additional items added — triggered ONLY when _adicionAt changes (evita falsos positivos)
     if (!o.anulado && o._adicionPor && o._adicionAt && o._adicionAt !== p.adicionAt) {
      // Los ítems nuevos son los que están después del índice que teníamos al ver el adicionAt anterior
-     const newlyAdded = (o.items||[]).slice(p.itemCount);
-     const nonTaperItems = newlyAdded.filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
-     if (nonTaperItems.length > 0) {
-      const foodItems = nonTaperItems.filter(i => !BEVERAGE_CATS.includes(i.cat));
+     const newlyAdded = Array.isArray(o._lastAdditionItems) && o._lastAdditionItems.length > 0
+      ? o._lastAdditionItems
+      : addedItemsBetween(p.items || [], orderItems);
+     const foodItems = newlyAdded.filter(isKitchenFoodItem);
+     if (foodItems.length > 0) {
       const tableRef = o.orderType === 'llevar' ? `para llevar ${o.table||""}`.trim() : `mesa ${o.table}`;
       playBeeps({ ...(soundConfig||{}), freq: 660, beeps: 2 });
-      if (foodItems.length > 0) {
-       const plateName = foodItems[0].name;
-       setTimeout(() => speak(`${plateName} adicional, ${tableRef}`), 200);
-      } else {
-       const itemName = nonTaperItems[0].name;
-       setTimeout(() => speak(`${itemName} adicional`), 200);
-      }
+      const summary = summarizeItems(foodItems);
+      setTimeout(() => speak(`${summary} adicional, ${tableRef}`), 200);
      }
      // Si solo hay tapers → sin sonido ni alerta
     }
     // Order became ready
-    if (p.kitchenStatus !== 'listo' && o.kitchenStatus === 'listo') {
+    if (p.kitchenStatus !== 'listo' && o.kitchenStatus === 'listo' && orderItems.some(isKitchenFoodItem) && !p.foodReadyBeforeLastAddition) {
      const waiter = o._mesero || "Mesero";
      playBeeps({ ...(soundConfig||{}), freq: 1100, beeps: 2, type:"sine" });
      setTimeout(() => speak(`Listo para ${waiter}`), 200);
@@ -4573,6 +4715,57 @@ export default function App() {
  const [mergeName, setMergeName] = useState("");
  const [mesasArr, setMesasArr] = useState([]);
  const [soundConfig, setSoundConfig] = useState({ volume:0.75, freq:880, beeps:3, type:"square" });
+ const waiterDrinkRef = useRef({});
+ const waiterDrinkReadyRef = useRef(false);
+ const waiterDrinkTimerRef = useRef(null);
+
+ useEffect(() => {
+  waiterDrinkRef.current = {};
+  waiterDrinkReadyRef.current = false;
+  if (waiterDrinkTimerRef.current) clearTimeout(waiterDrinkTimerRef.current);
+  if (currentUser?.id === "mesero") {
+   waiterDrinkTimerRef.current = setTimeout(() => { waiterDrinkReadyRef.current = true; }, 3000);
+  }
+  return () => {
+   if (waiterDrinkTimerRef.current) clearTimeout(waiterDrinkTimerRef.current);
+  };
+ }, [currentUser?.id, currentUser?.name]);
+
+ useEffect(() => {
+  if (currentUser?.id !== "mesero") {
+   waiterDrinkRef.current = {};
+   waiterDrinkReadyRef.current = false;
+   return;
+  }
+  if (!loaded) return;
+
+  const prev = waiterDrinkRef.current;
+  const next = {};
+  const alerts = [];
+  orders.forEach(order => {
+   if (order.anulado || order.status === "esperando_cobro") return;
+   (order.items || []).forEach((item, idx) => {
+    if (!isBeverageItem(item) || !itemBelongsToWaiter(order, item, currentUser)) return;
+    const key = `${order.id}:${item.cartId || item.id || idx}`;
+    const qty = Number(item.qty) || 0;
+    next[key] = { qty, addedAt: item._addedAt || order._adicionAt || order.createdAt || "" };
+    const prevItem = prev[key];
+    if (!waiterDrinkReadyRef.current) return;
+    if (!prevItem) alerts.push({ order, item: { ...item, qty } });
+    else if (qty > prevItem.qty) alerts.push({ order, item: { ...item, qty: qty - prevItem.qty } });
+   });
+  });
+
+  const canAlert = waiterDrinkReadyRef.current;
+  waiterDrinkRef.current = next;
+  if (!canAlert) return;
+  if (alerts.length > 0) {
+   const first = alerts[0];
+   const summary = summarizeItems(alerts.map(x => x.item));
+   playBeeps({ ...(soundConfig || {}), freq: 980, beeps: 2, type: "sine" });
+   setTimeout(() => speak(`Bebida nueva: ${summary}, ${orderDisplayName(first.order)}`), 200);
+  }
+ }, [orders, currentUser, soundConfig, loaded]);
 
  // ── Anti-double-cobro guard ─────────────────────────────────────────
  const cobrarProcessingRef = useRef(false);
@@ -4692,14 +4885,28 @@ export default function App() {
   const updatedOrder = { ...order, itemChecks: newItemChecks };
 
   // Si es comida, actualizamos automáticamente el estado general (Listo/Pendiente)
+  const checkedQty = (idx, qty) => {
+   let val = idx === itemIdx ? next : newItemChecks[idx];
+   if (val === true) val = qty;
+   return Number(val || 0);
+  };
+  const kitchenItemRefs = order.items.map((it, idx) => ({ it, idx })).filter(({ it }) => isKitchenFoodItem(it));
+  const drinkRefs = order.items.map((it, idx) => ({ it, idx })).filter(({ it }) => isBeverageItem(it));
+
   if (isFood) {
-   const kitchenItems = order.items.filter(i => i.cat !== "Tapers" && i.id !== "TAPER" && !BEVERAGE_CATS.includes(i.cat));
-   const isFullyDone = kitchenItems.length > 0 && kitchenItems.every((ki) => {
-    const kiIdx = order.items.indexOf(ki);
-    let val = (kiIdx === itemIdx) ? next : newItemChecks[kiIdx];
-    return Number(val || 0) === ki.qty;
-   });
+   const isFullyDone = kitchenItemRefs.length > 0 && kitchenItemRefs.every(({ it, idx }) => checkedQty(idx, it.qty) === it.qty);
    updatedOrder.kitchenStatus = isFullyDone ? 'listo' : 'pendiente';
+   if (isFullyDone) updatedOrder._foodReadyBeforeLastAddition = false;
+  } else if (isBeverageItem(item)) {
+   const allDrinksDone = drinkRefs.length > 0 && drinkRefs.every(({ it, idx }) => checkedQty(idx, it.qty) === it.qty);
+   const foodDoneByChecks = kitchenItemRefs.length === 0 || kitchenItemRefs.every(({ it, idx }) => checkedQty(idx, it.qty) === it.qty);
+   const foodWasAlreadyReady = !!order._foodReadyBeforeLastAddition || (order.kitchenStatus === 'listo' && kitchenItemRefs.length > 0);
+   if (allDrinksDone && (foodWasAlreadyReady || foodDoneByChecks || kitchenItemRefs.length === 0)) {
+    updatedOrder.kitchenStatus = 'listo';
+    updatedOrder._foodReadyBeforeLastAddition = false;
+   } else if (!allDrinksDone && (order.kitchenStatus === 'listo' || order._foodReadyBeforeLastAddition || kitchenItemRefs.length === 0)) {
+    updatedOrder.kitchenStatus = 'pendiente';
+   }
   }
 
   // Guardamos el cambio en Firebase para que el otro local/dispositivo lo vea
@@ -4952,7 +5159,7 @@ const saveCaja = async (data) => {
  };
 
  const markKitchenListo = async (orderId) => {
- const newOrders = ordersRef.current.map(o => o.id === orderId ? {...o, kitchenStatus:'listo'} : o);
+ const newOrders = ordersRef.current.map(o => o.id === orderId ? {...o, kitchenStatus:'listo', _lastKitchenReadyAt:new Date().toISOString(), _foodReadyBeforeLastAddition:false} : o);
  setOrders(newOrders);
  await saveOrders(newOrders);
  };
@@ -5064,20 +5271,38 @@ const saveCaja = async (data) => {
  if (forceMerge === "merge" && mergeModal) {
  const existing = mergeModal.existingOrder;
  const isLlevarDraft = mergeModal.newDraftData.orderType === "llevar";
- const newItems = finalItems.map(i => {
- let nameTag = mergeName.trim() ? `[Llevar: ${mergeName.trim()}]` : "";
- return { ...i, _isAdicion: true, ...(isLlevarDraft ? { isLlevar: true } : {}), individualNotes: isLlevarDraft && nameTag ? i.individualNotes.map(n => n ? `${nameTag} ${n}` : nameTag) : i.individualNotes }
- });
- const mergedItems = [...existing.items];
- newItems.forEach(newItem => {
- if (newItem.isLlevar) { newItem.cartId = `${newItem.cartId}-LLEVAR-${Date.now()}`; mergedItems.push(newItem); } 
- else {
- const idx = mergedItems.findIndex(i => i.cartId === newItem.cartId && !i.isLlevar && JSON.stringify(i.salsas) === JSON.stringify(newItem.salsas));
- if (idx >= 0) { mergedItems[idx] = { ...mergedItems[idx], qty: mergedItems[idx].qty + newItem.qty, individualNotes: [...(mergedItems[idx].individualNotes || []), ...(newItem.individualNotes || [])] }; } 
- else { mergedItems.push(newItem); }
- }
- });
- const updated = { ...existing, items: mergedItems, total: mergedItems.reduce((s, i) => s + i.price * i.qty, 0), notes: [existing.notes, mergeModal.newDraftData.notes].filter(Boolean).join(" | "), taperCost: 0, kitchenStatus: 'pendiente', _cajaSessionId: existing._cajaSessionId || cajaRef2.current?.sessionId || null, _adicionPor: currentUser?.name || null, _adicionAt: new Date().toISOString() };
+ const adicionAt = new Date().toISOString();
+ const batchId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+ const nameTag = mergeName.trim() ? `[Llevar: ${mergeName.trim()}]` : "";
+ const newItems = finalItems.map((i, idx) => ({
+  ...i,
+  cartId: `${i.cartId || i.id}-ADD-${batchId}-${idx}`,
+  _isAdicion: true,
+  _addedBy: currentUser?.name || null,
+  _addedAt: adicionAt,
+  _additionBatchId: batchId,
+  ...(isLlevarDraft ? { isLlevar: true } : {}),
+  individualNotes: isLlevarDraft && nameTag
+   ? (i.individualNotes || []).map(n => n ? `${nameTag} ${n}` : nameTag)
+   : (i.individualNotes || []),
+ }));
+ const mergedItems = [...(existing.items || []), ...newItems];
+ const hasKitchenFoodAddition = newItems.some(isKitchenFoodItem);
+ const hasBeverageAddition = newItems.some(isBeverageItem);
+ const wakesKitchenView = hasKitchenFoodAddition || hasBeverageAddition;
+ const updated = {
+  ...existing,
+  items: mergedItems,
+  total: mergedItems.reduce((s, i) => s + i.price * i.qty, 0),
+  notes: [existing.notes, mergeModal.newDraftData.notes].filter(Boolean).join(" | "),
+  taperCost: 0,
+  kitchenStatus: wakesKitchenView ? 'pendiente' : existing.kitchenStatus,
+  _cajaSessionId: existing._cajaSessionId || cajaRef2.current?.sessionId || null,
+  _adicionPor: currentUser?.name || null,
+  _adicionAt: adicionAt,
+  _lastAdditionItems: newItems,
+  _foodReadyBeforeLastAddition: existing.kitchenStatus === 'listo' && !hasKitchenFoodAddition,
+ };
  const mergedList = ordersRef.current.map(o => o.id === existing.id ? updated : o);
  setOrders(mergedList);
  await saveOrders(mergedList);
@@ -5102,7 +5327,7 @@ const saveCaja = async (data) => {
   showToast(`🥡 Para llevar registrado — esperando cobro del cajero`, "#3498db");
   setTab("pedidos");
  } else if (draft.payTiming === "ahora") {
-  setCobrarTarget({ type: 'new', data: { id:Date.now().toString(), ...finalDraft, total, createdAt:new Date().toISOString(), _cajaSessionId: cajaRef2.current?.sessionId || null } });
+  setCobrarTarget({ type: 'new', data: { id:Date.now().toString(), ...finalDraft, total, createdAt:new Date().toISOString(), _cajaSessionId: cajaRef2.current?.sessionId || null, _mesero: currentUser?.name || null } });
  } else {
   const order = { id:Date.now().toString(), ...finalDraft, total, isPaid: false, status:"pendiente", kitchenStatus:"pendiente", createdAt:new Date().toISOString(), _cajaSessionId: cajaRef2.current?.sessionId || null, _mesero: currentUser?.name || null };
   const newOrders = [...ordersRef.current, order];
@@ -5432,7 +5657,7 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
    setCurrentUser(user);
    const startTab = user.id==='cocinero' ? 'cocina'
     : user.id==='cajero' ? 'pedidos'
-    : user.id==='mesero' ? 'mesas'
+    : user.id==='mesero' ? 'dashboard'
     : 'dashboard';
    setTab(startTab);
   }} s={s} Y={Y} isMobile={isMobile} /></ErrorBoundary>;
@@ -5457,7 +5682,7 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
  const tabs = allTabs.filter(t => {
  if (currentUser.id === 'admin') return true;
  if (currentUser.id === 'cajero') return ['dashboard','pedidos','historial','solicitudes'].includes(t.id);
- if (currentUser.id === 'mesero') return ['mesas','nuevo','pedidos','solicitudes'].includes(t.id);
+ if (currentUser.id === 'mesero') return ['dashboard','mesas','nuevo','pedidos','solicitudes'].includes(t.id);
  if (currentUser.id === 'cocinero') return ['cocina'].includes(t.id);
  return false;
  });
@@ -5586,7 +5811,9 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
 
   {confirmDelete&&<div style={s.overlay} onClick={()=>setConfirmDelete(null)}><div style={{...s.modal,maxWidth:340,textAlign:"center"}} onClick={e=>e.stopPropagation()}><div style={{fontSize:42,marginBottom:12}}></div><div style={{fontWeight:900,fontSize:17,marginBottom:8,color:"#eee"}}>¿Eliminar pedido?</div><div style={{color:"#888",fontSize:13,marginBottom:20}}>Esta acción no se puede deshacer.</div><div style={{display:"flex",gap:10}}><button style={{...s.btn("secondary"),flex:1}} onClick={()=>setConfirmDelete(null)}>Cancelar</button><button style={{...s.btn("danger"),flex:1}} onClick={()=>deleteOrderPermanent(confirmDelete)}> Eliminar</button></div></div></div>}
 
-  {tab==="dashboard" && <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} caja={caja} abrirCaja={abrirCaja} cerrarCaja={cerrarCaja} currentUser={currentUser} getPay={getPay} soundConfig={soundConfig} setSoundConfig={setSoundConfig} />}
+  {tab==="dashboard" && (currentUser?.id === "mesero"
+   ? <MeseroDashboardComponent orders={orders} currentUser={currentUser} setTab={setTab} toggleItemCheck={toggleItemCheck} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />
+   : <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} caja={caja} abrirCaja={abrirCaja} cerrarCaja={cerrarCaja} currentUser={currentUser} getPay={getPay} soundConfig={soundConfig} setSoundConfig={setSoundConfig} />)}
   {tab==="mesas" && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setAnulacionModal={setAnulacionModal} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} mesasArr={mesasArr} addMesa={addMesa} removeMesa={removeMesa} currentUser={currentUser} />}
   {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} isTablet={isTablet} mesasArr={mesasArr} cajaAbierta={cajaAbierta} currentUser={currentUser} />}
   {tab==="pedidos" && <PedidosComponent orders={orders} toggleItemCheck={toggleItemCheck} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
