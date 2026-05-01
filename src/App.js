@@ -15,8 +15,7 @@ const FIREBASE_CONFIG = {
  appId: process.env.REACT_APP_FIREBASE_APP_ID,
 };
 
-const _fbApp = getApps().length ? getApps()[0] : initializeApp(FIREBASE_CONFIG);
-const db = getFirestore(_fbApp);
+c
 const _fbApp = getApps().length ? getApps()[0] : initializeApp(FIREBASE_CONFIG);
 const db = getFirestore(_fbApp);
 const auth = getAuth(_fbApp); // <-- 1. INICIALIZA AUTH
