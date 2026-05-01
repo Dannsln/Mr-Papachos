@@ -3296,8 +3296,9 @@ function CocinaComponent({ orders, markKitchenListo, toggleItemCheck, crearSolic
    } else {
     // Additional items added (merge) — item count grew
     if (!o.anulado && o._adicionPor && (o.items||[]).length > p.itemCount) {
-     const adicionItems = (o.items||[]).filter(i => i._isAdicion);
-     const nonTaperItems = adicionItems.filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
+     // Solo los ítems realmente nuevos en esta actualización (por índice)
+     const newlyAdded = (o.items||[]).slice(p.itemCount);
+     const nonTaperItems = newlyAdded.filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
      if (nonTaperItems.length > 0) {
       const foodItems = nonTaperItems.filter(i => !BEVERAGE_CATS.includes(i.cat));
       const tableRef = o.orderType === 'llevar' ? `para llevar ${o.table||""}`.trim() : `mesa ${o.table}`;
@@ -3525,6 +3526,26 @@ function CocinaComponent({ orders, markKitchenListo, toggleItemCheck, crearSolic
 
         {order.notes && <div style={{marginTop:8, padding:"8px 10px", background:"#1a1500", borderRadius:8, border:"1px solid #3a3000", fontSize:12, color:"#e6c200", whiteSpace:"pre-wrap"}}> General: {order.notes}</div>}
 
+        {/* Bebidas de barra — indicador informativo solo para cocina */}
+        {(() => {
+         const barraItems = (order.items||[]).filter(i => BEVERAGE_CATS.includes(i.cat));
+         if (barraItems.length === 0) return null;
+         return (
+          <div style={{marginTop:8, padding:"8px 10px", background:"#0a1a2a", borderRadius:8, border:"1px solid #3498db33"}}>
+           <div style={{fontSize:10, color:"#3498db", fontWeight:800, textTransform:"uppercase", letterSpacing:1, marginBottom:5}}>🥤 Barra</div>
+           {barraItems.map((item, bi) => (
+            <div key={bi} style={{display:"flex", justifyContent:"space-between", alignItems:"center", fontSize:13, color:"#88aacc", padding:"2px 0"}}>
+             <span>
+              {item.qty > 1 && <span style={{color:"#3498db", marginRight:4}}>{item.qty}×</span>}
+              {item.name}
+             </span>
+             <span style={{fontSize:10, color:"#3498db", fontWeight:800, background:"#3498db18", borderRadius:4, padding:"1px 6px"}}>BARRA</span>
+            </div>
+           ))}
+          </div>
+         );
+        })()}
+
         {/* Adicional footer: quién lo agregó */}
         {hasAdicion && order._adicionPor && (
          <div style={{marginTop:8, display:"flex", justifyContent:"flex-end"}}>
@@ -3540,114 +3561,6 @@ function CocinaComponent({ orders, markKitchenListo, toggleItemCheck, crearSolic
    </div>
   )}
 
-  {/* ── SECCIÓN BARRA: Bebidas para que cocina sirva y avise al mesero ── */}
-  {(() => {
-   const drinkOrders = sorted.filter(o =>
-    o.kitchenStatus !== 'esperando_cobro' && !o.anulado &&
-    (o.items||[]).some(i => BEVERAGE_CATS.includes(i.cat))
-   );
-   if (drinkOrders.length === 0) return null;
-
-   return (
-    <div style={{marginTop: activeOrders.length > 0 ? 24 : 0}}>
-     <div style={{display:"flex", alignItems:"center", gap:10, marginBottom:12}}>
-      <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:20, color:"#3498db", letterSpacing:1}}>
-       🥤 BARRA — BEBIDAS
-      </div>
-      <span style={{fontSize:11, color:"#3498db", background:"#3498db11", border:"1px solid #3498db33", borderRadius:12, padding:"2px 10px", fontWeight:800}}>
-       Marcar aquí avisa al mesero
-      </span>
-     </div>
-     <div style={{display:"grid", gridTemplateColumns:isDesktop?"1fr 1fr":"1fr", gap:12}}>
-      {drinkOrders.map(order => {
-       const drinkItems = (order.items||[]).map((item,i)=>({item,i}))
-        .filter(({item}) => BEVERAGE_CATS.includes(item.cat));
-       const checks = order.itemChecks||{};
-       const allDone = drinkItems.every(({item,i}) => {
-        let v=checks[i]; if(v===true) v=item.qty; return Number(v||0)===item.qty;
-       });
-       const mins = Math.floor((Date.now()-new Date(order.createdAt))/60000);
-
-       return (
-        <div key={order.id} style={{
-         background: allDone?"#0a1a0a":"#111b2a",
-         borderRadius:12, padding:14,
-         border:`2px solid ${allDone?"#27ae6055":"#3498db44"}`
-        }}>
-         <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
-          <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:18, color: allDone?"#27ae60":"#3498db"}}>
-           {order.orderType==="llevar"?`🥡 ${order.table||"Sin nombre"}`:`Mesa ${order.table}`}
-          </span>
-          <div style={{display:"flex", alignItems:"center", gap:6}}>
-           {order._mesero && (
-            <span style={{fontSize:11, color:"#888", background:"#1a1a1a", borderRadius:6, padding:"2px 8px", border:"1px solid #2a2a2a"}}>
-             👤 {order._mesero}
-            </span>
-           )}
-           <span style={{fontSize:10, color:mins>=15?"#e74c3c":mins>=8?"#e67e22":"#555"}}>
-            {mins<1?"ahora":`${mins}m`}
-           </span>
-          </div>
-         </div>
-
-         {drinkItems.map(({item,i}) => {
-          let doneQty=checks[i]; if(doneQty===true) doneQty=item.qty;
-          doneQty=Number(doneQty)||0;
-          const isDone=doneQty===item.qty;
-          return (
-           <div key={i}
-            onClick={() => {
-             const willMark = doneQty < item.qty;
-             if (toggleItemCheck) toggleItemCheck(order, i, false);
-             // Avisar al mesero cuando cocina sirve una bebida
-             if (willMark && order._mesero && crearSolicitud) {
-              crearSolicitud({
-               type: 'aviso_bebida',
-               orderId: order.id,
-               orderTable: order.table,
-               orderType: order.orderType,
-               forMesero: order._mesero,
-               itemName: item.name,
-               itemIdx: i,
-               requestedBy: currentUser?.id || 'cocina',
-               requestedByName: currentUser?.name || 'Cocina',
-              });
-             }
-            }}
-            style={{
-             display:"flex", alignItems:"center", gap:10,
-             padding:"8px 10px", marginBottom:4, borderRadius:8,
-             background:isDone?"#0a2a0a":"#1e2a3a",
-             border:`1px solid ${isDone?"#27ae6055":"#3498db33"}`,
-             cursor:"pointer", transition:"all .2s", opacity:isDone?0.7:1
-            }}>
-            <div style={{
-             minWidth:26, height:26, borderRadius:6, flexShrink:0,
-             border:`2px solid ${isDone?"#27ae60":"#3498db"}`,
-             background:isDone?"#27ae60":"transparent",
-             display:"flex", alignItems:"center", justifyContent:"center",
-             fontSize:13, color:isDone?"#fff":"#3498db", fontWeight:"bold"
-            }}>
-             {item.qty>1?`${doneQty}/${item.qty}`:(isDone?"✓":"")}
-            </div>
-            <span style={{flex:1, fontWeight:800, fontSize:isMobile?13:14, color:isDone?"#555":"#dde", textDecoration:isDone?"line-through":"none"}}>
-             {item.qty>1&&<span style={{color:"#3498db",marginRight:4}}>{item.qty}×</span>}
-             {item.name}
-            </span>
-            {isDone
-             ? <span style={{fontSize:10,color:"#27ae60",flexShrink:0}}>✓ Servido</span>
-             : <span style={{fontSize:10,color:"#3498db",flexShrink:0}}>Toca → avisa mesero</span>
-            }
-           </div>
-          );
-         })}
-        </div>
-       );
-      })}
-     </div>
-    </div>
-   );
-  })()}
  </div>
  );
 }
