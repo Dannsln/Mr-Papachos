@@ -1,9 +1,30 @@
-import { useState, useEffect, useRef, useCallback, Component } from "react";
-import * as API from "./api";
-import { RequerimientosComponent } from "./features/requerimientos/RequerimientosComponent";
-import { StaffManager } from "./features/staff/StaffManager";
-import { useAppData } from "./hooks/useAppData";
-import { normalizeStaffUser } from "./services/normalizers";
+/* eslint-disable */
+import { useState, useEffect, useRef, Component } from "react";
+import { initializeApp, getApps } from "firebase/app";
+import { getAuth, signInAnonymously } from "firebase/auth";
+import {
+ getFirestore, doc, setDoc, getDoc, collection, addDoc, query, orderBy, limit, onSnapshot, deleteDoc
+} from "firebase/firestore";
+
+const FIREBASE_CONFIG = {
+ apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+ authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+ projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+ storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+ messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+ appId: process.env.REACT_APP_FIREBASE_APP_ID,
+};
+
+const _fbApp = getApps().length ? getApps()[0] : initializeApp(FIREBASE_CONFIG);
+const db = getFirestore(_fbApp);
+const _fbApp = getApps().length ? getApps()[0] : initializeApp(FIREBASE_CONFIG);
+const db = getFirestore(_fbApp);
+const auth = getAuth(_fbApp); // <-- 1. INICIALIZA AUTH
+
+// 2. Ejecuta la sesión anónima en segundo plano
+signInAnonymously(auth).catch((error) => {
+  console.error("Error de autenticación silenciosa:", error);
+});
 
 // ─── ERROR BOUNDARY ──────────────────────────────────────────────────────────
 class ErrorBoundary extends Component {
@@ -34,27 +55,233 @@ class ErrorBoundary extends Component {
 
 
 // ─── SHA-256 helper (Web Crypto API — sin librerías) ─────────────────────────
-const asArray = (value) => Array.isArray(value) ? value : [];
-const pickConfig = (config, keys, fallback) => {
- for (const key of keys) {
-  if (config && config[key] !== undefined && config[key] !== null) return config[key];
+async function sha256(str) {
+ if (!str) return "";
+ const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+ return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
+}
+
+// ─── MOTOR MULTI-LOCAL ────────────────────────────────────────────────────────
+const FS = (localId) => ({
+ _localId: localId,
+ ordersRef:      () => doc(db, `mrpapachos_${localId}`, "orders"),
+ menuRef:        () => doc(db, `mrpapachos_${localId}`, "customMenu"),
+ configRef:      () => doc(db, `mrpapachos_${localId}`, "config"),
+ staffRef:       () => doc(db, `mrpapachos_${localId}`, "staff"),
+ solicitudesRef: () => doc(db, `mrpapachos_${localId}`, "solicitudes"),
+ cajaRef:        () => doc(db, `mrpapachos_${localId}`, "caja"),
+ historyCol:     () => collection(db, `mrpapachos_${localId}_historial`),
+ 
+ async getOrders() {
+ try { const s = await getDoc(this.ordersRef()); return s.exists() ? (s.data().list ?? []) : []; } catch { return []; }
+ },
+ async saveOrders(list) {
+ try { await setDoc(this.ordersRef(), { list, ts: new Date().toISOString() }); } catch (e) { console.error(e); }
+ },
+ async getMenu() {
+ try { const s = await getDoc(this.menuRef()); return s.exists() ? (s.data().list ?? []) : []; } catch { return []; }
+ },
+ async saveMenu(list) {
+ try { await setDoc(this.menuRef(), { list, ts: new Date().toISOString() }); } catch (e) { console.error(e); }
+ },
+ async saveConfig(data) {
+ try { await setDoc(this.configRef(), data, { merge: true }); } catch (e) { console.error(e); }
+ },
+ async addHistory(order) {
+  try { 
+   // Usamos order.id para que, si se envía 2 veces, simplemente se sobreescriba a sí mismo
+   await setDoc(doc(this.historyCol(), order.id), order); 
+  } catch (e) { console.error(e); }
+ },
+ async getStaff() {
+  try {
+   const s = await getDoc(this.staffRef());
+   if (!s.exists()) return null;          // null = doc no existe (primera vez)
+   const users = s.data().users ?? [];
+   return users;                           // puede ser [] si alguien borró todo
+  } catch(e) {
+   console.error("getStaff error:", e);
+   return undefined;                       // undefined = error de red/permisos
+  }
+ },
+ async saveStaff(users) {
+  // GUARD: nunca guardar array vacío ni sin admin
+  if (!Array.isArray(users) || users.length === 0) {
+   console.error("saveStaff: rejected empty array");
+   return false;
+  }
+  if (!users.some(u => u.roles?.includes("admin"))) {
+   console.error("saveStaff: rejected — no admin in list");
+   return false;
+  }
+  try {
+   await setDoc(this.staffRef(), { users, ts: new Date().toISOString() });
+   // Backup en localStorage (por sucursal)
+   try { localStorage.setItem(`staff_backup_${this._localId}`, JSON.stringify({ users, ts: new Date().toISOString() })); } catch(_) {}
+   return true;
+  } catch(e) {
+   console.error("saveStaff write error:", e);
+   return false;
+  }
+ },
+ getStaffBackup() {
+  try {
+   const raw = localStorage.getItem(`staff_backup_${this._localId}`);
+   if (!raw) return null;
+   const parsed = JSON.parse(raw);
+   return parsed?.users?.length ? parsed.users : null;
+  } catch { return null; }
+ },
+ async getSolicitudes() {
+ try { const s = await getDoc(this.solicitudesRef()); return s.exists() ? (s.data().list ?? []) : []; } catch { return []; }
+ },
+ async saveSolicitudes(list) {
+ try { await setDoc(this.solicitudesRef(), { list, ts: new Date().toISOString() }); } catch(e) { console.error(e); }
+ },
+ async updateHistory(fid, data) {
+ try { await setDoc(doc(db, `mrpapachos_${this._localId}_historial`, fid), data, { merge: true }); } catch(e) { console.error(e); }
  }
- return fallback;
-};
-const getBeverageCategories = (config) =>
- asArray(pickConfig(config, ["categorias_bebidas", "beverageCategories", "beverage_cats"], []));
-const getSalsaOptions = (item, config) =>
- asArray(item?.salsas || item?.salsaOptions || item?.opciones_salsa || pickConfig(config, ["salsas_alitas", "salsaOptions", "salsas"], []));
-const getSalsaCategories = (config) =>
- asArray(pickConfig(config, ["categorias_salsas", "salsaCategories"], []));
-const itemNeedsSalsas = (item, config) =>
- Boolean(item?.requiere_salsas || item?.requiresSauce || getSalsaCategories(config).includes(item?.cat));
-const getItemCustomizations = (config) =>
- pickConfig(config, ["personalizaciones_items", "itemCustomizations", "items_con_eleccion"], {}) || {};
-const getItemCustomization = (item, config) => {
- const customizations = getItemCustomizations(config);
- return item?.personalizacion || item?.customization || item?.configuracion || customizations[item?.id] || customizations[item?.id_producto] || null;
-};
+});
+
+const MENU_BASE = [
+ { id:"H01", cat:"Hamburguesas", name:"Hamburguesa Silvestre", price:7, desc:"Carne, papa frita, ensalada" },
+ { id:"H02", cat:"Hamburguesas", name:"Hamburguesa Piolin", price:8, desc:"Carne o pollo, huevo, papa frita, ensalada" },
+ { id:"H03", cat:"Hamburguesas", name:"Hamburguesa Speedy Gonzales", price:10, desc:"Carne, huevo, hot dog, papa frita, ensalada" },
+ { id:"H04", cat:"Hamburguesas", name:"Hamburguesa Cajacha", price:12, desc:"Carne, huevo, queso, hot dog, papa frita, ensalada" },
+ { id:"H05", cat:"Hamburguesas", name:"Hamburguesa Coyote", price:12, desc:"Carne, huevo, plátano, jamón, papa frita, ensalada" },
+ { id:"H06", cat:"Hamburguesas", name:"Hamburguesa Super Cajacha", price:14, desc:"Carne, queso, chorizo artesanal, tocino, papa frita, ensalada" },
+ { id:"H07", cat:"Hamburguesas", name:"Hamburguesa Bugs Bunny", price:14, desc:"Carne, huevo, hot dog, chorizo artesanal, jamón, papa frita, ensalada" },
+ { id:"H08", cat:"Hamburguesas", name:"Hamburguesa Cajamarquesa", price:14, desc:"Carne, champiñones, queso, tocino, papas fritas, ensalada" },
+ { id:"H09", cat:"Hamburguesas", name:"Hamburguesa Porky", price:15, desc:"Carne, huevo, hot dog, chorizo artesanal, tocino, papa frita, ensalada" },
+ { id:"H10", cat:"Hamburguesas", name:"Hamburguesa Tazmania", price:14, desc:"Carne, queso, piña, hot dog, jamón, papa frita, ensalada" },
+ { id:"H11", cat:"Hamburguesas", name:"Hamburguesa Papachos", price:20, desc:"Doble carne, huevo, doble queso, hot dog, chorizo artesanal, jamón, tocino, papa frita, ensalada" },
+ { id:"S01", cat:"Salchipapas", name:"Salchipapa Clásica", price:8, desc:"Papa, hot dog" },
+ { id:"S02", cat:"Salchipapas", name:"Salchipapa Sencilla", price:10, desc:"Papa, hot dog, huevo" },
+ { id:"S03", cat:"Salchipapas", name:"Salchipapa Cajacha", price:12, desc:"Papa, hot dog, chorizo artesanal, queso" },
+ { id:"S04", cat:"Salchipapas", name:"Salchipapa Hawaiana", price:12, desc:"Papa, hot dog, jamón, piña, queso" },
+ { id:"S05", cat:"Salchipapas", name:"Salchipobre", price:13, desc:"Papa, hot dog, huevo, plátano, jamón" },
+ { id:"S06", cat:"Salchipapas", name:"Salchi Piernona", price:15, desc:"Papa, hot dog, pierna broster" },
+ { id:"S07", cat:"Salchipapas", name:"Salchi Super Cajacha", price:16, desc:"Papa, hot dog, chorizo artesanal, doble queso, tocino" },
+ { id:"S08", cat:"Salchipapas", name:"Salchibroster", price:16, desc:"Papa, hot dog, huevo, pollo broaster" },
+ { id:"S09", cat:"Salchipapas", name:"Salchi Champi Quesera", price:18, desc:"Papa, hot dog, chorizo artesanal, doble queso, tocino, champiñones" },
+ { id:"S10", cat:"Salchipapas", name:"Salchi Nuggets", price:20, desc:"Papa, nuggets, hot dog, chorizo artesanal, queso, ensalada" },
+ { id:"S11", cat:"Salchipapas", name:"Salchi Porky", price:20, desc:"Papa, chorizo artesanal, hot dog, trozos de chicharrón" },
+ { id:"S12", cat:"Salchipapas", name:"Salchipapa La Papacha", price:22, desc:"Papa, hot dog, chorizo artesanal, huevo, queso, tocino, 2 alitas y trozos de pollo broaster" },
+ { id:"S13", cat:"Salchipapas", name:"Salchi Lomo", price:25, desc:"(Pollo o carne) Papa, hot dog, chorizo artesanal, plátano, 2 alitas, ensalada" },
+ { id:"A01", cat:"Alitas", name:"Alitas 4 pzas", price:14, desc:"4 alitas + papas fritas + ensalada" },
+ { id:"A02", cat:"Alitas", name:"Alitas 6 pzas", price:20, desc:"6 alitas + papas fritas + ensalada" },
+ { id:"A03", cat:"Alitas", name:"Alitas 8 pzas", price:26, desc:"8 alitas + papas fritas + ensalada" },
+ { id:"A04", cat:"Alitas", name:"Alitas 10 pzas", price:30, desc:"10 alitas + papas fritas + ensalada" },
+ { id:"A05", cat:"Alitas", name:"Alitas 12 pzas", price:36, desc:"12 alitas + papas fritas + ensalada" },
+ { id:"AC01", cat:"Alichaufa", name:"Alichaufa 4 pzas", price:18, desc:"4 alitas + papas fritas + chaufa + ensalada" },
+ { id:"AC02", cat:"Alichaufa", name:"Alichaufa 6 pzas", price:24, desc:"6 alitas + papas fritas + chaufa + ensalada" },
+ { id:"AC03", cat:"Alichaufa", name:"Alichaufa 8 pzas", price:30, desc:"8 alitas + papas fritas + chaufa + ensalada" },
+ { id:"AC04", cat:"Alichaufa", name:"Alichaufa 10 pzas", price:36, desc:"10 alitas + papas fritas + chaufa + ensalada" },
+ { id:"PB01", cat:"Pollo Broaster", name:"Pollo Broaster 1/8 Clásico", price:12, desc:"1/8 de pollo broaster clásico" },
+ { id:"PB02", cat:"Pollo Broaster", name:"Pollo Broaster  1/4 Clásico", price:18, desc:"1/4 de pollo broaster clásico" },
+ { id:"PB03", cat:"Pollo Broaster", name:"Pollo Broaster 1/8 A lo Pobre", price:16, desc:"1/8 de pollo broaster a lo pobre" },
+ { id:"PB04", cat:"Pollo Broaster", name:"Pollo Broaster 1/4 A lo Pobre", price:22, desc:"1/4 de pollo broaster a lo pobre" },
+ { id:"MB01", cat:"Mostrito Broaster", name:"Mostrito 1/8 Clásico", price:14, desc:"1/8 de mostrito broaster clásico" },
+ { id:"MB02", cat:"Mostrito Broaster", name:"Mostrito 1/4 Clásico", price:22, desc:"1/4 de mostrito broaster clásico" },
+ { id:"MB03", cat:"Mostrito Broaster", name:"Mostrito 1/8 A lo Pobre", price:18, desc:"1/8 de mostrito broaster a lo pobre" },
+ { id:"MB04", cat:"Mostrito Broaster", name:"Mostrito 1/4 A lo Pobre", price:25, desc:"1/4 de mostrito broaster a lo pobre" },
+ { id:"PE01", cat:"Platos Extras", name:"Caldo de Gallina", price:14, desc:"Caldo de gallina tradicional" },
+ { id:"PE02", cat:"Platos Extras", name:"Arroz Chaufa", price:14, desc:"Arroz chaufa estilo chifa" },
+ { id:"PE03", cat:"Platos Extras", name:"Arroz Chaufa a lo Pobre", price:18, desc:"Arroz chaufa con huevo, plátano y más" },
+ { id:"PE04", cat:"Platos Extras", name:"Saltado de Pollo", price:20, desc:"Saltado de pollo al wok con verduras" },
+ { id:"PE05", cat:"Platos Extras", name:"Tallarín Saltado Carne", price:22, desc:"Tallarín saltado con carne al wok" },
+ { id:"PE06", cat:"Platos Extras", name:"Tallarín Saltado Pollo", price:18, desc:"Tallarín saltado con pollo al wok" },
+ { id:"PE07", cat:"Platos Extras", name:"Mollejita a la Plancha", price:18, desc:"Mollejas de pollo a la plancha" },
+ { id:"PE08", cat:"Platos Extras", name:"Saltado de Molleja", price:18, desc:"Mollejas saltadas al wok con verduras" },
+ { id:"PE09", cat:"Platos Extras", name:"Pollo a la Plancha 1/4", price:20, desc:"1/4 de pollo a la plancha" },
+ { id:"PE10", cat:"Platos Extras", name:"Lomo Montado", price:25, desc:"Lomo fino montado con huevo y arroz" },
+ { id:"PE11", cat:"Platos Extras", name:"Chuleta", price:22, desc:"Chuleta de cerdo a la plancha" },
+ { id:"PE12", cat:"Platos Extras", name:"Lomo a lo Pobre", price:25, desc:"Lomo fino a lo pobre con huevo y plátano" },
+ { id:"PE13", cat:"Platos Extras", name:"Lomo Saltado", price:22, desc:"Lomo saltado al wok con verduras y papas" },
+ { id:"MK01", cat:"Menú Kids", name:"Bolipollos 6pz", price:18, desc:"6 piezas de bolipollos para los más pequeños" },
+ { id:"MK02", cat:"Menú Kids", name:"Boliquesos 6pz", price:25, desc:"6 piezas de boliquesos para los más pequeños" },
+ { id:"MK03", cat:"Menú Kids", name:"Nuggets 6pz", price:18, desc:"6 nuggets de pollo crujientes" },
+ { id:"MK04", cat:"Menú Kids", name:"Chicharrón de Pollo", price:18, desc:"Chicharrón de pollo crujiente" },
+ { id:"C01", cat:"Combos", name:"Combo Personal", price:9.90, desc:"Hamburguesa Piolín o Salchipapa Sencilla + Vaso de bebida" },
+ { id:"C02", cat:"Combos", name:"Combo Cajacho", price:44.90,desc:"Hamburguesa Cajacha + 6pz Alitas + Papas fritas nativas + Porción de Chaufa + 1L Bebida" },
+ { id:"C03", cat:"Combos", name:"Combo Familiar", price:80.90,desc:"2 Hamburguesas Speedy Gonzales + 14pz Alitas + Papas fritas nativas + Arroz Chaufa + 1.5L de bebida" },
+ { id:"C04", cat:"Combos", name:"Combo Papachos", price:110.90,desc:"2 Hamburguesas La Porky + 20pz de Alitas + Papas fritas nativas + Arroz Chaufa + 2L de Bebida" },
+ { id:"R01", cat:"Rondas", name:"Rondas de Sabores 20pz", price:68, desc:"20 pz de alitas + papas fritas nativas + ensalada + 1L de bebida" },
+ { id:"R02", cat:"Rondas", name:"Ronda de Sabores XL 30pz", price:99, desc:"30 pz de alitas + papas fritas nativas + ensalada + 1.5L de bebida" },
+ { id:"B01", cat:"Bebidas", name:"Chicha Morada Normal 1L", price:10, desc:"Chicha morada preparada, 1 litro" },
+ { id:"B02", cat:"Bebidas", name:"Chicha Morada Normal 1/2L", price:5, desc:"Chicha morada preparada, medio litro" },
+ { id:"B03", cat:"Bebidas", name:"Chicha Morada Normal Vaso", price:2.50, desc:"Chicha morada preparada, vaso" },
+ { id:"B04", cat:"Bebidas", name:"Chicha Morada Frozen 1L", price:18, desc:"Chicha morada frozen, 1 litro" },
+ { id:"B05", cat:"Bebidas", name:"Chicha Morada Frozen 1/2L", price:9, desc:"Chicha morada frozen, medio litro" },
+ { id:"B06", cat:"Bebidas", name:"Limonada Normal 1L", price:10, desc:"Limonada natural, 1 litro" },
+ { id:"B07", cat:"Bebidas", name:"Limonada Normal 1/2L", price:5, desc:"Limonada natural, medio litro" },
+ { id:"B08", cat:"Bebidas", name:"Limonada Normal Vaso", price:2.50, desc:"Limonada natural, vaso" },
+ { id:"B09", cat:"Bebidas", name:"Limonada Frozen 1L", price:18, desc:"Limonada frozen, 1 litro" },
+ { id:"B10", cat:"Bebidas", name:"Limonada Frozen 1/2L", price:9, desc:"Limonada frozen, medio litro" },
+ { id:"B11", cat:"Bebidas", name:"Maracuyá Normal 1L", price:10, desc:"Maracuyá natural, 1 litro" },
+ { id:"B12", cat:"Bebidas", name:"Maracuyá Normal 1/2L", price:5, desc:"Maracuyá natural, medio litro" },
+ { id:"B13", cat:"Bebidas", name:"Maracuyá Normal Vaso", price:2.50, desc:"Maracuyá natural, vaso" },
+ { id:"B14", cat:"Bebidas", name:"Maracuyá Frozen 1L", price:18, desc:"Maracuyá frozen, 1 litro" },
+ { id:"B15", cat:"Bebidas", name:"Maracuyá Frozen 1/2L", price:9, desc:"Maracuyá frozen, medio litro" },
+ { id:"B16", cat:"Bebidas", name:"Piña Normal 1L", price:10, desc:"Piña natural, 1 litro" },
+ { id:"B17", cat:"Bebidas", name:"Piña Normal 1/2L", price:5, desc:"Piña natural, medio litro" },
+ { id:"B18", cat:"Bebidas", name:"Piña Normal Vaso", price:2.50, desc:"Piña natural, vaso" },
+ { id:"B19", cat:"Bebidas", name:"Piña Frozen 1L", price:18, desc:"Piña frozen, 1 litro" },
+ { id:"B20", cat:"Bebidas", name:"Piña Frozen 1/2L", price:9, desc:"Piña frozen, medio litro" },
+ { id:"B21", cat:"Bebidas", name:"Cebada Normal 1L", price:10, desc:"Cebada natural, 1 litro" },
+ { id:"B22", cat:"Bebidas", name:"Cebada Normal 1/2L", price:5, desc:"Cebada natural, medio litro" },
+ { id:"B23", cat:"Bebidas", name:"Cebada Normal Vaso", price:2.50, desc:"Cebada natural, vaso" },
+ { id:"B24", cat:"Bebidas", name:"Cebada Frozen 1L", price:18, desc:"Cebada frozen, 1 litro" },
+ { id:"B25", cat:"Bebidas", name:"Cebada Frozen 1/2L", price:9, desc:"Cebada frozen, medio litro" },
+ { id:"B26", cat:"Bebidas", name:"Fresa Normal 1L", price:10, desc:"Fresa natural, 1 litro" },
+ { id:"B27", cat:"Bebidas", name:"Fresa Normal 1/2L", price:5, desc:"Fresa natural, medio litro" },
+ { id:"B28", cat:"Bebidas", name:"Fresa Normal Vaso", price:2.50, desc:"Fresa natural, vaso" },
+ { id:"B29", cat:"Bebidas", name:"Fresa Frozen 1L", price:18, desc:"Fresa frozen, 1 litro" },
+ { id:"B30", cat:"Bebidas", name:"Fresa Frozen 1/2L", price:9, desc:"Fresa frozen, medio litro" },
+ { id:"CV01", cat:"Cervezas", name:"Cristal", price:10, desc:"Cerveza Cristal" },
+ { id:"CV02", cat:"Cervezas", name:"Pilsen", price:10, desc:"Cerveza Pilsen Callao" },
+ { id:"CV03", cat:"Cervezas", name:"Heineken", price:10, desc:"Cerveza Heineken importada" },
+ { id:"CV04", cat:"Cervezas", name:"Cusqueña", price:12, desc:"Cerveza Cusqueña dorada" },
+ { id:"CV05", cat:"Cervezas", name:"Corona", price:10, desc:"Cerveza Corona importada" },
+ { id:"CH01", cat:"Chilcanos", name:"Chilcano Limón Vaso", price:15, desc:"Chilcano de pisco con limón, vaso" },
+ { id:"CH02", cat:"Chilcanos", name:"Chilcano Limón Jarra", price:30, desc:"Chilcano de pisco con limón, jarra" },
+ { id:"CH03", cat:"Chilcanos", name:"Chilcano Maracuyá Vaso", price:15, desc:"Chilcano de pisco con maracuyá, vaso" },
+ { id:"CH04", cat:"Chilcanos", name:"Chilcano Maracuyá Jarra", price:30, desc:"Chilcano de pisco con maracuyá, jarra" },
+ { id:"CH05", cat:"Chilcanos", name:"Chilcano Fresa Vaso", price:15, desc:"Chilcano de pisco con fresa, vaso" },
+ { id:"CH06", cat:"Chilcanos", name:"Chilcano Fresa Jarra", price:30, desc:"Chilcano de pisco con fresa, jarra" },
+ { id:"CH07", cat:"Chilcanos", name:"Chilcano Aguaimanto Vaso", price:15, desc:"Chilcano de pisco con aguaimanto, vaso" },
+ { id:"CH08", cat:"Chilcanos", name:"Chilcano Aguaimanto Jarra", price:30, desc:"Chilcano de pisco con aguaimanto, jarra" },
+ { id:"CH09", cat:"Chilcanos", name:"Chilcano Tuna Vaso", price:15, desc:"Chilcano de pisco con tuna, vaso" },
+ { id:"CH10", cat:"Chilcanos", name:"Chilcano Tuna Jarra", price:30, desc:"Chilcano de pisco con tuna, jarra" },
+ { id:"CH11", cat:"Chilcanos", name:"Chilcano Mango Vaso", price:15, desc:"Chilcano de pisco con mango, vaso" },
+ { id:"CH12", cat:"Chilcanos", name:"Chilcano Mango Jarra", price:30, desc:"Chilcano de pisco con mango, jarra" },
+ { id:"G01", cat:"Gaseosas", name:"Inka Cola 2L", price:15, desc:"Inka Cola 2 litros" },
+ { id:"G02", cat:"Gaseosas", name:"Coca Cola 2L", price:15, desc:"Coca Cola 2 litros" },
+ { id:"G03", cat:"Gaseosas", name:"Inca Kola 1L", price:8, desc:"Inca Kola 1 litro" },
+ { id:"G04", cat:"Gaseosas", name:"Coca Cola 1L", price:8, desc:"Coca Cola 1 litro" },
+ { id:"G05", cat:"Gaseosas", name:"Gordita", price:5, desc:"Gaseosa gordita" },
+ { id:"G06", cat:"Gaseosas", name:"Coca Cola Personal", price:2.50, desc:"Coca Cola personal" },
+ { id:"G07", cat:"Gaseosas", name:"Inka Cola Personal", price:2.50, desc:"Inka Cola personal" },
+ { id:"G08", cat:"Gaseosas", name:"Agua Mineral", price:3, desc:"Agua mineral sin gas" },
+ { id:"G09", cat:"Gaseosas", name:"Inca Kola 600ml", price:4, desc:"Inca Kola 600ml" },
+ { id:"G10", cat:"Gaseosas", name:"Coca Cola 600ml", price:4, desc:"Coca Cola 600ml" },
+ { id:"O01", cat:"Otros", name:"Café Pasado", price:4, desc:"Café pasado tradicional" },
+ { id:"O02", cat:"Otros", name:"Infusiones", price:3, desc:"Variedad de infusiones calientes" },
+ { id:"EX01", cat:"Extras", name:"Porción de Papas", price:6, desc:"Porción extra de papas fritas" },
+ { id:"EX02", cat:"Extras", name:"Porción de Ensalada", price:4, desc:"Porción extra de ensalada" },
+ { id:"EX03", cat:"Extras", name:"Porción de Chaufa", price:6, desc:"Porción extra de arroz chaufa" },
+ { id:"EX04", cat:"Extras", name:"Arroz Blanco en Molde", price:3, desc:"Porción de arroz blanco" },
+ // ── TAPERS ──────────────────────────────────────────────────────────
+ { id:"TP01", cat:"Tapers", name:"Taper Pequeño", price:1.00, desc:"Taper pequeño para llevar" },
+ { id:"TP02", cat:"Tapers", name:"Taper Mediano", price:1.50, desc:"Taper mediano para llevar" },
+ { id:"TP03", cat:"Tapers", name:"Taper Grande", price:2.00, desc:"Taper grande para llevar" },
+ { id:"TP04", cat:"Tapers", name:"Bolsa Pequeña", price:0.50, desc:"Bolsa pequeña para llevar" },
+ { id:"TP05", cat:"Tapers", name:"Bolsa Grande", price:1.00, desc:"Bolsa grande para llevar" },
+];
+
+const ALL_CATS = [...new Set(MENU_BASE.map(i => i.cat))];
+const BEVERAGE_CATS = ["Bebidas", "Cervezas", "Chilcanos", "Gaseosas", "Otros"]; // <-- AGREGA ESTO
+const SALSAS_ALITAS = ["Clásica", "Maracuyá", "BBQ", "Picante", "Huancaina", "Mango Abanero", "Broaster", "Hawaiana", "Acevichada", "Maracumango", "Aguaimanto"];
 
 const fmt = (n) => `S/.${Number(n).toFixed(2)}`;
 const newDraft = () => ({ table:"", items:[], payTiming:"despues", notes:"", phone:"", orderType:"mesa", taperCost:0, deliveryAddress:"" });
@@ -113,7 +340,7 @@ function LandingScreen({ onEnter, Y, isMobile }) {
  animation: "pulseText 1.5s infinite alternate", letterSpacing: 2,
  textTransform: "uppercase"
  }}>
- Iniciando sesion
+ [ Toca la pantalla para entrar ]
  </div>
  </div>
  );
@@ -135,151 +362,35 @@ const IconoMesa = ({ color, size }) => (
  </svg>
 );
 
-const ORDER_TYPE_ASSETS = {
- mesa: "/mesa.svg",
- llevar: "/llevar.svg",
-};
-
-const OrderTypeIcon = ({ type, size = 18, color = "#eee" }) => {
- const fill = color === "#111"
-  ? "linear-gradient(145deg,#050505 0%,#3a3a3a 48%,#080808 100%)"
-  : `linear-gradient(145deg,#ffffff 0%,${color} 45%,#8bd8ff 100%)`;
- return (
-  <span
-   aria-hidden="true"
-   style={{
-    width: size,
-    height: size,
-    display: "inline-block",
-    flexShrink: 0,
-    background: fill,
-    WebkitMask: `url(${ORDER_TYPE_ASSETS[type]}) center / contain no-repeat`,
-    mask: `url(${ORDER_TYPE_ASSETS[type]}) center / contain no-repeat`,
-    filter: color === "#111" ? "none" : `drop-shadow(0 0 5px ${color}aa)`,
-   }}
-  />
- );
-};
-
-const OrderTypeBadgeGroup = ({ types = [], Y, compact = false }) => {
- const visibleTypes = ["mesa", "llevar"].filter(type => types.includes(type));
- if (!visibleTypes.length) return null;
- return (
-  <div style={{
-   position:"absolute",
-   top:10,
-   right:10,
-   display:"flex",
-   gap:5,
-   alignItems:"center",
-   background:"rgba(0,0,0,.55)",
-   border:"1px solid #333",
-   borderRadius:8,
-   padding:compact ? "4px 5px" : "5px 6px",
-   boxShadow:"0 4px 12px rgba(0,0,0,.35)",
-  }}>
-   {visibleTypes.map(type => (
-    <span
-     key={type}
-     title={type === "mesa" ? "Mesa" : "Para llevar"}
-     style={{
-      width:compact ? 22 : 26,
-      height:compact ? 22 : 26,
-      borderRadius:6,
-      display:"flex",
-      alignItems:"center",
-      justifyContent:"center",
-      background:type === "mesa" ? `${Y}22` : "#0a1520",
-      border:`1px solid ${type === "mesa" ? `${Y}55` : "#3498db55"}`,
-     }}
-    >
-     <OrderTypeIcon type={type} size={compact ? 14 : 17} color={type === "mesa" ? Y : "#5dade2"} />
-    </span>
-   ))}
-  </div>
- );
-};
-
-const getMesaServiceTypes = (mesaOrders = []) => {
- if (!mesaOrders.length) return [];
- const hasLlevar = mesaOrders.some(order => (order.items || []).some(item => item.isLlevar));
- const hasMesa = mesaOrders.some(order => {
-  const items = order.items || [];
-  return items.length === 0 || items.some(item => !item.isLlevar);
- });
- return [hasMesa && "mesa", hasLlevar && "llevar"].filter(Boolean);
-};
-
 // ═══════════════════════════════════════════════════════════════════
 // STAFF POR DEFECTO (primer arranque)
 // ═══════════════════════════════════════════════════════════════════
+const DEFAULT_STAFF = [
+ { id:"u_admin",   name:"Administrador", roles:["admin"],            pinHash:null },
+ { id:"u_cajero",  name:"Cajero",        roles:["cajero"],           pinHash:null },
+ { id:"u_mesero1", name:"Mesero 1",      roles:["mesero"],           pinHash:null },
+ { id:"u_cocina",  name:"Cocina",        roles:["cocinero"],         pinHash:null },
+];
+
 const ROLE_INFO = {
  admin:    { label:"Administrador", color:"#FFD700",},
  cajero:   { label:"Cajero",        color:"#3498db",},
- mesero:   { label:"Atención al cliente", color:"#27ae60",},
+ mesero:   { label:"Mesero",        color:"#27ae60",},
  cocinero: { label:"Cocina",        color:"#e67e22",},
-};
-const roleToApp = (role) => {
- const r = String(role || "").toUpperCase();
- if (r === "ADMIN" || r === "SUPERADMIN") return "admin";
- if (r === "CAJERO") return "cajero";
- if (r === "MESERO" || r === "ATENCION_CLIENTE" || r === "ATENCION AL CLIENTE") return "mesero";
- if (r === "COCINA" || r === "COCINERO") return "cocinero";
- return String(role || "").toLowerCase();
-};
-const normalizeRolesForApp = (roles = []) => [...new Set((roles || []).map(roleToApp).filter(Boolean))];
-const hasRole = (user, role) => normalizeRolesForApp(user?.roles || [user?.id]).includes(role);
-const roleLabels = (roles = []) => normalizeRolesForApp(roles).map(role => ROLE_INFO[role]?.label || role).join(" · ");
-const authDeviceKey = (id) => `papachos_device_${id}`;
-const buildSessionUser = (usuario = {}) => {
- const local = usuario.locales?.find(l => Number(l.id_local) === Number(usuario.id_local)) || usuario.locales?.[0] || {};
- const roles = normalizeRolesForApp(local.roles?.length ? local.roles : usuario.roles);
- const activeRole = roles.includes("admin") ? "admin" : roles[0];
- const hasAlias = Boolean(usuario.tiene_nombre_clave ?? usuario.hasAlias);
- const hasBiometric = Boolean(usuario.biometria_registrada ?? usuario.hasBiometric);
- return {
-  id: activeRole,
-  label: roleLabels(roles),
-  name: usuario.nombre || usuario.name,
-  userId: usuario.id_usuario || usuario.id,
-  dni: usuario.numero_documento || usuario.dni || "",
-  codigoUsuario: usuario.codigo_usuario || "",
-  activeRole,
-  roles,
-  localId: local.id_local || usuario.id_local,
- localName: local.nombre || usuario.local_nombre || "Local",
-  hasAlias,
-  needsAliasSetup: Boolean(usuario.requiere_nombre_clave ?? usuario.needsAliasSetup ?? !hasAlias),
-  hasBiometric,
-  needsBiometricSetup: Boolean(usuario.requiere_biometria ?? usuario.needsBiometricSetup ?? !hasBiometric),
- };
-};
-const downloadWithAuth = async (url, filename) => {
- const res = await fetch(url, {
-  headers: {
-   ...(API.getAuthToken() ? { Authorization: `Bearer ${API.getAuthToken()}` } : {}),
-  },
- });
- if (!res.ok) throw new Error("No se pudo descargar el archivo");
- const blob = await res.blob();
- const href = URL.createObjectURL(blob);
- const a = document.createElement("a");
- a.href = href;
- a.download = filename;
- document.body.appendChild(a);
- a.click();
- a.remove();
- URL.revokeObjectURL(href);
 };
 
 // ═══════════════════════════════════════════════════════════════════
 // DEV PANEL — acceso master sin PIN (solo desarrollador)
 // ═══════════════════════════════════════════════════════════════════
-const DEV_SECRET = process.env.REACT_APP_DEV_SECRET || "";
+const DEV_SECRET = "dev2024papachos"; // Código secreto del desarrollador
 
 function DevPanel({ onClose, onDevLogin, s, Y, isMobile }) {
- const locales = [];
- const [selectedLocal, setSelectedLocal] = useState(null);
+ const locales = [
+  { id:"amazonas", nombre:"Amazonas" },
+  { id:"sanmartin", nombre:"San Martín" },
+  { id:"belen", nombre:"Belén" },
+ ];
+ const [selectedLocal, setSelectedLocal] = useState("amazonas");
  const [staff, setStaff] = useState([]);
  const [loading, setLoading] = useState(false);
  const [editingUser, setEditingUser] = useState(null);
@@ -287,56 +398,67 @@ function DevPanel({ onClose, onDevLogin, s, Y, isMobile }) {
  const [localToast, setLocalToast] = useState(null);
  const [activeTab, setActiveTab] = useState("acceso"); // "acceso" | "staff"
 
- const toast_ = useCallback((msg, color="#27ae60") => { setLocalToast({msg,color}); setTimeout(()=>setLocalToast(null),2500); }, []);
+ const toast_ = (msg, color="#27ae60") => { setLocalToast({msg,color}); setTimeout(()=>setLocalToast(null),2500); };
 
-const loadLocal = useCallback(async () => {
+ const loadLocal = async (id) => {
   setLoading(true); setStaff([]); setEditingUser(null);
-  try {
-   const users = await API.staff.listar();
-   setStaff((users || []).map(normalizeStaffUser));
-  } catch (err) {
-   setStaff([]);
-   toast_("No se pudo consultar el staff en backend", "#e74c3c");
+  const fs = FS(id);
+  let users = await fs.getStaff();
+  if (users === undefined || users === null) {
+   // Try backup first
+   const backup = fs.getStaffBackup();
+   users = backup || DEFAULT_STAFF;
+  } else if (users.length === 0) {
+   const backup = fs.getStaffBackup();
+   users = (backup && backup.length > 0) ? backup : DEFAULT_STAFF;
   }
+  setStaff(users);
   setLoading(false);
-}, [toast_]);
- useEffect(() => { loadLocal(); }, [loadLocal]);
+ };
 
+ useEffect(() => { loadLocal(selectedLocal); }, [selectedLocal]);
+
+ const safeUpdateStaff = async (updaterFn) => {
+  // Always read fresh from Firebase, apply change, then write back
+  const fs = FS(selectedLocal);
+  let fresh = await fs.getStaff();
+  if (!fresh || fresh === undefined || fresh.length === 0) {
+   fresh = staff; // fallback to local state if Firebase read fails
+  }
+  const updated = updaterFn(fresh);
+  setStaff(updated);
+  const ok = await fs.saveStaff(updated);
+  if (!ok) toast_("⚠️ Error al guardar — intenta de nuevo", "#e74c3c");
+  return ok;
+ };
 
  const handleResetPin = async (userId) => {
-  try {
-    await API.staff.resetPin(userId, null);
-    await loadLocal();
-    toast_("🔑 PIN reseteado", "#e67e22");
-  } catch {
-    toast_("⚠️ Error al resetear PIN", "#e74c3c");
-  }
-};;
+  await safeUpdateStaff(users => users.map(u => u.id === userId ? {...u, pinHash: null} : u));
+  toast_("🔑 PIN reseteado", "#e67e22");
+ };
 
  const handleForcePin = async (userId) => {
   if (newPin.length < 4) return;
-  try {
-    await API.staff.resetPin(userId, newPin);
-    await loadLocal();
-    setNewPin(""); setEditingUser(null);
-    toast_("✅ PIN actualizado");
-  } catch {
-    toast_("⚠️ Error al actualizar PIN", "#e74c3c");
-  }
-};
+  const hash = await sha256(newPin);
+  await safeUpdateStaff(users => users.map(u => u.id === userId ? {...u, pinHash: hash} : u));
+  setNewPin(""); setEditingUser(null);
+  toast_("✅ PIN actualizado");
+ };
 
  const handleDeleteUser = async (userId) => {
-  try {
-    await API.staff.eliminar(userId);
-    await loadLocal();
-    toast_("🗑 Usuario eliminado", "#e74c3c");
-  } catch {
-    toast_("⚠️ Error al eliminar usuario", "#e74c3c");
-  }
-};
+  await safeUpdateStaff(users => users.filter(u => u.id !== userId));
+  toast_("🗑 Usuario eliminado", "#e74c3c");
+ };
 
  const handleDevEnter = (user, role) => {
-  toast_("El acceso directo DEV esta desactivado. Inicia sesion contra el backend.", "#e67e22");
+  const locName = locales.find(l=>l.id===selectedLocal)?.nombre || selectedLocal;
+  onDevLogin({
+   id: role, label: ROLE_INFO[role]?.label || role,
+   name: `[DEV] ${user.name}`, userId: user.id,
+   activeRole: role, roles: user.roles,
+   localId: selectedLocal, localName: locName,
+   _isDev: true,
+  });
  };
 
  return (
@@ -443,346 +565,275 @@ const loadLocal = useCallback(async () => {
 // ═══════════════════════════════════════════════════════════════════
 // LOGIN SCREEN — Flujo: Sucursal → Rol → Usuario → PIN
 // ═══════════════════════════════════════════════════════════════════
-const FingerprintIcon = ({ size = 22, color = "currentColor" }) => (
- <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
-  <path d="M7.2 11.1a4.9 4.9 0 0 1 9.8 0" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
-  <path d="M5 8.8a7.5 7.5 0 0 1 14 0" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
-  <path d="M9.4 13.1c0 3.2-1.2 5.1-2.6 6.7" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
-  <path d="M12 13.1c0 3.8-.9 6.2-2.2 8" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
-  <path d="M14.6 13.1c0 2.5-.2 4.9-1.1 7.2" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
-  <path d="M17.1 13.1c0 1.6-.1 3.1-.4 4.5" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
-  <path d="M9.7 3.4a9.2 9.2 0 0 1 8.4 2.3" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
-  <path d="M4.6 5.8a9.2 9.2 0 0 1 2-1.5" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
- </svg>
-);
-
 function LoginScreen({ onLogin, s, Y, isMobile }) {
- const [step, setStep] = useState("codigo");
- const [codigo, setCodigo] = useState("");
- const [usuario, setUsuario] = useState(null);
- const [locales, setLocales] = useState([]);
- const [selectedLocal, setSelectedLocal] = useState(null);
- const [selectedRole, setSelectedRole] = useState(null);
- const [pin, setPin] = useState("");
- const [error, setError] = useState("");
- const [checking, setChecking] = useState(false);
- const [pendingMsg, setPendingMsg] = useState("");
- const [devClickCount, setDevClickCount] = useState(0);
+ const [devInput, setDevInput] = useState("");
  const [showDev, setShowDev] = useState(false);
+ const [step, setStep]               = useState("local");
+ const [selectedLocal, setSelectedLocal] = useState("amazonas");
+ const [selectedRole, setSelectedRole] = useState(null);
+ const [staff, setStaff]             = useState([]);
+ const [loadingStaff, setLoadingStaff] = useState(false);
+ const [selectedUser, setSelectedUser] = useState(null);
+ const [pin, setPin]                 = useState("");
+ const [error, setError]             = useState("");
+ const [checking, setChecking]       = useState(false);
+ const [devClickCount, setDevClickCount] = useState(0);
 
- const deviceKey = authDeviceKey;
- const getDeviceName = () => {
-  if (typeof navigator === "undefined") return "Equipo desconocido";
-  return `${navigator.platform || "Equipo"} - ${navigator.userAgent?.split(" ")?.[0] || "Navegador"}`;
- };
+ const locales = [
+  { id:"amazonas",  nombre:"Amazonas"  },
+  { id:"sanmartin", nombre:"San Martín" },
+  { id:"belen",     nombre:"Belén"     },
+ ];
 
- const buildAppUser = (user, local, role) => {
-  const roles = normalizeRolesForApp(local?.roles?.length ? local.roles : user.roles);
-  const activeRole = role || (roles.includes("admin") ? "admin" : roles[0]);
-  const hasAlias = Boolean(user.tiene_nombre_clave ?? user.hasAlias);
-  const hasBiometric = Boolean(user.biometria_registrada ?? user.hasBiometric);
-  return {
-   id: activeRole,
-   label: roleLabels(roles),
-   name: user.nombre || user.name,
-   userId: user.id_usuario || user.id,
-   dni: user.numero_documento || user.dni || "",
-   codigoUsuario: user.codigo_usuario || "",
-   activeRole,
-   roles,
-   localId: local?.id_local || user.id_local,
-   localName: local?.nombre || user.local_nombre || "Local",
-   hasAlias,
-   needsAliasSetup: Boolean(user.requiere_nombre_clave ?? user.needsAliasSetup ?? !hasAlias),
-   hasBiometric,
-   needsBiometricSetup: Boolean(user.requiere_biometria ?? user.needsBiometricSetup ?? !hasBiometric),
-  };
- };
+ const roleOrder = ["admin","cajero","mesero","cocinero"];
 
- const handleIdentify = async () => {
-  if (!codigo.trim()) return;
-  setChecking(true); setError(""); setPendingMsg("");
-  try {
-   const res = await API.auth.identificar(codigo.trim());
-   const user = res.usuario;
-   const locs = (user.locales || []).map(l => ({ ...l, roles: normalizeRolesForApp(l.roles || user.roles) }));
-   setUsuario(user);
-   setLocales(locs);
-   if (locs.length === 1) handleSelectLocal(user, locs[0]);
-   else setStep("local");
-  } catch (err) {
-   setError(Array.isArray(err.data?.usuarios) ? "Ingresa tu nombre de acceso exacto para continuar" : (err.message || "No se pudo identificar el usuario"));
-  }
-  setChecking(false);
- };
+ const loadStaff = async (localId, retries = 2) => {
+  setLoadingStaff(true);
+  const fs = FS(localId);
 
- const handleSelectLocal = (user, local) => {
-  const u = user || usuario;
-  const roles = normalizeRolesForApp(local.roles || u?.roles || []);
-  setSelectedLocal(local);
-  setSelectedRole(roles[0] || null);
-  setPin("");
-  setError(roles.length ? "" : "Este usuario no tiene roles asignados en el local.");
-  setStep("pin");
- };
+  let users = await fs.getStaff(); // null=new doc, undefined=error, []=exists but empty
 
- const finishLogin = (loginUser) => {
-  const local = selectedLocal || loginUser.locales?.[0];
-  const appUser = buildAppUser(loginUser, local, selectedRole);
-  onLogin(appUser);
- };
-
- const submitLogin = async ({ biometrico = false } = {}) => {
-  if (!usuario || !selectedLocal || (!biometrico && pin.length < 4)) return;
-  setChecking(true); setError(""); setPendingMsg("");
-  try {
-   if (biometrico) {
-    if (!window.PublicKeyCredential || !navigator.credentials) throw new Error("Este navegador no tiene huella/passkey disponible.");
-    const challenge = new Uint8Array(32);
-    window.crypto.getRandomValues(challenge);
-    await navigator.credentials.get({ publicKey: { challenge, timeout: 60000, userVerification: "required" } });
+  if (users === undefined) {
+   // Network/permission error → try backup
+   const backup = fs.getStaffBackup();
+   if (backup) {
+    console.warn("loadStaff: using localStorage backup due to Firebase error");
+    users = backup;
+   } else if (retries > 0) {
+    // Retry after brief delay
+    await new Promise(r => setTimeout(r, 1200));
+    setLoadingStaff(false);
+    return loadStaff(localId, retries - 1);
+   } else {
+    // Complete failure — show error, do NOT overwrite Firebase
+    setLoadingStaff(false);
+    setError("No se pudo cargar el personal. Revisa tu conexión.");
+    return;
    }
+  }
 
-   const res = await API.auth.login({
-    id_usuario: usuario.id_usuario,
-    id_local: selectedLocal.id_local,
-    pin,
-    biometrico,
-    nombre_equipo: getDeviceName(),
-    token_dispositivo_guardado: localStorage.getItem(deviceKey(usuario.id_usuario)),
-   });
+  if (users === null) {
+   // Document truly doesn't exist → seed DEFAULT_STAFF (first time only)
+   users = DEFAULT_STAFF;
+   await fs.saveStaff(users);
+  } else if (users.length === 0) {
+   // Document exists but users array empty → try backup before touching Firebase
+   const backup = fs.getStaffBackup();
+   if (backup && backup.length > 0) {
+    console.warn("loadStaff: users array empty in Firebase, restoring from backup");
+    users = backup;
+    await fs.saveStaff(users); // restore
+   } else {
+    // Truly empty (e.g., dev wiped it) → seed defaults
+    users = DEFAULT_STAFF;
+    await fs.saveStaff(users);
+   }
+  }
 
-   localStorage.setItem("token", res.token);
-   if (res.token_dispositivo) localStorage.setItem(deviceKey(usuario.id_usuario), res.token_dispositivo);
-   finishLogin(res.usuario);
-  } catch (err) {
-   const data = err.data || {};
-   if (data.token_dispositivo) localStorage.setItem(deviceKey(usuario.id_usuario), data.token_dispositivo);
-   if (["DISPOSITIVO_PENDIENTE", "JORNADA_PENDIENTE"].includes(data.estado)) setPendingMsg(data.mensaje || "Solicitud enviada al administrador.");
-   else setError(err.message || "No se pudo iniciar sesion");
+  setStaff(users);
+  setLoadingStaff(false);
+ };
+
+ const handleSelectLocal = async (localId) => {
+  setSelectedLocal(localId);
+  await loadStaff(localId);
+  setStep("role");
+ };
+
+ const handleSelectRole = (role) => {
+  setSelectedRole(role);
+  setStep("user");
+ };
+
+ const handleSelectUser = (user) => {
+  setSelectedUser(user); setPin(""); setError(""); setStep("pin");
+ };
+
+ const handlePinDigit = (d) => { if (pin.length < 6) setPin(p => p + d); };
+ const handlePinDel   = ()  => setPin(p => p.slice(0, -1));
+
+ const handlePinSubmit = async () => {
+  if (pin.length < 4) return;
+  setChecking(true); setError("");
+  const hash = await sha256(pin);
+  const fs = FS(selectedLocal);
+  if (!selectedUser.pinHash) {
+   // Read fresh from Firebase before writing to avoid overwriting other users
+   let freshUsers = await fs.getStaff();
+   if (!freshUsers || freshUsers === undefined) freshUsers = staff; // fallback to cached
+   const updated = (freshUsers || staff).map(u => u.id === selectedUser.id ? { ...u, pinHash: hash } : u);
+   await fs.saveStaff(updated);
+   setStaff(updated);
+   proceedLogin({ ...selectedUser, pinHash: hash });
+  } else if (hash === selectedUser.pinHash) {
+   proceedLogin(selectedUser);
+  } else {
+   setError("PIN incorrecto — inténtalo de nuevo");
    setPin("");
   }
   setChecking(false);
  };
 
- const handlePinDigit = (d) => { if (pin.length < 6) setPin(p => p + d); };
- const handlePinDel = () => setPin(p => p.slice(0, -1));
- const cardBtn = { ...s.btn("secondary"), padding:"14px 20px", fontSize:15, fontWeight:900, textAlign:"left", display:"flex", alignItems:"center", gap:12, border:"1px solid #2a2a2a", width:"100%", cursor:"pointer" };
- const currentRoles = normalizeRolesForApp(selectedLocal?.roles || usuario?.roles || []);
- const hasSavedDevice = Boolean(usuario?.id_usuario && localStorage.getItem(deviceKey(usuario.id_usuario)));
- const loadingUsers = false;
- const visibleLoginUsers = [];
- const pickUser = () => {};
+ const proceedLogin = (user) => {
+  // Si tiene múltiples roles y el rol seleccionado es uno de ellos, usar directo
+  if (user.roles.includes(selectedRole)) {
+   finishLogin(user, selectedRole);
+  } else if (user.roles.length > 1) {
+   setStep("role_final");
+  } else {
+   finishLogin(user, user.roles[0]);
+  }
+ };
 
+ const finishLogin = (user, role) => {
+  const locName = locales.find(l => l.id === selectedLocal)?.nombre || selectedLocal;
+  onLogin({
+   id: role, label: ROLE_INFO[role]?.label || role,
+   name: user.name, userId: user.id,
+   activeRole: role, roles: user.roles,
+   localId: selectedLocal, localName: locName,
+  });
+ };
+
+ // Usuarios filtrados por el rol seleccionado
+ const filteredStaff = staff.filter(u => u.roles.includes(selectedRole));
+
+ const cardBtn = { ...s.btn("secondary"), padding:"14px 20px", fontSize:15, fontWeight:900,
+  textAlign:"left", display:"flex", alignItems:"center", gap:12,
+  border:"1px solid #2a2a2a", width:"100%", cursor:"pointer" };
+
+ // Hidden dev mode: triple-tap on subtitle
  const handleDevTap = () => {
-  if (!DEV_SECRET) return;
   const next = devClickCount + 1;
   setDevClickCount(next);
   if (next >= 7) { setShowDev(true); setDevClickCount(0); }
  };
+
  if (showDev) return <DevPanel onClose={() => setShowDev(false)} onDevLogin={onLogin} s={s} Y={Y} isMobile={isMobile} />;
 
  return (
-  <div style={{background:"linear-gradient(180deg,#111 0%,#0b0b0b 58%,#070707 100%)",minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:"#fff",padding:isMobile?18:24,fontFamily:"'Nunito',sans-serif"}}>
-   <div style={{width:"100%",maxWidth:460}}>
-    <div style={{textAlign:"center",marginBottom:isMobile?24:30}}>
-     <img onClick={handleDevTap} src="/logo.png" alt="MR. Papachos" style={{width:isMobile?"62vw":"250px",maxWidth:"320px",marginBottom:18,filter:`drop-shadow(0 0 12px ${Y}55)`,cursor:"default",userSelect:"none"}} />
-     <div style={{fontSize:22,fontWeight:900,letterSpacing:0,marginBottom:5}}>Inicio de sesion</div>
-     <div style={{fontSize:12,color:"#7b7b7b"}}>Accede con tu nombre asignado o nombre en clave.</div>
-    </div>
+  <div style={{background:"#111",minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:"#fff",padding:20}}>
+   <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:38,color:Y,letterSpacing:3,marginBottom:4}}>MR. PAPACHOS</div>
+   <div onClick={handleDevTap} style={{fontSize:10,color:"#333",letterSpacing:2,marginBottom:36,textTransform:"uppercase",cursor:"default",userSelect:"none"}}>
+    Sistema de Gestión · Cajamarca
+   </div>
 
-   {step === "codigo" && (
-    <div style={{width:"100%"}}>
-     <div style={{fontSize:11,color:"#8a8a8a",textTransform:"uppercase",letterSpacing:1,marginBottom:9,fontWeight:900}}>Nombre de acceso</div>
-     <input style={{...s.input,textAlign:"left",fontSize:18,padding:"16px 15px",marginBottom:10,border:"1px solid #3a3a3a",background:"#1b1b1b",borderRadius:8}} placeholder="Ej. GatitoFeliz01" value={codigo} onChange={e=>setCodigo(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleIdentify()} autoComplete="username" spellCheck="false" autoFocus />
-     {error && <div style={{color:"#e74c3c",fontSize:12,fontWeight:700,marginBottom:10,textAlign:"center"}}>{error}</div>}
-     <div style={{display:"none"}}>
-      {loadingUsers ? <div style={{...s.card,textAlign:"center",color:"#777"}}>Cargando usuarios...</div> : visibleLoginUsers.map(user => (
-       <button key={user.id} onClick={() => pickUser(user)} style={{...cardBtn,justifyContent:"space-between",padding:"12px 14px"}}>
-        <span style={{minWidth:0}}>
-         <span style={{display:"block",fontSize:15,color:"#eee",overflow:"hidden",textOverflow:"ellipsis"}}>{user.name}</span>
-         <span style={{display:"block",fontSize:10,color:"#777",marginTop:2}}>DNI {user.numero_documento || "sin DNI"} · Usuario {user.codigo_usuario || user.id}</span>
-        </span>
-        <span style={{fontSize:10,color:Y,fontWeight:900,textAlign:"right"}}>{roleLabels(user.roles)}</span>
+   {/* ── PASO: SUCURSAL ── */}
+   {step === "local" && (
+    <div style={{width:"100%",maxWidth:320}}>
+     <div style={{fontSize:11,color:"#666",textTransform:"uppercase",letterSpacing:1,marginBottom:14,textAlign:"center"}}>Selecciona tu sucursal</div>
+     <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {locales.map(loc => (
+       <button key={loc.id} onClick={() => handleSelectLocal(loc.id)}
+        style={{...cardBtn, justifyContent:"center", fontSize:17, padding:18}}>
+        {loc.nombre}
        </button>
       ))}
-      {!loadingUsers && visibleLoginUsers.length === 0 && <div style={{...s.card,textAlign:"center",color:"#777"}}>No hay coincidencias</div>}
-     </div>
-     <button onClick={handleIdentify} disabled={!codigo.trim() || checking} style={{...s.btn("primary"),width:"100%",padding:"15px 16px",fontSize:15,opacity:!codigo.trim()?0.45:1,boxShadow:`0 10px 26px ${Y}22`}}>{checking ? "Verificando..." : "Continuar"}</button>
-    </div>
-   )}
-
-   {step === "local" && usuario && (
-    <div style={{width:"100%"}}>
-     <button onClick={() => { setStep("codigo"); setUsuario(null); }} style={{...s.btn("secondary"),marginBottom:16,fontSize:11,padding:"4px 12px"}}>Volver</button>
-     <div style={{fontSize:11,color:"#666",textTransform:"uppercase",letterSpacing:1,marginBottom:14,textAlign:"center"}}>Locales habilitados para {usuario.nombre}</div>
-     <div style={{display:"flex",flexDirection:"column",gap:10}}>{locales.map(loc => <button key={loc.id_local} onClick={() => handleSelectLocal(usuario, loc)} style={{...cardBtn, justifyContent:"center", fontSize:17, padding:18}}>{loc.nombre}</button>)}</div>
-    </div>
-   )}
-
-   {step === "role" && usuario && selectedLocal && (
-    <div style={{width:"100%"}}>
-     <button onClick={() => locales.length > 1 ? setStep("local") : setStep("codigo")} style={{...s.btn("secondary"),marginBottom:16,fontSize:11,padding:"4px 12px"}}>Volver</button>
-     <div style={{fontSize:11,color:"#666",textTransform:"uppercase",letterSpacing:1,marginBottom:14,textAlign:"center"}}>Rol de ingreso</div>
-     <div style={{display:"flex",flexDirection:"column",gap:10}}>{currentRoles.map(role => { const info = ROLE_INFO[role] || { label: role, color: Y }; return <button key={role} onClick={() => { setSelectedRole(role); setStep("pin"); }} style={{...cardBtn, border:`2px solid ${info.color}33`, padding:"16px 20px"}}><div><div style={{color:info.color,fontWeight:900,fontSize:15}}>{info.label}</div><div style={{fontSize:10,color:"#555",marginTop:2}}>{selectedLocal.nombre}</div></div></button>; })}</div>
-    </div>
-   )}
-
-   {step === "pin" && usuario && selectedLocal && (
-    <div style={{width:"100%",maxWidth:330,margin:"0 auto",textAlign:"center"}}>
-     <button onClick={() => { setStep(locales.length > 1 ? "local" : "codigo"); setPin(""); setError(""); setPendingMsg(""); }} style={{...s.btn("secondary"),marginBottom:16,fontSize:11,padding:"4px 12px"}}>Volver</button>
-     <div style={{fontSize:19,fontWeight:900,marginBottom:3}}>{usuario.nombre}</div>
-     <div style={{fontSize:11,color:"#555",marginBottom:20}}>{selectedLocal.nombre}<br/>DNI {usuario.numero_documento || "sin DNI"} · {roleLabels(currentRoles)}</div>
-     <div style={{display:"flex",justifyContent:"center",gap:10,marginBottom:22}}>{Array.from({length:6}).map((_,i)=><div key={i} style={{width:13,height:13,borderRadius:"50%",background:i<pin.length?Y:"transparent",border:`2px solid ${i<pin.length?Y:"#444"}`}} />)}</div>
-     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>{["1","2","3","4","5","6","7","8","9","","0","Borrar"].map((d,i)=><button key={i} onClick={()=>d==="Borrar"?handlePinDel():d?handlePinDigit(d):null} disabled={!d&&d!=="0"} style={{height:54,borderRadius:12,fontSize:d==="Borrar"?12:22,fontWeight:700,cursor:d===""?"default":"pointer",background:d==="Borrar"?"#222":d===""?"transparent":"#1e1e1e",border:d===""?"none":"1px solid #333",color:"#eee",opacity:d===""?0:1}}>{d}</button>)}</div>
-     {pendingMsg && <div style={{color:"#f39c12",fontSize:12,fontWeight:700,marginBottom:10}}>{pendingMsg}</div>}
-     {error && <div style={{color:"#e74c3c",fontSize:12,fontWeight:700,marginBottom:10}}>{error}</div>}
-     <div style={{display:"flex",gap:10,alignItems:"stretch"}}>
-      <button onClick={()=>submitLogin()} disabled={pin.length<4||checking||!selectedRole} style={{...s.btn("primary"),flex:1,padding:14,fontSize:16,opacity:pin.length<4||!selectedRole?0.4:1}}>{checking ? "Verificando..." : "Entrar"}</button>
-      <button
-       onClick={()=>submitLogin({biometrico:true})}
-       disabled={checking || !hasSavedDevice}
-       title={hasSavedDevice ? "Ingresar con huella digital" : "Huella no registrada en este equipo"}
-       aria-label={hasSavedDevice ? "Ingresar con huella digital" : "Huella no registrada en este equipo"}
-       style={{width:56,borderRadius:10,background:hasSavedDevice?"#1f1f1f":"#171717",border:`1px solid ${hasSavedDevice ? `${Y}77` : "#303030"}`,color:hasSavedDevice?Y:"#555",display:"flex",alignItems:"center",justifyContent:"center",cursor:hasSavedDevice?"pointer":"not-allowed",boxShadow:hasSavedDevice?`0 8px 20px ${Y}16`:"none"}}
-      >
-       <FingerprintIcon size={24} color="currentColor" />
-      </button>
      </div>
     </div>
-    )}
-   </div>
-  </div>
- );
-}
+   )}
 
-function AuthSetupModal({ currentUser, onUpdate, s, Y, isMobile }) {
- const [step, setStep] = useState(currentUser?.needsAliasSetup ? "alias" : "biometria");
- const [alias, setAlias] = useState("");
- const [error, setError] = useState("");
- const [saving, setSaving] = useState(false);
-
- useEffect(() => {
-  if (currentUser?.needsAliasSetup) setStep("alias");
-  else if (currentUser?.needsBiometricSetup) setStep("biometria");
- }, [currentUser?.needsAliasSetup, currentUser?.needsBiometricSetup]);
-
- const updateUser = (patch) => onUpdate(patch);
-
- const submitAlias = async () => {
-  if (saving) return;
-  const value = alias.trim();
-  if (value.length < 3) {
-   setError("Usa al menos 3 caracteres.");
-   return;
-  }
-  setSaving(true); setError("");
-  try {
-   await API.auth.registrarNombreClave(value);
-   updateUser({ hasAlias:true, needsAliasSetup:false });
-   setAlias("");
-   if (currentUser?.needsBiometricSetup) setStep("biometria");
-  } catch (err) {
-   setError(err.message || "No se pudo registrar el nombre en clave.");
-  }
-  setSaving(false);
- };
-
- const registerBiometric = async () => {
-  if (saving) return;
-  setSaving(true); setError("");
-  try {
-   const tokenDispositivo = localStorage.getItem(authDeviceKey(currentUser.userId));
-   if (!tokenDispositivo) throw new Error("Primero inicia sesion con PIN en este equipo.");
-   if (!window.PublicKeyCredential || !navigator.credentials) throw new Error("Este navegador no permite huella/passkey.");
-
-   const challenge = new Uint8Array(32);
-   window.crypto.getRandomValues(challenge);
-   const userId = new TextEncoder().encode(`papachos-${currentUser.userId}`);
-   await navigator.credentials.create({
-    publicKey: {
-     challenge,
-     rp: { name: "Mr. Papachos" },
-     user: {
-      id: userId,
-      name: `papachos-${currentUser.userId}`,
-      displayName: currentUser.name || "Usuario",
-     },
-     pubKeyCredParams: [
-      { type: "public-key", alg: -7 },
-      { type: "public-key", alg: -257 },
-     ],
-     authenticatorSelection: { userVerification: "required", residentKey: "preferred" },
-     timeout: 60000,
-     attestation: "none",
-    },
-   });
-   await API.auth.registrarBiometria(tokenDispositivo);
-   updateUser({ hasBiometric:true, needsBiometricSetup:false });
-  } catch (err) {
-   setError(err.message || "No se pudo registrar la huella/passkey.");
-  }
-  setSaving(false);
- };
-
- const skipBiometric = () => {
-  updateUser({ hasBiometric:false, needsBiometricSetup:false });
- };
-
- const isAliasStep = step === "alias" && currentUser?.needsAliasSetup;
- const title = isAliasStep ? "Nombre en clave" : "Huella digital";
- const subtitle = isAliasStep
-  ? "Elige un nombre corto para entrar mas rapido."
-  : "Registra este equipo para entrar con huella o passkey.";
-
- return (
-  <div style={{background:"#111",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",padding:20,fontFamily:"'Nunito',sans-serif"}}>
-   <div style={{width:"100%",maxWidth:430}}>
-    <div style={{textAlign:"center",marginBottom:20}}>
-     <img src="/logo.png" alt="MR. Papachos" style={{width:isMobile?"62vw":"230px",maxWidth:"300px",filter:`drop-shadow(0 0 10px ${Y}55)`}} />
+   {/* ── PASO: ROL ── */}
+   {step === "role" && (
+    <div style={{width:"100%",maxWidth:320}}>
+     <button onClick={() => setStep("local")} style={{...s.btn("secondary"),marginBottom:16,fontSize:11,padding:"4px 12px"}}>← Sucursal</button>
+     <div style={{fontSize:11,color:"#666",textTransform:"uppercase",letterSpacing:1,marginBottom:14,textAlign:"center"}}>
+      ¿Con qué rol ingresas?
+     </div>
+     {loadingStaff
+      ? <div style={{textAlign:"center",color:"#555",padding:20}}>Cargando...</div>
+      : <div style={{display:"flex",flexDirection:"column",gap:10}}>
+         {roleOrder.filter(role => staff.some(u => u.roles.includes(role))).map(role => {
+          const info = ROLE_INFO[role];
+          const count = staff.filter(u => u.roles.includes(role)).length;
+          return (
+           <button key={role} onClick={() => handleSelectRole(role)}
+            style={{...cardBtn, border:`2px solid ${info.color}33`, padding:"16px 20px"}}>
+            <div>
+             <div style={{color:info.color,fontWeight:900,fontSize:15}}>{info.label}</div>
+             <div style={{fontSize:10,color:"#555",marginTop:2}}>{count} usuario{count!==1?"s":""} disponible{count!==1?"s":""}</div>
+            </div>
+           </button>
+          );
+         })}
+        </div>
+     }
     </div>
-    <div style={{...s.card,padding:isMobile?18:22,border:`1px solid ${Y}44`}}>
-     <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:24,color:Y,letterSpacing:1,marginBottom:4,textAlign:"center"}}>{title}</div>
-     <div style={{fontSize:12,color:"#777",textAlign:"center",marginBottom:18}}>{subtitle}</div>
+   )}
 
-     {isAliasStep ? (
-      <>
-       <input
-        style={{...s.input,textAlign:"center",fontSize:16,padding:13,marginBottom:10}}
-        placeholder=""
-        value={alias}
-        onChange={e=>setAlias(e.target.value)}
-        onKeyDown={e=>e.key==="Enter"&&submitAlias()}
-        autoFocus
-        autoComplete="off"
-        spellCheck="false"
-       />
-       {error && <div style={{color:"#e74c3c",fontSize:12,fontWeight:800,textAlign:"center",marginBottom:12}}>{error}</div>}
-       <button onClick={submitAlias} disabled={saving || alias.trim().length < 3} style={{...s.btn("primary"),width:"100%",padding:13,fontSize:14,opacity:alias.trim().length < 3 ? 0.45 : 1}}>
-        {saving ? "Guardando..." : "Guardar nombre en clave"}
+   {/* ── PASO: USUARIO (filtrado por rol) ── */}
+   {step === "user" && (
+    <div style={{width:"100%",maxWidth:320}}>
+     <button onClick={() => setStep("role")} style={{...s.btn("secondary"),marginBottom:16,fontSize:11,padding:"4px 12px"}}>← Roles</button>
+     <div style={{fontSize:11,color:"#666",textTransform:"uppercase",letterSpacing:1,marginBottom:14,textAlign:"center"}}>
+      {ROLE_INFO[selectedRole]?.label} — ¿Quién eres?
+     </div>
+     <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {filteredStaff.map(user => (
+       <button key={user.id} onClick={() => handleSelectUser(user)} style={cardBtn}>
+        <div style={{width:38,height:38,borderRadius:10,background:`${ROLE_INFO[selectedRole]?.color}22`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:18}}>
+         {user.name.charAt(0).toUpperCase()}
+        </div>
+        <div>
+         <div style={{fontSize:15,fontWeight:900,color:"#eee"}}>{user.name}</div>
+         <div style={{fontSize:10,color:"#555",marginTop:2}}>
+          {!user.pinHash && <span style={{color:"#e67e22"}}>Sin PIN (primera vez)</span>}
+          {user.pinHash && <span style={{color:"#27ae60"}}>PIN activo ✓</span>}
+         </div>
+        </div>
        </button>
-      </>
-     ) : (
-      <>
-       <div style={{background:"#111",border:"1px solid #2a2a2a",borderRadius:8,padding:14,marginBottom:14,textAlign:"center"}}>
-        <div style={{fontSize:13,fontWeight:900,color:"#eee"}}>{currentUser.name}</div>
-        <div style={{fontSize:11,color:"#666",marginTop:2}}>Este registro queda solo para este dispositivo.</div>
-       </div>
-       {error && <div style={{color:"#e74c3c",fontSize:12,fontWeight:800,textAlign:"center",marginBottom:12}}>{error}</div>}
-       <button onClick={registerBiometric} disabled={saving} style={{...s.btn("primary"),width:"100%",padding:13,fontSize:14,marginBottom:8}}>
-        {saving ? "Abriendo seguridad..." : "Registrar huella / passkey"}
-       </button>
-       <button onClick={skipBiometric} disabled={saving} style={{...s.btn("secondary"),width:"100%",padding:11,fontSize:12}}>
-        Ahora no
-       </button>
-      </>
+      ))}
+     </div>
+    </div>
+   )}
+
+   {/* ── PASO: PIN ── */}
+   {step === "pin" && selectedUser && (
+    <div style={{width:"100%",maxWidth:290,textAlign:"center"}}>
+     <button onClick={() => { setStep("user"); setPin(""); setError(""); }}
+      style={{...s.btn("secondary"),marginBottom:16,fontSize:11,padding:"4px 12px"}}>← Volver</button>
+     <div style={{fontSize:19,fontWeight:900,marginBottom:3}}>{selectedUser.name}</div>
+     <div style={{fontSize:11,color:"#555",marginBottom:!selectedUser.pinHash?8:20}}>
+      {selectedUser.pinHash ? "Ingresa tu PIN" : "🔑 Primera vez — crea tu PIN"}
+     </div>
+     {!selectedUser.pinHash && (
+      <div style={{fontSize:10,color:"#e67e22",marginBottom:18,padding:"6px 12px",background:"#120e00",borderRadius:8,border:"1px solid #e67e2233"}}>
+       Elige un PIN de 4 a 6 dígitos. Lo usarás cada vez que entres.
+      </div>
      )}
+     <div style={{display:"flex",justifyContent:"center",gap:10,marginBottom:22}}>
+      {Array.from({length:6}).map((_,i) => (
+       <div key={i} style={{width:13,height:13,borderRadius:"50%",transition:"all .15s",
+        background: i < pin.length ? Y : "transparent",
+        border: `2px solid ${i < pin.length ? Y : "#444"}`}} />
+      ))}
+     </div>
+     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>
+      {["1","2","3","4","5","6","7","8","9","","0","⌫"].map((d,i) => (
+       <button key={i} onClick={() => d === "⌫" ? handlePinDel() : d ? handlePinDigit(d) : null}
+        disabled={!d && d !== "0"}
+        style={{height:54,borderRadius:12,fontSize:d==="⌫"?18:22,fontWeight:700,cursor:d===""?"default":"pointer",
+         background:d==="⌫"?"#222":d===""?"transparent":"#1e1e1e",
+         border:d===""?"none":"1px solid #333",color:"#eee",opacity:d===""?0:1}}>
+        {d}
+       </button>
+      ))}
+     </div>
+     {error && <div style={{color:"#e74c3c",fontSize:12,fontWeight:700,marginBottom:10}}>{error}</div>}
+     <button onClick={handlePinSubmit}
+      disabled={pin.length < 4 || checking}
+      style={{...s.btn("primary"),width:"100%",padding:14,fontSize:16,opacity:pin.length<4?0.4:1}}>
+      {checking ? "Verificando..." : selectedUser.pinHash ? "Entrar" : "Crear PIN y entrar"}
+     </button>
     </div>
-   </div>
+   )}
   </div>
  );
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// BOTÓN DE CIERRE UNIVERSAL — visible, hover rojo, fácil de tocar
+// ═══════════════════════════════════════════════════════════════════
 function CloseBtn({ onClose }) {
  return (
  <button
@@ -798,9 +849,56 @@ function CloseBtn({ onClose }) {
 // ═══════════════════════════════════════════════════════════════════
 // MODAL PERSONALIZACIÓN COMBOS / ÍTEMS CON ELECCIÓN OBLIGATORIA
 // ═══════════════════════════════════════════════════════════════════
+const BEBIDAS_SABORES = ["Chicha Morada","Limonada","Maracuyá","Piña","Cebada","Fresa"];
+const BEBIDAS_ESTILOS = ["Normal","Frozen"];
 
-function ComboCustomizacionModal({ item, customization, onConfirm, onClose, s, Y }) {
- const config = customization;
+// Ítems que requieren personalización
+const ITEMS_CON_ELECCION = {
+ "H02": { // Hamburguesa Piolín
+  steps: [
+   { key:"proteina", label:"¿Carne o Pollo?", options:["Carne","Pollo"] },
+  ]
+ },
+ "C01": { // Combo Personal
+  steps: [
+   { key:"plato", label:"¿Qué plato deseas?", options:["Hamburguesa Piolín","Salchipapa Sencilla"] },
+   { key:"bebida_sabor", label:"¿Sabor de la bebida (vaso)?", options: BEBIDAS_SABORES },
+  ]
+ },
+ "C02": { // Combo Cajacho
+  steps: [
+   { key:"bebida_sabor", label:"¿Sabor de la bebida (1L)?", options: BEBIDAS_SABORES },
+   { key:"bebida_estilo", label:"¿Normal o Frozen?", options: BEBIDAS_ESTILOS },
+  ]
+ },
+ "C03": { // Combo Familiar
+  steps: [
+   { key:"bebida_sabor", label:"¿Sabor de la bebida (1.5L)?", options: BEBIDAS_SABORES },
+   { key:"bebida_estilo", label:"¿Normal o Frozen?", options: BEBIDAS_ESTILOS },
+  ]
+ },
+ "C04": { // Combo Papachos
+  steps: [
+   { key:"bebida_sabor", label:"¿Sabor de la bebida (2L)?", options: BEBIDAS_SABORES },
+   { key:"bebida_estilo", label:"¿Normal o Frozen?", options: BEBIDAS_ESTILOS },
+  ]
+ },
+ "R01": { // Ronda de Sabores 20pz
+  steps: [
+   { key:"bebida_sabor", label:"¿Sabor de la bebida (1L)?", options: BEBIDAS_SABORES },
+   { key:"bebida_estilo", label:"¿Normal o Frozen?", options: BEBIDAS_ESTILOS },
+  ]
+ },
+ "R02": { // Ronda de Sabores XL 30pz
+  steps: [
+   { key:"bebida_sabor", label:"¿Sabor de la bebida (1.5L)?", options: BEBIDAS_SABORES },
+   { key:"bebida_estilo", label:"¿Normal o Frozen?", options: BEBIDAS_ESTILOS },
+  ]
+ },
+};
+
+function ComboCustomizacionModal({ item, onConfirm, onClose, s, Y }) {
+ const config = ITEMS_CON_ELECCION[item.id];
  const [stepIdx, setStepIdx] = useState(0);
  const [selections, setSelections] = useState({});
 
@@ -814,9 +912,14 @@ function ComboCustomizacionModal({ item, customization, onConfirm, onClose, s, Y
   setSelections(newSel);
   if (isLast) {
    // Build note string from selections
-   const stepsByKey = Object.fromEntries((config.steps || []).map(s => [s.key, s]));
    const noteStr = Object.entries(newSel)
-    .map(([k, v]) => `${stepsByKey[k]?.noteLabel || stepsByKey[k]?.label || k}: ${v}`)
+    .map(([k, v]) => {
+     if (k === "proteina") return `Proteína: ${v}`;
+     if (k === "plato") return `Plato: ${v}`;
+     if (k === "bebida_sabor") return `Bebida: ${v}`;
+     if (k === "bebida_estilo") return v;
+     return v;
+    })
     .join(" · ");
    onConfirm(item, newSel, noteStr);
   } else {
@@ -862,9 +965,8 @@ function ComboCustomizacionModal({ item, customization, onConfirm, onClose, s, Y
 
 
 // ═══════════════════════════════════════════════════════════════════
-function SalsasModalComponent({ initialSalsas = [], salsaOptions = [], onSave, onClose, s, Y }) {
+function SalsasModalComponent({ initialSalsas = [], onSave, onClose, s, Y }) {
  const [selected, setSelected] = useState(initialSalsas);
- const salsaNames = salsaOptions.map(s => typeof s === "string" ? s : (s?.name || s?.nombre)).filter(Boolean);
 
  const toggleSalsa = (salsa) => {
  if (selected.find(x => x.name === salsa)) {
@@ -892,7 +994,7 @@ function SalsasModalComponent({ initialSalsas = [], salsaOptions = [], onSave, o
  </div>
  
  <div style={{ display:"flex", gap:6, marginTop:6, flexWrap:"wrap", marginBottom:16 }}>
- {salsaNames.map(salsa => {
+ {SALSAS_ALITAS.map(salsa => {
  const isSelected = selected.find(x => x.name === salsa);
  return (
  <button key={salsa} 
@@ -998,7 +1100,7 @@ function SplitBillModal({ order, onProceed, onClose, s, Y, fmt }) {
 // ═══════════════════════════════════════════════════════════════════
 // MODAL DE EDICIÓN
 // ═══════════════════════════════════════════════════════════════════
-function EditOrderModal({ order, onSave, onClose, menu, appConfig, isMobile, s, Y, isAdmin=true, currentUser, onRequestPrecio }) {
+function EditOrderModal({ order, onSave, onClose, menu, isMobile, s, Y, isAdmin=true, currentUser, onRequestPrecio }) {
  const [eTable, setETable] = useState(order.table);
  const [eItems, setEItems] = useState(order.items.map(i => ({ ...i, individualNotes: i.individualNotes || Array(i.qty).fill("") })));
  const [eNotes, setENotes] = useState(order.notes || "");
@@ -1007,7 +1109,6 @@ function EditOrderModal({ order, onSave, onClose, menu, appConfig, isMobile, s, 
 
  const [eCat, setECat] = useState("Todos");
  const [eSearch, setESearch] = useState("");
- const eCats = [...new Set(menu.map(i => i.cat).filter(Boolean))];
  const [salsasModal, setSalsasModal] = useState(null);
  const [editingPrice, setEditingPrice] = useState(null); // { cartId, value, motivo }
 
@@ -1065,10 +1166,9 @@ function EditOrderModal({ order, onSave, onClose, menu, appConfig, isMobile, s, 
  const [eComboModal, setEComboModal] = useState(null);
 
  const handleCartaClick = (item) => {
- const customization = getItemCustomization(item, appConfig);
- if (customization) {
- setEComboModal({ item, customization });
- } else if (itemNeedsSalsas(item, appConfig)) {
+ if (ITEMS_CON_ELECCION[item.id]) {
+ setEComboModal(item);
+ } else if (["Alitas", "Alichaufa", "Rondas"].includes(item.cat)) {
  setSalsasModal({ itemToAdd: item, salsas: [] });
  } else {
  eAddItem(item);
@@ -1078,7 +1178,7 @@ function EditOrderModal({ order, onSave, onClose, menu, appConfig, isMobile, s, 
  return (
  <div style={s.modal} onClick={e => e.stopPropagation()}>
  {eComboModal && (
- <ComboCustomizacionModal item={eComboModal.item} customization={eComboModal.customization} s={s} Y={Y}
+ <ComboCustomizacionModal item={eComboModal} s={s} Y={Y}
   onClose={() => setEComboModal(null)}
   onConfirm={(item, selections, noteStr) => {
    const cartId = `${item.id}-${Date.now()}`;
@@ -1088,9 +1188,8 @@ function EditOrderModal({ order, onSave, onClose, menu, appConfig, isMobile, s, 
  />
  )}
  {salsasModal && (
-      <SalsasModalComponent
-        initialSalsas={salsasModal.salsas}
-  salsaOptions={getSalsaOptions(salsasModal.itemToAdd, appConfig)}
+ <SalsasModalComponent 
+ initialSalsas={salsasModal.salsas} 
  onSave={(salsas) => {
  if (salsasModal.itemToAdd) {
  const customizedItem = { ...salsasModal.itemToAdd, cartId: `${salsasModal.itemToAdd.id}-${Date.now()}`, salsas };
@@ -1114,9 +1213,8 @@ function EditOrderModal({ order, onSave, onClose, menu, appConfig, isMobile, s, 
  <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Tipo de pedido</label>
  <div style={{ display:"flex", gap:6, marginTop:4 }}>
  {["mesa","llevar"].map(t => (
- <button key={t} style={{ ...s.btn(eOrderType===t?"primary":"secondary"), flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}
+ <button key={t} style={{ ...s.btn(eOrderType===t?"primary":"secondary"), flex:1 }}
  onClick={() => { setEOrderType(t); }}>
- <OrderTypeIcon type={t} size={18} color={eOrderType===t ? "#111" : (t==="mesa" ? Y : "#5dade2")} />
  {t==="mesa"?"Mesa":"Para llevar"}
  </button>
  ))}
@@ -1146,7 +1244,7 @@ function EditOrderModal({ order, onSave, onClose, menu, appConfig, isMobile, s, 
  <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8, paddingBottom:8, borderBottom:"1px solid #252525" }}>
  <div style={{ flex:1, fontSize:14, fontWeight:700 }}>
  {item.name} {item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"2px 6px", fontSize:10, fontWeight:700}}>(Llevar)</span>}
- {itemNeedsSalsas(item, appConfig) && (
+ {["Alitas", "Alichaufa", "Rondas"].includes(item.cat) && (
  <button style={{...s.btn("secondary"), padding:"2px 6px", fontSize:10, marginLeft:6}} onClick={() => setSalsasModal({cartId: item.cartId, salsas: item.salsas || []})}>
  Salsas
  </button>
@@ -1155,7 +1253,7 @@ function EditOrderModal({ order, onSave, onClose, menu, appConfig, isMobile, s, 
  <button
   style={{...s.btn(item.isLlevar?"blue":"secondary"), padding:"2px 8px", fontSize:10, marginLeft:6}}
   onClick={() => setEItems(prev=>prev.map(i=>i.cartId===item.cartId?{...i,isLlevar:!i.isLlevar}:i))}>
-  {item.isLlevar?"Llevar":"Mesa"}
+  {item.isLlevar?"🥡 Llevar":"🍽 Mesa"}
  </button>
  )}
  </div>
@@ -1277,7 +1375,7 @@ function EditOrderModal({ order, onSave, onClose, menu, appConfig, isMobile, s, 
  <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1 }}>Agregar más productos</label>
  <input style={{ ...s.input, marginTop:4, marginBottom:6 }} placeholder="Buscar..." value={eSearch} onChange={e => setESearch(e.target.value)} />
  <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:6 }}>
- {["Todos",...eCats].map(c => (
+ {["Todos",...ALL_CATS].map(c => (
  <button key={c} style={{ ...s.btn(eCat===c?"primary":"secondary"), fontSize:9, padding:"3px 7px" }} onClick={() => setECat(c)}>{c}</button>
  ))}
  </div>
@@ -1326,31 +1424,6 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
  const displayItems = orderContext.splitItems
   ? orderContext.splitItems.filter(i => i.splitQty > 0).map(i => ({...i, qty: i.splitQty}))
   : (orderContext.items || []);
- const [comprobanteTipo, setComprobanteTipo] = useState("ticket");
- const [docNumero, setDocNumero] = useState("");
- const [clienteNombre, setClienteNombre] = useState("");
- const [clienteDireccion, setClienteDireccion] = useState("");
- const [docLookupMsg, setDocLookupMsg] = useState("");
- const [docLookupLoading, setDocLookupLoading] = useState(false);
- const docDigits = docNumero.replace(/\D/g, "");
- const comprobanteSeleccionado = comprobanteTipo !== "ticket";
- const comprobanteError = comprobanteTipo === "01"
-  ? (docDigits.length !== 11 ? "La factura requiere RUC de 11 digitos." : !clienteNombre.trim() ? "Ingresa la razon social." : "")
-  : "";
- const comprobanteReady = !comprobanteSeleccionado || !comprobanteError;
- const lookupDocumento = async () => {
-  if (!docDigits) return;
-  setDocLookupLoading(true); setDocLookupMsg("");
-  try {
-   const data = await API.facturacion.consultarDocumento({ tipo: comprobanteTipo === "01" ? "RUC" : "DNI", numero: docDigits });
-   setClienteNombre(data.razon_social || data.razonSocial || data.nombre || data.nombre_completo || clienteNombre);
-   setClienteDireccion(data.direccion || data.domicilio || clienteDireccion);
-   setDocLookupMsg("Datos cargados");
-  } catch (err) {
-   setDocLookupMsg(err.message || "Consulta no disponible");
-  }
-  setDocLookupLoading(false);
- };
 
  // Compute effective price per item based on its own mode
  const getItemEffective = (item) => {
@@ -1398,7 +1471,6 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
  };
 
  const handleConfirm = () => {
-  if (!comprobanteReady) return;
   onConfirm({
    efectivo: Number(ef||0), yape: Number(ya||0), tarjeta: Number(ta||0),
    descuentoPct: descMode === "pct" ? (Number(descPct)||0) : 0,
@@ -1406,15 +1478,6 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
    descuentoMotivo: descMotivo,
    totalOriginal: total, totalFinal,
    itemDiscounts: hasItemDiscounts ? itemDiscounts : undefined,
-   comprobante: comprobanteSeleccionado ? {
-    tipo_comprobante: comprobanteTipo,
-    cliente: {
-     tipo_documento: comprobanteTipo === "01" ? "6" : (docDigits ? "1" : "0"),
-     numero_documento: docDigits,
-     razon_social: clienteNombre.trim(),
-     direccion: clienteDireccion.trim(),
-    },
-   } : null,
   });
  };
 
@@ -1607,58 +1670,6 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
     <input style={s.input} placeholder="Motivo (opcional)" value={descMotivo}
      onChange={e => setDescMotivo(e.target.value)} spellCheck="false" />
    </div>
- )}
- </div>
-
- <div style={{background:"#111", border:"1px solid #303030", borderRadius:8, padding:"12px 14px", marginBottom:12}}>
-  <div style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, marginBottom:8}}>Comprobante electronico</div>
-  <div style={{display:"flex", gap:6, marginBottom: comprobanteSeleccionado ? 10 : 0}}>
-   {[
-    ["ticket", "Ticket"],
-    ["03", "Boleta"],
-    ["01", "Factura"],
-   ].map(([id, label]) => (
-    <button key={id} style={{...s.btn(comprobanteTipo===id?"primary":"secondary"), flex:1, padding:"7px 8px", fontSize:12}}
-     onClick={() => {
-      setComprobanteTipo(id);
-      if (id === "ticket") { setDocNumero(""); setClienteNombre(""); setClienteDireccion(""); }
-     }}>
-     {label}
-    </button>
-   ))}
-  </div>
-  {comprobanteSeleccionado && (
-   <div style={{display:"flex", flexDirection:"column", gap:8}}>
-    <div style={{display:"flex", gap:6}}>
-     <input
-      style={s.input}
-      placeholder={comprobanteTipo === "01" ? "RUC" : "DNI (opcional)"}
-      value={docNumero}
-      onChange={e => setDocNumero(e.target.value)}
-      inputMode="numeric"
-      spellCheck="false"
-     />
-     <button style={{...s.btn("secondary"), padding:"7px 10px"}} onClick={lookupDocumento} disabled={!docDigits || docLookupLoading}>
-      {docLookupLoading ? "..." : "Buscar"}
-     </button>
-    </div>
-    <input
-     style={s.input}
-     placeholder={comprobanteTipo === "01" ? "Razon social" : "Nombre del cliente (opcional)"}
-     value={clienteNombre}
-     onChange={e => setClienteNombre(e.target.value)}
-     spellCheck="false"
-    />
-    <input
-     style={s.input}
-     placeholder="Direccion (opcional)"
-     value={clienteDireccion}
-     onChange={e => setClienteDireccion(e.target.value)}
-     spellCheck="false"
-    />
-    {docLookupMsg && <div style={{color:docLookupMsg === "Datos cargados" ? "#27ae60" : "#e67e22", fontSize:11, fontWeight:800, textAlign:"center"}}>{docLookupMsg}</div>}
-    {comprobanteError && <div style={{color:"#e74c3c", fontSize:12, fontWeight:800, textAlign:"center"}}>{comprobanteError}</div>}
-   </div>
   )}
  </div>
 
@@ -1684,8 +1695,8 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
  )}
 
  <button
-  style={{...s.btn("success"), width:"100%", padding:14, fontSize:16, opacity: Math.abs(diff)>0.01 || !comprobanteReady ? 0.45 : 1}}
-  onClick={handleConfirm} disabled={Math.abs(diff)>0.01 || !comprobanteReady}>
+  style={{...s.btn("success"), width:"100%", padding:14, fontSize:16, opacity: Math.abs(diff)>0.01 ? 0.45 : 1}}
+  onClick={handleConfirm} disabled={Math.abs(diff)>0.01}>
   ✅ Confirmar Cobro {totalDescuento > 0 ? `(ahorro −${fmt(totalDescuento)})` : ""}
  </button>
  </div>
@@ -1695,22 +1706,20 @@ function CobrarModal({ orderContext, total, onConfirm, onClose, s, Y }) {
 // ═══════════════════════════════════════════════════════════════════
 // NUEVO PEDIDO (Carrito)
 // ═══════════════════════════════════════════════════════════════════
-function NuevoPedidoComponent({ draft, setDraft, menu, appConfig, addItem, changeQty, updateIndividualNote, draftTotal, fmt, submitOrder, newDraft, s, Y, isDesktop, isMobile, isTablet, mesasArr, cajaAbierta }) {
+function NuevoPedidoComponent({ draft, setDraft, menu, addItem, changeQty, updateIndividualNote, draftTotal, fmt, submitOrder, newDraft, s, Y, isDesktop, isMobile, isTablet, mesasArr, cajaAbierta }) {
  const [search, setSearch] = useState("");
  const [catFilter, setCatFilter] = useState("Todos");
  const [showCartModal, setShowCartModal] = useState(false);
  const [salsasModal, setSalsasModal] = useState(null);
  const [comboModal, setComboModal] = useState(null); // item requiring customization
- const menuCats = [...new Set(menu.map(i => i.cat).filter(Boolean))];
 
  const filteredMenu = menu.filter(i => (catFilter === "Todos" || i.cat === catFilter) && i.name.toLowerCase().includes(search.toLowerCase()));
  const itemCount = draft.items.reduce((sum, i) => sum + i.qty, 0);
 
  const handleCartaClick = (item) => {
- const customization = getItemCustomization(item, appConfig);
- if (customization) {
- setComboModal({ item, customization });
- } else if (itemNeedsSalsas(item, appConfig)) {
+ if (ITEMS_CON_ELECCION[item.id]) {
+ setComboModal(item);
+ } else if (["Alitas", "Alichaufa", "Rondas"].includes(item.cat)) {
  setSalsasModal({ itemToAdd: item, salsas: [] });
  } else {
  addItem(item);
@@ -1730,7 +1739,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, appConfig, addItem, chang
      />
    )}
    {comboModal && (
-      <ComboCustomizacionModal item={comboModal.item} customization={comboModal.customization} s={s} Y={Y}
+     <ComboCustomizacionModal item={comboModal} s={s} Y={Y}
        onClose={() => setComboModal(null)}
        onConfirm={(item, selections, noteStr) => {
          const cartId = `${item.id}-${Date.now()}`;
@@ -1750,10 +1759,9 @@ function NuevoPedidoComponent({ draft, setDraft, menu, appConfig, addItem, chang
      <label style={{ fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, display:"block", marginBottom:4 }}>Tipo de pedido</label>
      <div style={{ display:"flex", gap:6 }}>
        {["mesa","llevar"].map(t => (
-         <button key={t} style={{ ...s.btn(draft.orderType===t?"primary":"secondary"), flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}
+         <button key={t} style={{ ...s.btn(draft.orderType===t?"primary":"secondary"), flex:1 }}
            onClick={() => setDraft(d => ({...d, orderType:t, taperCost:0, payTiming: "despues", table:"", phone:"", deliveryAddress:""}))}>
-           <OrderTypeIcon type={t} size={18} color={draft.orderType===t ? "#111" : (t==="mesa" ? Y : "#5dade2")} />
-           {t==="mesa" ? "Mesa" : "Para llevar"}
+           {t==="mesa" ? "🍽 Mesa" : "🥡 Para llevar"}
          </button>
        ))}
      </div>
@@ -1818,7 +1826,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, appConfig, addItem, chang
                  <div style={{ flex:1 }}>
                    <div style={{ fontWeight:700, fontSize:14 }}>
                      {item.name} 
-                      {itemNeedsSalsas(item, appConfig) && (
+                     {["Alitas", "Alichaufa", "Rondas"].includes(item.cat) && (
                        <button style={{...s.btn("secondary"), padding:"2px 6px", fontSize:10, marginLeft:6}} onClick={() => setSalsasModal({cartId: item.cartId, salsas: item.salsas || []})}>
                          Salsas
                        </button>
@@ -1828,7 +1836,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, appConfig, addItem, chang
                      <button
                        style={{...s.btn(item.isLlevar?"blue":"secondary"), padding:"2px 8px", fontSize:10, marginTop:4}}
                        onClick={() => setDraft(d => ({...d, items: d.items.map(i => i.cartId===item.cartId ? {...i, isLlevar:!i.isLlevar} : i)}))}>
-                       {item.isLlevar ? "Para llevar" : "Para mesa"}
+                       {item.isLlevar ? "🥡 Para llevar" : "🍽 Para mesa"}
                      </button>
                    )}
                  </div>
@@ -1865,7 +1873,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, appConfig, addItem, chang
        <span style={{ fontWeight:900, fontSize:17, color:Y }}>{fmt(draftTotal)}</span>
      </div>
 
-      <button style={{ ...s.btn(), width:"100%", padding:16, fontSize:16, opacity:(!cajaAbierta || (draft.orderType==="mesa" && !draft.table) || !draft.items.length)?0.4:1 }}
+     <button style={{ ...s.btn(), width:"100%", padding:16, fontSize:16, opacity:((!cajaAbierta) || (draft.orderType==="mesa" && !draft.table || !draft.items.length))?0.4:1 }}
        onClick={() => { submitOrder(); if(isMobile) setShowCartModal(false); }} disabled={!cajaAbierta || (draft.orderType==="mesa" && !draft.table) || !draft.items.length}>
        {!cajaAbierta ? "🔴 Caja cerrada" : draft.payTiming==="ahora" ? " Continuar al Cobro" : " Enviar a Cocina"}
      </button>
@@ -1888,8 +1896,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, appConfig, addItem, chang
  )}
  {salsasModal && salsasModal.itemToAdd && (
  <SalsasModalComponent 
-  initialSalsas={[]}
-  salsaOptions={getSalsaOptions(salsasModal.itemToAdd, appConfig)}
+ initialSalsas={[]} 
  onSave={(salsas) => {
  const customizedItem = { ...salsasModal.itemToAdd, cartId: `${salsasModal.itemToAdd.id}-${Date.now()}`, salsas };
  addItem(customizedItem);
@@ -1899,7 +1906,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, appConfig, addItem, chang
  />
  )}
  {comboModal && !comboModal._fromCart && (
- <ComboCustomizacionModal item={comboModal.item} customization={comboModal.customization} s={s} Y={Y}
+ <ComboCustomizacionModal item={comboModal} s={s} Y={Y}
   onClose={() => setComboModal(null)}
   onConfirm={(item, selections, noteStr) => {
    const cartId = `${item.id}-${Date.now()}`;
@@ -1912,7 +1919,7 @@ function NuevoPedidoComponent({ draft, setDraft, menu, appConfig, addItem, chang
  <div style={s.title}> CARTA</div>
  <input style={{ ...s.input, marginBottom:8 }} placeholder="Buscar platillo..." value={search} onChange={e => setSearch(e.target.value)} />
  <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:10 }}>
- {["Todos",...menuCats].map(c => <button key={c} style={{ ...s.btn(catFilter===c?"primary":"secondary"), fontSize: isMobile?9:10, padding: isMobile?"3px 6px":"4px 10px" }} onClick={() => setCatFilter(c)}>{c}</button>)}
+ {["Todos",...ALL_CATS].map(c => <button key={c} style={{ ...s.btn(catFilter===c?"primary":"secondary"), fontSize: isMobile?9:10, padding: isMobile?"3px 6px":"4px 10px" }} onClick={() => setCatFilter(c)}>{c}</button>)}
  </div>
  <div>
  {filteredMenu.length === 0 && <div style={{ color:"#555", textAlign:"center", padding:20 }}>Sin resultados</div>}
@@ -2034,7 +2041,7 @@ function printKitchenTicket(order) {
  <table>${itemRows}</table>
  ${notes}
  <div class="footer">— COCINA · MR. PAPACHOS —</div>
-  <script>window.onload=()=>window.print()</script>
+ <script>window.onload=()=>window.print()<\/script>
 </body></html>`;
  openTicketWindow(html);
 }
@@ -2104,7 +2111,7 @@ function printConsumerTicket(order, opts = {}) {
  ${notes}
  ${totalSection}
  <div class="footer">— GRACIAS POR SU VISITA —</div>
-  <script>window.onload=()=>window.print()</script>
+ <script>window.onload=()=>window.print()<\/script>
 </body></html>`;
  openTicketWindow(html);
 }
@@ -2131,20 +2138,13 @@ function printSplitTicket(order, selectedItems, splitIdx, splitTotal) {
 // COMPONENTES SECUNDARIOS
 // ═══════════════════════════════════════════════════════════════════
 function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, setCobrarTarget, isMobile, s, Y, caja, abrirCaja, cerrarCaja, currentUser, getPay, soundConfig, setSoundConfig }) {
- const isAdmin = hasRole(currentUser, "admin");
+ const isAdmin = currentUser?.id === "admin";
  const [fondoInput, setFondoInput] = useState("");
  const [showCierreModal, setShowCierreModal] = useState(false);
  const [cierreData, setCierreData] = useState(null);
  const [showSoundPanel, setShowSoundPanel] = useState(false);
 
  const testSound = () => { playBeeps(soundConfig); speak("Prueba de sonido"); };
- const descargarAsistencia = async (formato) => {
-  try {
-   await downloadWithAuth(API.asistencia.exportUrl({ formato }), `asistencias.${formato === "pdf" ? "pdf" : "xlsx"}`);
-  } catch (err) {
-   window.alert(err.message || "No se pudo descargar el reporte");
-  }
- };
 
  // Midnight warning
  const [showMidnightWarning, setShowMidnightWarning] = useState(false);
@@ -2289,19 +2289,6 @@ const totalEnCaja = (caja?.fondoInicial||0) + cashRev;
    </div>
   )}
 
-  {isAdmin && (
-   <div style={{...s.card, marginBottom:16, display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, flexWrap:"wrap"}}>
-    <div>
-     <div style={{fontWeight:900, color:"#eee", fontSize:14}}>Asistencia de jornada</div>
-     <div style={{fontSize:11, color:"#666", marginTop:2}}>Reporte listo para cierre administrativo</div>
-    </div>
-    <div style={{display:"flex", gap:8}}>
-     <button style={{...s.btn("secondary"), padding:"8px 12px"}} onClick={() => descargarAsistencia("xlsx")}>Excel</button>
-     <button style={{...s.btn("secondary"), padding:"8px 12px"}} onClick={() => descargarAsistencia("pdf")}>PDF</button>
-    </div>
-   </div>
-  )}
-
   {/* ── PANEL SONIDO COCINA (admin) ── */}
   {isAdmin && (
    <div style={{...s.card, marginBottom:16, border:"1px solid #333"}}>
@@ -2420,7 +2407,7 @@ const totalEnCaja = (caja?.fondoInicial||0) + cashRev;
 function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, finishPaidOrder, setCobrarTarget, setSplitTarget, setEditingOrder, printOrder, cancelOrder, setAnulacionModal, isMobile, isTablet, s, Y, fmt, mesasArr, addMesa, removeMesa, currentUser }) {
  const llevarOrders = orders.filter(o => o.orderType==="llevar" && !o.anulado);
  // Solo admin y cajero pueden cobrar pedidos para llevar
- const canCobrarLlevar = hasRole(currentUser, "admin") || hasRole(currentUser, "cajero");
+ const canCobrarLlevar = currentUser?.id === 'admin' || currentUser?.id === 'cajero';
  
  return (
  <div>
@@ -2428,17 +2415,14 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
  <div style={{display:"flex", alignItems:"center", gap:12}}>
  <div style={s.title}> MESAS ({mesasArr.length})</div>
  {/* Solo el Admin puede agregar o quitar mesas */}
- {hasRole(currentUser, "admin") && (
+ {currentUser?.id === 'admin' && (
  <div style={{display:"flex", gap:4, marginBottom:10}}>
  <button style={{...s.btn("danger"), padding:"4px 12px", fontSize:18}} onClick={removeMesa}>-</button>
  <button style={{...s.btn("success"), padding:"4px 12px", fontSize:18}} onClick={addMesa}>+</button>
  </div>
  )}
  </div>
- <button style={{...s.btn(), display:"flex", alignItems:"center", gap:8}} onClick={() => { setDraft({...newDraft(), orderType:"llevar", payTiming:"ahora"}); setTab("nuevo"); }}>
-  <OrderTypeIcon type="llevar" size={17} color="#111" />
-  Para llevar
- </button>
+ <button style={s.btn()} onClick={() => { setDraft({...newDraft(), orderType:"llevar", payTiming:"ahora"}); setTab("nuevo"); }}>Para llevar</button>
  </div>
 
  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(3, 1fr)", gridAutoRows: isTablet ? "minmax(25vh, auto)" : "auto", gap: isMobile ? 12 : 20, marginBottom:20 }}>
@@ -2446,11 +2430,11 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
  const mesaOrders = orders.filter(o => o.table===String(num) && o.orderType!=="llevar" && !o.anulado);
  const ocupada = mesaOrders.length > 0;
  const total = mesaOrders.reduce((sum,o) => sum + o.total, 0);
- const serviceTypes = getMesaServiceTypes(mesaOrders);
+ const hasMixto = mesaOrders.some(o => (o.items||[]).some(i=>i.isLlevar));
  return (
  <div key={num} onClick={() => setMesaModal(num)} style={{ background:ocupada?`${Y}15`:"#1c1c1c", border:`2px solid ${ocupada?Y:"#2a2a2a"}`, borderRadius:14, padding: "24px 16px", minHeight: isMobile ? 140 : isTablet ? "25vh" : 160, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", cursor:"pointer", textAlign:"center", position:"relative" }}>
- {ocupada && <div style={{position:"absolute", top:12, left:12, width:12, height:12, borderRadius:"50%", background:"#27ae60", boxShadow:"0 0 8px #27ae60"}}/>}
- {ocupada && <OrderTypeBadgeGroup types={serviceTypes} Y={Y} />}
+ {ocupada && <div style={{position:"absolute", top:10, right:10, width:12, height:12, borderRadius:"50%", background:"#27ae60", boxShadow:"0 0 8px #27ae60"}}/>}
+ {hasMixto && <div style={{position:"absolute", top:10, left:10, background:"#154360", color:"#3498db", borderRadius:6, padding:"1px 7px", fontSize:10, fontWeight:800}}>🥡 Mixto</div>}
  <IconoMesa color={ocupada ? Y : "#ffffff"} size={isMobile ? 80 : 100} />
  <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:24, color:ocupada?Y:"#555", letterSpacing:1}}>MESA {num}</div>
  <div style={{fontSize:12, color:ocupada?"#aaa":"#444", marginTop:6}}>{ocupada?`${mesaOrders.length} pedido${mesaOrders.length>1?"s":""} · ${fmt(total)}`:"Libre"}</div>
@@ -2484,9 +2468,9 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
   ) : (
    canCobrarLlevar && <button style={{...s.btn("success"), flex:1}} onClick={() => setCobrarTarget({type:'existing', data:o})}>💰 Cobrar</button>
   )}
-  {hasRole(currentUser, "admin") && <button style={{...s.btn("warn"), padding:"7px 10px"}} onClick={() => setEditingOrder(o)}>✏️</button>}
+  {currentUser?.id === 'admin' && <button style={{...s.btn("warn"), padding:"7px 10px"}} onClick={() => setEditingOrder(o)}>✏️</button>}
   <button style={s.btn("secondary")} onClick={() => printOrder(o)}>🖨</button>
-  {hasRole(currentUser, "admin") && (
+  {currentUser?.id === 'admin' && (
   <button style={{...s.btn("danger"), padding:"7px 10px"}} onClick={() => setAnulacionModal(o)}>🚫</button>
   )}
   </div>
@@ -2501,8 +2485,8 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
 function MesaModalComponent({ num, orders, setDraft, newDraft, onClose, setTab, setCobrarTarget, setSplitTarget, setEditingOrder, setAnulacionModal, printOrder, isMobile, s, Y, fmt, currentUser, crearSolicitud, isAdmin }) {
  const mesaOrders = orders.filter(o => o.table===String(num) && o.orderType!=="llevar" && !o.anulado)
   .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)); // más reciente arriba
- const isMesero = hasRole(currentUser, "mesero");
- const canCobrar = isAdmin || hasRole(currentUser, "cajero");
+ const isMesero = currentUser?.id === 'mesero';
+ const canCobrar = isAdmin || currentUser?.id === 'cajero';
  return (
  <div style={s.modal} onClick={e => e.stopPropagation()}>
  <div style={{...s.row, marginBottom:14}}>
@@ -2528,7 +2512,7 @@ function MesaModalComponent({ num, orders, setDraft, newDraft, onClose, setTab, 
  </div>
  {item.salsas?.length > 0 && <div style={{fontSize:11, color:Y, paddingLeft:4, marginTop:2}}> {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>}
  {item._comboNote && <div style={{fontSize:11, color:"#3498db", paddingLeft:4, marginTop:2}}>🎯 {item._comboNote}</div>}
- {validNotes.map((n, idx) => <div key={idx} style={{fontSize:11, color:"#999", fontStyle:"italic", paddingLeft:4, marginTop:2, whiteSpace:"pre-wrap"}}>â"" Plato {idx+1}: {n}</div>)}
+ {validNotes.map((n, idx) => <div key={idx} style={{fontSize:11, color:"#999", fontStyle:"italic", paddingLeft:4, marginTop:2, whiteSpace:"pre-wrap"}}>└ Plato {idx+1}: {n}</div>)}
  </div>
  )})}
  </div>
@@ -2887,13 +2871,11 @@ function AnulacionModal({ order, onConfirm, onRequest, onClose, menu, s, Y, fmt,
  );
 }
 
-function PedidosComponent({ orders, toggleItemCheck, setTab, finishPaidOrder, setCobrarTarget,
-  setSplitTarget, setEditingOrder, printOrder, cancelOrder, setConfirmDelete,
-  setAnulacionModal, currentUser, isMobile, s, Y, fmt, beverageCategories = [] }) {
+function PedidosComponent({ orders, toggleItemCheck, setTab, finishPaidOrder, setCobrarTarget, setSplitTarget, setEditingOrder, printOrder, cancelOrder, setConfirmDelete, setAnulacionModal, currentUser, isMobile, s, Y, fmt }) {
  const [splitOpenId, setSplitOpenId] = useState(null);
- const isAdmin = hasRole(currentUser, "admin");
- const isCajero = hasRole(currentUser, "cajero");
- const isMesero = hasRole(currentUser, "mesero");
+ const isAdmin = currentUser?.id === 'admin';
+ const isCajero = currentUser?.id === 'cajero';
+ const isMesero = currentUser?.id === 'mesero';
  // Solo admin y cajero pueden cobrar — meseros NUNCA
  const canCobrar = isAdmin || isCajero;
  const canDelete = isAdmin;
@@ -2920,7 +2902,108 @@ function PedidosComponent({ orders, toggleItemCheck, setTab, finishPaidOrder, se
  {(isAdmin || isMesero) && <button style={s.btn()} onClick={() => setTab("nuevo")}>+ Nuevo</button>}
  </div>
 
- {/* ── SECCIÓN: Para llevar esperando cobro ── */}
+ {/* ── SECCIÓN BARRA: Solo para meseros — sus bebidas pendientes ── */}
+ {currentUser?.id === 'mesero' && (() => {
+  const myDrinkOrders = activeOrders
+   .filter(o => o._mesero === currentUser?.name || o._adicionPor === currentUser?.name)
+   .map(o => {
+    const drinks = (o.items||[]).map((item,i) => ({item,i}))
+     .filter(({item}) => BEVERAGE_CATS.includes(item.cat));
+    return { order: o, drinks };
+   })
+   .filter(({drinks}) => drinks.length > 0);
+
+  if (myDrinkOrders.length === 0) return null;
+
+  const totalDrinks = myDrinkOrders.reduce((s,{drinks})=>s+drinks.length,0);
+  const doneDrinks  = myDrinkOrders.reduce((s,{order,drinks}) => {
+   const checks = order.itemChecks||{};
+   return s + drinks.filter(({item,i}) => {
+    let v=checks[i]; if(v===true) v=item.qty;
+    return Number(v||0)===item.qty;
+   }).length;
+  },0);
+
+  return (
+   <div style={{marginBottom:20}}>
+    <div style={{display:"flex", alignItems:"center", gap:10, marginBottom:10}}>
+     <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:isMobile?17:20, color:"#3498db", letterSpacing:1}}>
+      🥤 BARRA — TUS BEBIDAS
+     </div>
+     <span style={{background:"#3498db22", color:"#3498db", borderRadius:12, padding:"2px 10px", fontSize:11, fontWeight:900, border:"1px solid #3498db44"}}>
+      {doneDrinks}/{totalDrinks} servidas
+     </span>
+    </div>
+
+    {myDrinkOrders.map(({order, drinks}) => {
+     const checks = order.itemChecks||{};
+     const allDone = drinks.every(({item,i}) => {
+      let v=checks[i]; if(v===true) v=item.qty; return Number(v||0)===item.qty;
+     });
+
+     return (
+      <div key={order.id} style={{
+       background: allDone?"#0a1a0a":"#111",
+       borderRadius:12, marginBottom:8, padding:"10px 14px",
+       border:`2px solid ${allDone?"#27ae6055":"#3498db44"}`
+      }}>
+       <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
+        <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:16, color: allDone?"#27ae60":"#3498db"}}>
+         {order.orderType==="llevar"?`🥡 ${order.table||"Sin nombre"}`:`Mesa ${order.table}`}
+        </span>
+        {allDone && <span style={{fontSize:11, color:"#27ae60", fontWeight:900}}>✓ Todo servido</span>}
+       </div>
+
+       {drinks.map(({item,i}) => {
+        let doneQty = checks[i];
+        if (doneQty===true) doneQty=item.qty;
+        doneQty=Number(doneQty)||0;
+        const isDone = doneQty===item.qty;
+        const markedByCocina = order._drinkServedByCocina?.[i];
+        return (
+         <div key={i}
+          onClick={() => toggleItemCheck(order, i, false)}
+          style={{
+           display:"flex", alignItems:"center", gap:10,
+           padding:"8px 10px", marginBottom:4, borderRadius:8,
+           background: isDone?"#0a2a0a":"#1e1e1e",
+           border:`1px solid ${isDone?"#27ae6055":"#2a2a2a"}`,
+           cursor:"pointer", transition:"all .2s"
+          }}>
+          <div style={{
+           minWidth:26, height:26, borderRadius:6, flexShrink:0,
+           border:`2px solid ${isDone?"#27ae60":"#3498db"}`,
+           background:isDone?"#27ae60":"transparent",
+           display:"flex", alignItems:"center", justifyContent:"center",
+           fontSize:13, color:isDone?"#fff":"#3498db", fontWeight:"bold"
+          }}>
+           {item.qty>1?`${doneQty}/${item.qty}`:(isDone?"✓":"")}
+          </div>
+          <div style={{flex:1}}>
+           <span style={{fontWeight:800, fontSize:isMobile?13:14, color:isDone?"#555":"#eee", textDecoration:isDone?"line-through":"none"}}>
+            {item.qty>1&&<span style={{color:"#3498db",marginRight:4}}>{item.qty}×</span>}
+            {item.name}
+           </span>
+           {markedByCocina && !isDone && (
+            <div style={{fontSize:10, color:"#e67e22", marginTop:2}}>⚠️ Marcado por cocina</div>
+           )}
+          </div>
+          {isDone
+           ? <span style={{fontSize:10,color:"#27ae60",background:"#0a2a0a",padding:"2px 6px",borderRadius:4,border:"1px solid #27ae6044",flexShrink:0}}>✓ Servido</span>
+           : <span style={{fontSize:10,color:"#3498db",background:"#1a2a3a",padding:"2px 6px",borderRadius:4,border:"1px solid #3498db44",flexShrink:0}}>Toca para servir</span>
+          }
+         </div>
+        );
+       })}
+      </div>
+     );
+    })}
+    <div style={{height:1, background:"#1e1e1e", marginBottom:16}}/>
+   </div>
+  );
+ })()}
+
+
  {esperandoCobro.length > 0 && (
   <div style={{marginBottom:18}}>
    <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:10}}>
@@ -3026,7 +3109,7 @@ function PedidosComponent({ orders, toggleItemCheck, setTab, finishPaidOrder, se
  {/* Items */}
  <div style={{marginBottom:8, paddingLeft:2}}>
  {(o.items||[]).map((item,i) => {
- const isDrink = beverageCategories.includes(item.cat);
+ const isDrink = BEVERAGE_CATS.includes(item.cat);
  const checks = o.itemChecks || {};
  let doneQty = checks[i];
  if (doneQty === true) doneQty = item.qty;
@@ -3035,7 +3118,8 @@ function PedidosComponent({ orders, toggleItemCheck, setTab, finishPaidOrder, se
  const notes = (item.individualNotes||[]).filter(n=>n.trim());
  
  // Seguridad: Solo el dueño del pedido, o el admin, pueden marcar la bebida
- const canWaiterCheck = isDrink && (hasRole(currentUser, "admin") || currentUser?.name === o._mesero || currentUser?.name === o._adicionPor);
+ // Para meseros, el check de bebidas va en la sección BARRA de arriba — no aquí
+ const canWaiterCheck = isDrink && !isMesero && (currentUser?.id === 'admin' || currentUser?.name === o._mesero || currentUser?.name === o._adicionPor);
 
  return (
  <div key={i} style={{marginBottom:4}}>
@@ -3067,7 +3151,7 @@ function PedidosComponent({ orders, toggleItemCheck, setTab, finishPaidOrder, se
  {item.salsas?.length>0 && <div style={{fontSize:10,color:Y,paddingLeft:8,marginTop:1,fontStyle:"italic"}}>↳ {item.salsas.map(sa=>`${sa.name} (${sa.style})`).join(', ')}</div>}
  {item._comboNote && <div style={{fontSize:10,color:"#3498db",paddingLeft:8,marginTop:1,fontStyle:"italic"}}>🎯 {item._comboNote}</div>}
  {item.priceNote && <div style={{fontSize:10,color:"#e67e22",paddingLeft:8,marginTop:1}}>✏️ {item.priceNote}</div>}
- {notes.map((n,idx)=><div key={idx} style={{fontSize:10,color:"#777",fontStyle:"italic",paddingLeft:8,marginTop:1}}>â"" Plato {idx+1}: {n}</div>)}
+ {notes.map((n,idx)=><div key={idx} style={{fontSize:10,color:"#777",fontStyle:"italic",paddingLeft:8,marginTop:1}}>└ Plato {idx+1}: {n}</div>)}
  </div>
  );
  })}
@@ -3187,7 +3271,8 @@ function speak(text) {
  } catch(e) {}
 }
 
-function CocinaComponent({ orders, toggleItemCheck, markKitchenListo, isMobile, isDesktop, s, Y, soundConfig }) {
+function CocinaComponent({ orders, markKitchenListo, toggleItemCheck, crearSolicitud, currentUser, isMobile, isDesktop, s, Y, soundConfig }) {
+ const [kitchenChecks, setKitchenChecks] = useState({});
  const sorted = [...orders].sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
 
  // ── Track previous state for change detection ─────────────────────
@@ -3235,7 +3320,7 @@ function CocinaComponent({ orders, toggleItemCheck, markKitchenListo, isMobile, 
   });
 
   prevOrdersRef.current = next;
-  }, [orders, soundConfig]);
+ }, [orders]);
 
  // Clean expired flashes
  useEffect(() => {
@@ -3245,7 +3330,25 @@ function CocinaComponent({ orders, toggleItemCheck, markKitchenListo, isMobile, 
   return () => clearInterval(timer);
  }, []);
 
- const toggleCheck = (order, itemIdx) => toggleItemCheck(order, itemIdx, true);
+ const toggleCheck = (order, itemIdx, maxQty) => {
+  const orderId = order.id;
+  setKitchenChecks(prev => {
+   const oc = prev[orderId] || {};
+   let valAnterior = oc[itemIdx];
+   if (valAnterior === true) valAnterior = maxQty;
+   let next = (Number(valAnterior) || 0) + 1;
+   if (next > maxQty) next = 0;
+   const newOrderChecks = {...oc, [itemIdx]: next};
+   const kitchenItems = (order.items || []).filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
+   const isFullyDone = kitchenItems.length > 0 && kitchenItems.every((item, i) => {
+    let val = (i === itemIdx) ? next : newOrderChecks[i];
+    if (val === true) val = item.qty;
+    return Number(val || 0) === item.qty;
+   });
+   if (isFullyDone) { setTimeout(() => markKitchenListo(orderId), 500); }
+   return {...prev, [orderId]: newOrderChecks};
+  });
+ };
 
  const activeOrders = sorted.filter(order =>
   order.kitchenStatus !== 'listo' &&
@@ -3296,16 +3399,12 @@ function CocinaComponent({ orders, toggleItemCheck, markKitchenListo, isMobile, 
     </div>
     <div style={{display:"grid", gridTemplateColumns:isDesktop?"1fr 1fr":"1fr", gap:12}}>
      {activeOrders.map((order, priority) => {
-      const checks = order.itemChecks || {};
+      const checks = kitchenChecks[order.id] || {};
       const mins = Math.floor((Date.now() - new Date(order.createdAt))/60000);
       const hasAdicion = (order.items||[]).some(i=>i._isAdicion);
-      const urgency = mins >= 15 ? "URGENTE" : mins >= 8 ? "ATENTO" : "NORMAL";
 
       return (
        <div key={order.id} style={{background:mins>=15?"#1f0d0d":mins>=8?"#1f180d":"#1c1c1c", borderRadius:14, border:`2px solid ${mins>=15?"#e74c3c":mins>=8?"#e67e22":order.replacesId?"#27ae60":Y}`, padding:14, position:"relative", transition:"all .3s"}}>
-        <div style={{position:"absolute", top:10, right:10, fontSize:10, fontWeight:900, color:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y, letterSpacing:1}}>
-         {urgency}
-        </div>
         <div style={{position:"absolute", top:-10, left:14, background:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y, color:mins>=8?"#fff":"#111", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:900}}>
          {`#${priority+1} · ${mins<1?"ahora":`${mins}m`}`}
         </div>
@@ -3330,33 +3429,78 @@ function CocinaComponent({ orders, toggleItemCheck, markKitchenListo, isMobile, 
 
         {/* Progreso */}
         {(() => {
-         const kitchenItems = (order.items || []).filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
-         const totalPortions = kitchenItems.reduce((sum, item) => sum + item.qty, 0);
-         const donePortions = kitchenItems.reduce((sum, item, i) => sum + (Number(checks[i]===true?item.qty:checks[i]) || 0), 0);
+       const kitchenItems = (order?.items || []).filter(i => i.cat !== "Tapers" && i.id !== "TAPER");
+         const totalPortions = kitchenItems.reduce((sum, item) => sum + (item?.qty || 0), 0);
+         
+         // 2. ESCUDO CRÍTICO: El error 'reading 1777...' ocurre aquí. 
+         // Forzamos a que checks sea un objeto vacío si kitchenChecks es undefined.
+         const checks = (kitchenChecks && order?.id && kitchenChecks[order.id]) ? kitchenChecks[order.id] : {};
+
+         // 3. Cálculo de progreso con validación de tipo para cada índice
+         const donePortions = kitchenItems.reduce((sum, item, i) => {
+          const checkValue = checks[i]; 
+          const val = (checkValue === true) ? item.qty : (Number(checkValue) || 0);
+          return sum + val;
+         }, 0);
+
          return (
           <>
            <div style={{background:"#2a2a2a", borderRadius:4, height:5, marginBottom:12, overflow:"hidden"}}>
-            <div style={{background:Y, height:"100%", width:`${totalPortions > 0 ? (donePortions/totalPortions)*100 : 0}%`, transition:"width .3s"}}/>
+            <div style={{
+                background: Y, 
+                height: "100%", 
+                width: `${totalPortions > 0 ? (donePortions / totalPortions) * 100 : 0}%`, 
+                transition: "width .3s"
+            }}/>
            </div>
+           
            {kitchenItems.map((item, i) => {
-            let doneQty = checks[i];
+            // 4. Protección adicional en el mapeo de cada plato
+            let doneQty = (checks && typeof checks === 'object') ? checks[i] : 0;
+            
             if (doneQty === true) doneQty = item.qty;
             doneQty = Number(doneQty) || 0;
+            
             const isDone = doneQty === item.qty;
-            const validNotes = (item.individualNotes || []).filter(n => n.trim() !== "");
+            const validNotes = (item.individualNotes || []).filter(n => n?.trim() !== "");
+            
             return (
-             <div key={i} onClick={() => toggleCheck(order, i)}
-              style={{display:"flex", alignItems:"center", gap:10, padding:"9px 10px", marginBottom:5, borderRadius:8, background:isDone?"#0a2a0a":"#252525", border:`1px solid ${isDone?"#27ae6055":"#333"}`, cursor:"pointer", transition:"all .2s", opacity:isDone?0.6:1}}>
+             <div key={i} onClick={() => toggleCheck(order, i, item.qty)}
+              style={{
+                display: "flex", 
+                alignItems: "center", 
+                gap: 10, 
+                padding: "9px 10px", 
+                marginBottom: 5, 
+                borderRadius: 8, 
+                background: isDone ? "#0a2a0a" : "#252525", 
+                border: `1px solid ${isDone ? "#27ae6055" : "#333"}`, 
+                cursor: "pointer", 
+                transition: "all .2s", 
+                opacity: isDone ? 0.6 : 1
+              }}>
+              
               <div style={{minWidth:26, height:26, borderRadius:6, border:`2px solid ${isDone?"#27ae60":"#555"}`, background:isDone?"#27ae60":"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:13, color:isDone?"#fff":"#aaa", fontWeight:"bold"}}>
                {item.qty > 1 ? `${doneQty}/${item.qty}` : (isDone ? "✓" : "")}
               </div>
-              <div style={{flex:1}}>
-               <span style={{fontWeight:800, fontSize:isMobile?13:15, textDecoration:isDone?"line-through":"none", color:isDone?"#555":"#eee"}}>
-                {item.qty>1&&<span style={{color:Y, marginRight:4}}>{item.qty}×</span>}
+              
+              <div style={{flex:1, minWidth: 0}}>
+               <span style={{
+                   fontWeight: 800, 
+                   fontSize: isMobile ? 13 : 15, 
+                   textDecoration: isDone ? "line-through" : "none", 
+                   color: isDone ? "#555" : "#eee",
+                   display: "block",
+                   overflow: "hidden",
+                   textOverflow: "ellipsis",
+                   whiteSpace: "nowrap"
+               }}>
+                {item.qty > 1 && <span style={{color: Y, marginRight: 4}}>{item.qty}×</span>}
                 {item.name}
                 {item.isLlevar && <span style={{marginLeft:6, background:"#154360", color:"#3498db", borderRadius:4, padding:"1px 5px", fontSize:10}}> Llevar</span>}
                 {item._isAdicion && <span style={{marginLeft:6, background:"#2d1a4a", color:"#c39bd3", borderRadius:4, padding:"1px 6px", fontSize:10, fontWeight:900}}>+ADICIONAL</span>}
                </span>
+               
                {item.salsas?.length > 0 && <div style={{color:Y, fontSize:11, fontStyle:"italic", marginTop:2}}> {item.salsas.map(s => `${s.name} (${s.style})`).join(', ')}</div>}
                {item._comboNote && <div style={{color:"#3498db", fontSize:11, fontStyle:"italic", marginTop:2}}>🎯 {item._comboNote}</div>}
                {validNotes.map((n, idx) => <div key={idx} style={{fontSize:11, color:"#aaa", marginTop:3, fontStyle:"italic", whiteSpace:"pre-wrap"}}> Plato {idx+1}: {n}</div>)}
@@ -3367,14 +3511,9 @@ function CocinaComponent({ orders, toggleItemCheck, markKitchenListo, isMobile, 
           </>
          );
         })()}
+       
 
         {order.notes && <div style={{marginTop:8, padding:"8px 10px", background:"#1a1500", borderRadius:8, border:"1px solid #3a3000", fontSize:12, color:"#e6c200", whiteSpace:"pre-wrap"}}> General: {order.notes}</div>}
-
-        <div style={{display:"flex", justifyContent:"flex-end", gap:8, marginTop:10}}>
-         <button style={{...s.btn("success"), padding:"7px 12px", fontSize:12}} onClick={() => markKitchenListo(order.id_pedido || order.id)}>
-          Marcar pedido listo
-         </button>
-        </div>
 
         {/* Adicional footer: quién lo agregó */}
         {hasAdicion && order._adicionPor && (
@@ -3390,6 +3529,115 @@ function CocinaComponent({ orders, toggleItemCheck, markKitchenListo, isMobile, 
     </div>
    </div>
   )}
+
+  {/* ── SECCIÓN BARRA: Bebidas para que cocina sirva y avise al mesero ── */}
+  {(() => {
+   const drinkOrders = sorted.filter(o =>
+    o.kitchenStatus !== 'esperando_cobro' && !o.anulado &&
+    (o.items||[]).some(i => BEVERAGE_CATS.includes(i.cat))
+   );
+   if (drinkOrders.length === 0) return null;
+
+   return (
+    <div style={{marginTop: activeOrders.length > 0 ? 24 : 0}}>
+     <div style={{display:"flex", alignItems:"center", gap:10, marginBottom:12}}>
+      <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:20, color:"#3498db", letterSpacing:1}}>
+       🥤 BARRA — BEBIDAS
+      </div>
+      <span style={{fontSize:11, color:"#3498db", background:"#3498db11", border:"1px solid #3498db33", borderRadius:12, padding:"2px 10px", fontWeight:800}}>
+       Marcar aquí avisa al mesero
+      </span>
+     </div>
+     <div style={{display:"grid", gridTemplateColumns:isDesktop?"1fr 1fr":"1fr", gap:12}}>
+      {drinkOrders.map(order => {
+       const drinkItems = (order.items||[]).map((item,i)=>({item,i}))
+        .filter(({item}) => BEVERAGE_CATS.includes(item.cat));
+       const checks = order.itemChecks||{};
+       const allDone = drinkItems.every(({item,i}) => {
+        let v=checks[i]; if(v===true) v=item.qty; return Number(v||0)===item.qty;
+       });
+       const mins = Math.floor((Date.now()-new Date(order.createdAt))/60000);
+
+       return (
+        <div key={order.id} style={{
+         background: allDone?"#0a1a0a":"#111b2a",
+         borderRadius:12, padding:14,
+         border:`2px solid ${allDone?"#27ae6055":"#3498db44"}`
+        }}>
+         <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
+          <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:18, color: allDone?"#27ae60":"#3498db"}}>
+           {order.orderType==="llevar"?`🥡 ${order.table||"Sin nombre"}`:`Mesa ${order.table}`}
+          </span>
+          <div style={{display:"flex", alignItems:"center", gap:6}}>
+           {order._mesero && (
+            <span style={{fontSize:11, color:"#888", background:"#1a1a1a", borderRadius:6, padding:"2px 8px", border:"1px solid #2a2a2a"}}>
+             👤 {order._mesero}
+            </span>
+           )}
+           <span style={{fontSize:10, color:mins>=15?"#e74c3c":mins>=8?"#e67e22":"#555"}}>
+            {mins<1?"ahora":`${mins}m`}
+           </span>
+          </div>
+         </div>
+
+         {drinkItems.map(({item,i}) => {
+          let doneQty=checks[i]; if(doneQty===true) doneQty=item.qty;
+          doneQty=Number(doneQty)||0;
+          const isDone=doneQty===item.qty;
+          return (
+           <div key={i}
+            onClick={() => {
+             const willMark = doneQty < item.qty;
+             if (toggleItemCheck) toggleItemCheck(order, i, false);
+             // Avisar al mesero cuando cocina sirve una bebida
+             if (willMark && order._mesero && crearSolicitud) {
+              crearSolicitud({
+               type: 'aviso_bebida',
+               orderId: order.id,
+               orderTable: order.table,
+               orderType: order.orderType,
+               forMesero: order._mesero,
+               itemName: item.name,
+               itemIdx: i,
+               requestedBy: currentUser?.id || 'cocina',
+               requestedByName: currentUser?.name || 'Cocina',
+              });
+             }
+            }}
+            style={{
+             display:"flex", alignItems:"center", gap:10,
+             padding:"8px 10px", marginBottom:4, borderRadius:8,
+             background:isDone?"#0a2a0a":"#1e2a3a",
+             border:`1px solid ${isDone?"#27ae6055":"#3498db33"}`,
+             cursor:"pointer", transition:"all .2s", opacity:isDone?0.7:1
+            }}>
+            <div style={{
+             minWidth:26, height:26, borderRadius:6, flexShrink:0,
+             border:`2px solid ${isDone?"#27ae60":"#3498db"}`,
+             background:isDone?"#27ae60":"transparent",
+             display:"flex", alignItems:"center", justifyContent:"center",
+             fontSize:13, color:isDone?"#fff":"#3498db", fontWeight:"bold"
+            }}>
+             {item.qty>1?`${doneQty}/${item.qty}`:(isDone?"✓":"")}
+            </div>
+            <span style={{flex:1, fontWeight:800, fontSize:isMobile?13:14, color:isDone?"#555":"#dde", textDecoration:isDone?"line-through":"none"}}>
+             {item.qty>1&&<span style={{color:"#3498db",marginRight:4}}>{item.qty}×</span>}
+             {item.name}
+            </span>
+            {isDone
+             ? <span style={{fontSize:10,color:"#27ae60",flexShrink:0}}>✓ Servido</span>
+             : <span style={{fontSize:10,color:"#3498db",flexShrink:0}}>Toca → avisa mesero</span>
+            }
+           </div>
+          );
+         })}
+        </div>
+       );
+      })}
+     </div>
+    </div>
+   );
+  })()}
  </div>
  );
 }
@@ -3847,7 +4095,6 @@ function Inventario({ menu, orders, history, isMobile, s, Y, fmt }) {
  const [invDate, setInvDate] = useState(todayIso);
  const [invSortBy, setInvSortBy] = useState("cantidad");
  const [search, setSearch] = useState("");
- const invCats = [...new Set(menu.map(i => i.cat).filter(Boolean))];
 
  const now = new Date(); const todayStr = now.toDateString(); const weekAgo = new Date(now - 7*24*60*60*1000);
 
@@ -3890,7 +4137,7 @@ function Inventario({ menu, orders, history, isMobile, s, Y, fmt }) {
  </div>
  <input style={{...s.input,marginBottom:8}} placeholder="Buscar platillo..." value={search} onChange={e=>setSearch(e.target.value)}/>
  <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:12}}>
- {["Todos",...invCats].map(c=>(<button key={c} style={{...s.btn(invCat===c?"primary":"secondary"),fontSize:isMobile?9:10,padding:isMobile?"3px 6px":"4px 9px"}} onClick={()=>setInvCat(c)}>{c}</button>))}
+ {["Todos",...ALL_CATS].map(c=>(<button key={c} style={{...s.btn(invCat===c?"primary":"secondary"),fontSize:isMobile?9:10,padding:isMobile?"3px 6px":"4px 9px"}} onClick={()=>setInvCat(c)}>{c}</button>))}
  </div>
  {items.length===0 ? <div style={{textAlign:"center",padding:40,color:"#444"}}>Sin resultados</div> : items.map(item=>(
  <div key={item.id} style={{...s.card,marginBottom:6,padding:"10px 12px",opacity:item.qty===0?0.4:1}}>
@@ -3947,185 +4194,426 @@ function CartaComponent({ menu, cartaCatFilter, setCartaCatFilter, showAdd, setS
 // ═══════════════════════════════════════════════════════════════════
 // SOLICITUDES PANEL — Admin aprueba/rechaza en tiempo real
 // ═══════════════════════════════════════════════════════════════════
-function SolicitudesPanel({ solicitudes, onResolve, currentUser, isMobile, s, Y, fmt }) {
- const isAdmin = hasRole(currentUser, "admin");
+function SolicitudesPanel({ solicitudes, onResolve, currentUser, isMobile, s, Y, fmt, updateHistoryDoc }) {
+ const isAdmin = currentUser?.id === 'admin';
+ const visibleSols = isAdmin
+  ? solicitudes
+  : solicitudes.filter(x =>
+      x.requestedBy === currentUser?.userId ||
+      x.requestedBy === currentUser?.id ||
+      (x.type === 'aviso_bebida' && x.forMesero === currentUser?.name)
+    );
  const [rejectModal, setRejectModal] = useState(null);
  const [rejectReason, setRejectReason] = useState("");
- const parsePayload = (payload) => typeof payload === "string" ? (() => { try { return JSON.parse(payload); } catch { return {}; } })() : (payload || {});
- const normalizeSol = (raw) => {
-  const payload = parsePayload(raw.payload);
-  const typeRaw = raw.type || raw.tipo || payload.type || "";
-  const rawType = String(typeRaw).toLowerCase();
-  const type = rawType === "acceso_dispositivo" ? "acceso" : rawType === "acceso_jornada" ? "jornada" : rawType;
-  const status = String(raw.status || raw.estado || "PENDIENTE").toLowerCase();
-  return {
-   ...payload,
-   ...raw,
-   payload,
-   id: raw.id || raw.id_solicitud,
-   type,
-   status: status === "aprobado" ? "aprobada" : status === "rechazado" ? "rechazada" : status,
-   requestedBy: raw.requestedBy || raw.id_usuario_origen,
-   requestedByName: raw.requestedByName || raw.nombre_origen || "Usuario",
-   createdAt: raw.createdAt || raw.creado_en || new Date().toISOString(),
-   rejectReason: raw.rejectReason || raw.motivo_rechazo,
-  };
- };
- const visibleSols = (solicitudes || []).map(normalizeSol).filter(sol => isAdmin || sol.requestedBy === currentUser?.userId || sol.requestedBy === currentUser?.id);
+ const [expandedId, setExpandedId] = useState(null);
+ // Admin can further edit a "cobro" solicitud before approving
+ const [editingSol, setEditingSol] = useState(null); // { sol, ef, ya, ta, total }
+
  const pendientes = visibleSols.filter(x => x.status === "pendiente");
- const resueltas = visibleSols.filter(x => x.status !== "pendiente").slice(0, 20);
- const typeLabel = (t) => t === "acceso" ? "Acceso de equipo" : t === "jornada" ? "Acceso de jornada" : t === "anulacion" || t === "anulacion_pedido" ? "Anulacion" : t === "cobro" ? "Correccion de cobro" : t === "precio" || t === "cambio_precio" ? "Cambio de precio" : t || "Solicitud";
- const statusInfo = (st) => st === "aprobada" ? { label:"Aprobada", color:"#27ae60" } : st === "rechazada" ? { label:"Rechazada", color:"#e74c3c" } : { label:"Pendiente", color:"#f39c12" };
- const renderDetail = (sol) => {
-  if (sol.type === "acceso") {
-   return <div style={{fontSize:12,color:"#aaa"}}><b style={{color:"#eee"}}>Equipo:</b> {sol.payload?.nombre_equipo || sol.nombre_equipo || "Sin nombre"}<br/><span style={{color:"#666"}}>Dispositivo #{sol.payload?.id_dispositivo || sol.id_dispositivo}</span></div>;
-  }
-  if (sol.type === "jornada") {
-   return <div style={{fontSize:12,color:"#aaa"}}><b style={{color:"#eee"}}>Jornada:</b> {sol.payload?.jornada_fecha || sol.jornada_fecha || "Hoy"}<br/><span style={{color:"#666"}}>Metodo {sol.payload?.metodo || sol.metodo || "PIN"}{(sol.payload?.nombre_equipo || sol.nombre_equipo) ? ` - ${sol.payload?.nombre_equipo || sol.nombre_equipo}` : ""}</span></div>;
-  }
-  if (sol.itemName || sol.newPrice) {
-   return (
-    <div style={{fontSize:12,color:"#aaa"}}>
-     <b style={{color:"#eee"}}>{sol.itemName}</b>
-     {sol.oldPrice !== undefined && (
-      <span style={{textDecoration:"line-through",color:"#888",marginLeft:6}}>{fmt(sol.oldPrice)}</span>
-     )}
-     {sol.newPrice !== undefined && (
-      <span style={{color:Y,fontWeight:900,marginLeft:6}}>{"-> "}{fmt(sol.newPrice)}</span>
-     )}
-    </div>
-   );
-  }
-  if (sol.orderTable || sol.orderTotal) {
-   const tableLabel = sol.orderType === "llevar" ? sol.orderTable : `Mesa ${sol.orderTable || ""}`;
-   return (
-    <div style={{fontSize:12,color:"#aaa"}}>
-     {tableLabel}
-     {Number(sol.orderTotal) > 0 && (
-      <span style={{color:Y,marginLeft:8}}>{fmt(sol.orderTotal)}</span>
-     )}
-    </div>
-   );
-  }
-  return <pre style={{margin:0,whiteSpace:"pre-wrap",fontSize:11,color:"#777"}}>{JSON.stringify(sol.payload || {}, null, 2)}</pre>;
- };
+ const resueltas  = visibleSols.filter(x => x.status !== "pendiente").slice(0, 20);
+
+ const typeLabel  = (t) => t === "anulacion" ? "🚫 Anulación" : t === "cobro" ? "💰 Corrección de cobro" : t === "aviso_bebida" ? "🥤 Aviso de barra" : "✏️ Cambio de precio";
+ const statusInfo = (st) => st === "aprobada"  ? { label:"Aprobada",  color:"#27ae60" }
+                           : st === "rechazada" ? { label:"Rechazada", color:"#e74c3c" }
+                           : { label:"Pendiente", color:"#f39c12" };
+
  return (
   <div>
-   <div style={s.title}>SOLICITUDES DE APROBACION</div>
-   {pendientes.length === 0 ? <div style={{...s.card,textAlign:"center",color:"#444",padding:"24px 0",fontSize:13}}>No hay solicitudes pendientes</div> : <>
-    <div style={{fontSize:11,color:"#f39c12",textTransform:"uppercase",letterSpacing:1,marginBottom:10,fontWeight:800}}>{pendientes.length} pendiente{pendientes.length>1?"s":""}</div>
-    {pendientes.map(sol => <div key={sol.id} style={{...s.card,border:"1px solid #f39c1255",marginBottom:10,padding:isMobile?10:14}}>
-     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}><div><div style={{fontWeight:900,fontSize:14,color:"#eee"}}>{typeLabel(sol.type)}</div><div style={{fontSize:11,color:"#888",marginTop:2}}>Solicitado por <b style={{color:"#ddd"}}>{sol.requestedByName}</b>{" - "}{new Date(sol.createdAt).toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})}</div></div></div>
-     <div style={{background:"#111",borderRadius:8,padding:"8px 10px",marginBottom:10,border:"1px solid #2a2a2a"}}>{renderDetail(sol)}</div>
-     {isAdmin ? <div style={{display:"flex",gap:8}}><button style={{...s.btn("success"),flex:2,padding:"10px 0",fontSize:13,fontWeight:900}} onClick={()=>onResolve(sol.id,"aprobada")}>Aprobar</button><button style={{...s.btn("danger"),flex:1,padding:"10px 0",fontSize:12}} onClick={()=>{setRejectModal({solId:sol.id});setRejectReason("");}}>Rechazar</button></div> : <div style={{fontSize:11,color:"#8e44ad",fontStyle:"italic",padding:"8px 0"}}>Esperando aprobacion del Administrador</div>}
-    </div>)}
-   </>}
-   {resueltas.length > 0 && <div style={{marginTop:16}}><div style={{fontSize:11,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Historial reciente</div>{resueltas.map(sol => { const si = statusInfo(sol.status); return <div key={sol.id} style={{...s.card,marginBottom:6,padding:"8px 12px",opacity:0.65}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><span style={{fontSize:12,fontWeight:700}}>{typeLabel(sol.type)}</span><span style={{fontSize:10,color:"#666",marginLeft:8}}>por {sol.requestedByName}</span></div><span style={{...s.tag(si.color+"22", si.color),fontSize:10}}>{si.label}</span></div>{sol.rejectReason && <div style={{fontSize:10,color:"#e74c3c",marginTop:3,fontStyle:"italic"}}>Motivo: {sol.rejectReason}</div>}</div>; })}</div>}
-   {rejectModal && <div style={s.overlay} onClick={()=>setRejectModal(null)}><div style={{...s.modal,maxWidth:360}} onClick={e=>e.stopPropagation()}><div style={{...s.row,marginBottom:14}}><div style={{color:"#e74c3c",fontFamily:"'Bebas Neue',cursive",fontSize:20,letterSpacing:1}}>RECHAZAR SOLICITUD</div><CloseBtn onClose={()=>setRejectModal(null)} /></div><div style={{fontSize:12,color:"#aaa",marginBottom:12}}>Motivo del rechazo (opcional):</div><input style={{...s.input,marginBottom:14}} placeholder="Ej: No autorizado" value={rejectReason} onChange={e=>setRejectReason(e.target.value)} spellCheck="false" /><div style={{display:"flex",gap:8}}><button style={{...s.btn("secondary"),flex:1,padding:12}} onClick={()=>setRejectModal(null)}>Cancelar</button><button style={{...s.btn("danger"),flex:2,padding:12,fontSize:14,fontWeight:900}} onClick={()=>{onResolve(rejectModal.solId,"rechazada",rejectReason);setRejectModal(null);}}>Confirmar rechazo</button></div></div></div>}
+   <div style={s.title}>📨 SOLICITUDES DE APROBACIÓN</div>
+
+   {pendientes.length === 0
+    ? <div style={{...s.card, textAlign:"center", color:"#444", padding:"24px 0", fontSize:13}}>✅ No hay solicitudes pendientes</div>
+    : <>
+       <div style={{fontSize:11, color:"#f39c12", textTransform:"uppercase", letterSpacing:1, marginBottom:10, fontWeight:800}}>
+        {pendientes.filter(x=>x.type!=='aviso_bebida').length > 0
+         ? `${pendientes.length} pendiente${pendientes.length>1?"s":""} — requieren atención`
+         : `${pendientes.length} aviso${pendientes.length>1?"s":""} de barra`}
+       </div>
+       {pendientes.map(sol => {
+        // ── Aviso de barra: tarjeta informativa simple, solo "Entendido" ──
+        if (sol.type === 'aviso_bebida') {
+         const mesa = sol.orderType==="llevar"?`🥡 ${sol.orderTable}`:`Mesa ${sol.orderTable}`;
+         return (
+          <div key={sol.id} style={{...s.card, border:"1px solid #3498db55", marginBottom:10, padding:isMobile?10:14, background:"#111b2a"}}>
+           <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+            <div>
+             <div style={{fontWeight:900, fontSize:14, color:"#3498db"}}>🥤 Cocina sirvió una bebida</div>
+             <div style={{fontSize:13, color:"#eee", marginTop:4}}>
+              <b>{sol.itemName}</b> · {mesa}
+             </div>
+             <div style={{fontSize:11, color:"#888", marginTop:2}}>
+              Por: <b style={{color:"#ddd"}}>{sol.requestedByName}</b>
+              {" · "}{new Date(sol.createdAt).toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})}
+             </div>
+            </div>
+            <button
+             style={{...s.btn("success"), padding:"8px 14px", fontSize:12, fontWeight:900, flexShrink:0}}
+             onClick={() => onResolve(sol.id, "aprobada")}>
+             ✓ Entendido
+            </button>
+           </div>
+          </div>
+         );
+        }
+
+        const isEditingThis = editingSol?.sol?.id === sol.id;
+        return (
+        <div key={sol.id} style={{...s.card, border:"1px solid #f39c1255", marginBottom:10, padding:isMobile?10:14}}>
+         <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8}}>
+          <div>
+           <div style={{fontWeight:900, fontSize:14, color:"#eee"}}>{typeLabel(sol.type)}</div>
+           <div style={{fontSize:11, color:"#888", marginTop:2}}>
+            Solicitado por <b style={{color:"#ddd"}}>{sol.requestedByName}</b>
+            {" · "}{new Date(sol.createdAt).toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})}
+           </div>
+          </div>
+          <button style={{...s.btn("secondary"), fontSize:10, padding:"3px 8px"}}
+           onClick={() => setExpandedId(expandedId === sol.id ? null : sol.id)}>
+           {expandedId === sol.id ? "Ocultar" : "Ver detalle"}
+          </button>
+         </div>
+
+         {/* Detalle según tipo */}
+         <div style={{background:"#111", borderRadius:8, padding:"8px 10px", marginBottom:10, border:"1px solid #2a2a2a"}}>
+          <div style={{fontWeight:900, fontSize:13, marginBottom:4}}>
+           {sol.orderType==="llevar" ? `🥡 ${sol.orderTable}` : `🍽️ Mesa ${sol.orderTable}`}
+           <span style={{color:Y, marginLeft:8}}>{fmt(sol.orderTotal)}</span>
+          </div>
+          {sol.type === "anulacion" && sol.motivo && (
+           <div style={{fontSize:11, color:"#e67e22", fontStyle:"italic", marginBottom:4}}>Motivo: "{sol.motivo}"</div>
+          )}
+          {sol.type === "precio" && (
+           <div style={{fontSize:12, color:"#aaa"}}>
+            <b style={{color:"#eee"}}>{sol.itemName}</b>:
+            <span style={{textDecoration:"line-through", color:"#888", marginLeft:6}}>{fmt(sol.oldPrice)}</span>
+            <span style={{color:Y, fontWeight:900, marginLeft:6}}>→ {fmt(sol.newPrice)}</span>
+            {sol.priceMotivo && <span style={{color:"#e67e22", fontStyle:"italic", marginLeft:6}}>"{sol.priceMotivo}"</span>}
+           </div>
+          )}
+          {sol.type === "cobro" && (
+           <div style={{fontSize:12, color:"#aaa"}}>
+            <div style={{marginBottom:4}}>
+             <span style={{color:"#888"}}>Cobro actual:</span>
+             {sol.oldPayments?.efectivo>0&&<span style={{marginLeft:6}}>💵 {fmt(sol.oldPayments.efectivo)}</span>}
+             {sol.oldPayments?.yape>0&&<span style={{marginLeft:6}}>📱 {fmt(sol.oldPayments.yape)}</span>}
+             {sol.oldPayments?.tarjeta>0&&<span style={{marginLeft:6}}>💳 {fmt(sol.oldPayments.tarjeta)}</span>}
+             <span style={{marginLeft:6, color:"#888"}}>= <b style={{color:"#eee"}}>{fmt(sol.orderTotal)}</b></span>
+            </div>
+            <div style={{color:"#27ae60"}}>
+             <span>Corrección solicitada:</span>
+             {sol.newPayments?.efectivo>0&&<span style={{marginLeft:6}}>💵 {fmt(sol.newPayments.efectivo)}</span>}
+             {sol.newPayments?.yape>0&&<span style={{marginLeft:6}}>📱 {fmt(sol.newPayments.yape)}</span>}
+             {sol.newPayments?.tarjeta>0&&<span style={{marginLeft:6}}>💳 {fmt(sol.newPayments.tarjeta)}</span>}
+             <span style={{marginLeft:6}}>= <b style={{color:Y}}>{fmt(sol.newTotal)}</b></span>
+            </div>
+            {sol.motivo && <div style={{fontSize:11, color:"#e67e22", marginTop:4, fontStyle:"italic"}}>Motivo: "{sol.motivo}"</div>}
+           </div>
+          )}
+          {expandedId === sol.id && sol.orderItems && (
+           <div style={{marginTop:8, borderTop:"1px solid #2a2a2a", paddingTop:8}}>
+            {sol.orderItems.map((it,i) => (
+             <div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:11, color:"#777", padding:"1px 0"}}>
+              <span>{it.qty}× {it.name}</span><span>{fmt(it.price*it.qty)}</span>
+             </div>
+            ))}
+           </div>
+          )}
+         </div>
+
+         {/* Admin: editar montos del cobro antes de aprobar */}
+         {isAdmin && sol.type === "cobro" && isEditingThis && (
+          <div style={{background:"#0d1a0d", border:`1px solid ${Y}44`, borderRadius:8, padding:"10px 12px", marginBottom:10}}>
+           <div style={{fontSize:11, color:"#888", textTransform:"uppercase", letterSpacing:1, marginBottom:8}}>Editar montos antes de aprobar</div>
+           <div style={{marginBottom:8}}>
+            <label style={{fontSize:11, color:"#888", display:"block", marginBottom:3}}>Nuevo Total</label>
+            <input type="number" style={{...s.input, color:Y, fontWeight:900}} min="0" step="0.5"
+             value={editingSol.total} onChange={e=>setEditingSol(p=>({...p,total:e.target.value}))}/>
+           </div>
+           {[{label:"💵 Efectivo", key:"ef"},{label:"📱 Yape", key:"ya"},{label:"💳 Tarjeta", key:"ta"}].map(({label,key})=>(
+            <div key={key} style={{display:"flex", alignItems:"center", gap:8, marginBottom:6}}>
+             <span style={{width:90, fontSize:12, fontWeight:700}}>{label}</span>
+             <input type="number" style={s.input} min="0" step="0.5"
+              value={editingSol[key]} onChange={e=>setEditingSol(p=>({...p,[key]:e.target.value}))}/>
+            </div>
+           ))}
+           {Math.abs((parseFloat(editingSol.ef)||0)+(parseFloat(editingSol.ya)||0)+(parseFloat(editingSol.ta)||0)-(parseFloat(editingSol.total)||0))>0.01 && (
+            <div style={{fontSize:11, color:"#e74c3c", marginTop:4}}>⚠️ La suma de pagos no coincide con el total</div>
+           )}
+          </div>
+         )}
+
+         <div style={{display:"flex", gap:8}}>
+          {isAdmin ? (<>
+           {sol.type === "cobro" && !isEditingThis && (
+            <button style={{...s.btn("secondary"), padding:"8px 0", fontSize:12, flex:1}}
+             onClick={()=>setEditingSol({sol, ef:String(sol.newPayments?.efectivo||0), ya:String(sol.newPayments?.yape||0), ta:String(sol.newPayments?.tarjeta||0), total:String(sol.newTotal||sol.orderTotal)})}>
+             ✏️ Editar montos
+            </button>
+           )}
+           <button style={{...s.btn("success"), flex:2, padding:"10px 0", fontSize:13, fontWeight:900}}
+            onClick={async () => {
+             if (sol.type === "cobro") {
+              const finalEf = isEditingThis ? parseFloat(editingSol.ef)||0 : sol.newPayments?.efectivo||0;
+              const finalYa = isEditingThis ? parseFloat(editingSol.ya)||0 : sol.newPayments?.yape||0;
+              const finalTa = isEditingThis ? parseFloat(editingSol.ta)||0 : sol.newPayments?.tarjeta||0;
+              const finalTotal = isEditingThis ? parseFloat(editingSol.total)||sol.newTotal : sol.newTotal;
+              if (sol.histFid && updateHistoryDoc) {
+               await updateHistoryDoc(sol.histFid, {
+                payments: {efectivo:finalEf, yape:finalYa, tarjeta:finalTa},
+                total: finalTotal,
+                _correctedAt: new Date().toISOString(),
+                _correctedBy: currentUser.name,
+                _correctedMotivo: sol.motivo,
+               });
+              }
+              setEditingSol(null);
+             }
+             onResolve(sol.id, "aprobada");
+            }}>✅ Aprobar</button>
+           <button style={{...s.btn("danger"), flex:1, padding:"10px 0", fontSize:12}}
+            onClick={() => { setRejectModal({ solId: sol.id }); setRejectReason(""); }}>❌ Rechazar</button>
+          </>) : (
+           <div style={{fontSize:11, color:"#8e44ad", fontStyle:"italic", padding:"8px 0"}}>⏳ Esperando aprobación del Administrador</div>
+          )}
+         </div>
+        </div>
+        );
+       })}
+      </>
+   }
+
+   {resueltas.length > 0 && (
+    <div style={{marginTop:16}}>
+     <div style={{fontSize:11, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:8}}>Historial reciente</div>
+     {resueltas.map(sol => {
+      const si = statusInfo(sol.status);
+      return (
+       <div key={sol.id} style={{...s.card, marginBottom:6, padding:"8px 12px", opacity:0.65}}>
+        <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+         <div>
+          <span style={{fontSize:12, fontWeight:700}}>{typeLabel(sol.type)}</span>
+          <span style={{fontSize:10, color:"#666", marginLeft:8}}>por {sol.requestedByName}</span>
+         </div>
+         <span style={{...s.tag(si.color+"22", si.color), fontSize:10}}>{si.label}</span>
+        </div>
+        {sol.rejectReason && <div style={{fontSize:10, color:"#e74c3c", marginTop:3, fontStyle:"italic"}}>Motivo: {sol.rejectReason}</div>}
+       </div>
+      );
+     })}
+    </div>
+   )}
+
+   {rejectModal && (
+    <div style={s.overlay} onClick={() => setRejectModal(null)}>
+     <div style={{...s.modal, maxWidth:360}} onClick={e => e.stopPropagation()}>
+      <div style={{...s.row, marginBottom:14}}>
+       <div style={{color:"#e74c3c", fontFamily:"'Bebas Neue',cursive", fontSize:20, letterSpacing:1}}>RECHAZAR SOLICITUD</div>
+       <CloseBtn onClose={() => setRejectModal(null)} />
+      </div>
+      <div style={{fontSize:12, color:"#aaa", marginBottom:12}}>Motivo del rechazo (opcional):</div>
+      <input style={{...s.input, marginBottom:14}} placeholder="Ej: No autorizado..."
+       value={rejectReason} onChange={e => setRejectReason(e.target.value)} spellCheck="false" />
+      <div style={{display:"flex", gap:8}}>
+       <button style={{...s.btn("secondary"), flex:1, padding:12}} onClick={() => setRejectModal(null)}>Cancelar</button>
+       <button style={{...s.btn("danger"), flex:2, padding:12, fontSize:14, fontWeight:900}}
+        onClick={() => { onResolve(rejectModal.solId, "rechazada", rejectReason); setRejectModal(null); }}>
+        ❌ Confirmar Rechazo
+       </button>
+      </div>
+     </div>
+    </div>
+   )}
   </div>
  );
 }
 
-function ReportesComponent({ s, Y, fmt, isAdmin }) {
- const today = new Date().toISOString().slice(0, 10);
- const [desde, setDesde] = useState(today);
- const [hasta, setHasta] = useState(today);
- const [data, setData] = useState(null);
- const [factConfig, setFactConfig] = useState(null);
- const [auditoria, setAuditoria] = useState([]);
- const [loading, setLoading] = useState(false);
- const [error, setError] = useState("");
-
- const load = useCallback(async () => {
-  setLoading(true); setError("");
-  try {
-   const res = await API.reportes.ventas({ desde, hasta });
-   setData(res);
-   if (isAdmin) {
-    setAuditoria(await API.reportes.auditoria({ desde, hasta, limite: 80 }).catch(() => []));
-    setFactConfig(await API.facturacion.config().catch(() => null));
-   }
-  } catch (err) {
-   setError(err.message || "No se pudo cargar reportes");
-  }
-  setLoading(false);
- }, [desde, hasta, isAdmin]);
-
- useEffect(() => { load(); }, [load]);
-
- const exportar = (formato) =>
-  downloadWithAuth(API.reportes.exportUrl({ desde, hasta, formato }), `reporte-ventas.${formato === "pdf" ? "pdf" : "xlsx"}`);
-
- const resumen = data?.resumen || {};
- const comp = data?.comprobantes_resumen || {};
+// ═══════════════════════════════════════════════════════════════════
+// EDIT USER INLINE — sub-componente para editar cada usuario
+// ═══════════════════════════════════════════════════════════════════
+function EditUserInline({ user, allRoles, toggleRole, onUpdateRoles, onUpdateName, onResetPin, onDelete, s, Y }) {
+ const [editingName, setEditingName] = useState(false);
+ const [nameVal, setNameVal] = useState(user.name);
 
  return (
-  <div>
-   <div style={{...s.row, marginBottom:14}}>
-    <div style={s.title}>REPORTES</div>
-    <div style={{display:"flex", gap:8, flexWrap:"wrap"}}>
-     <input type="date" style={{...s.input, width:150}} value={desde} onChange={e=>setDesde(e.target.value)} />
-     <input type="date" style={{...s.input, width:150}} value={hasta} onChange={e=>setHasta(e.target.value)} />
-     <button style={s.btn("secondary")} onClick={() => exportar("xlsx")}>Excel</button>
-     <button style={s.btn("secondary")} onClick={() => exportar("pdf")}>PDF</button>
-    </div>
-   </div>
-   {error && <div style={{...s.card, color:"#ffb4a8", border:"1px solid #e74c3c55"}}>{error}</div>}
-   {loading ? <div style={s.card}>Cargando reportes...</div> : (
-    <>
-     <div style={s.grid(180)}>
-      <div style={s.statCard}><div style={s.statNum}>{resumen.pedidos || 0}</div><div style={s.statLbl}>Pedidos cobrados</div></div>
-      <div style={s.statCard}><div style={s.statNum}>{fmt(resumen.total || 0)}</div><div style={s.statLbl}>Ventas</div></div>
-      <div style={s.statCard}><div style={s.statNum}>{fmt(resumen.ticket_promedio || 0)}</div><div style={s.statLbl}>Ticket promedio</div></div>
-      <div style={s.statCard}><div style={s.statNum}>{comp.total || 0}</div><div style={s.statLbl}>Comprobantes</div></div>
+  <div style={{borderTop:"1px solid #2a2a2a", paddingTop:10}}>
+   {/* Nombre editable */}
+   <div style={{marginBottom:10}}>
+    <div style={{fontSize:11, color:"#888", marginBottom:5, textTransform:"uppercase", letterSpacing:1}}>Nombre</div>
+    {editingName ? (
+     <div style={{display:"flex", gap:6}}>
+      <input style={{...s.input, flex:1, fontSize:13, padding:"6px 10px"}}
+       value={nameVal} onChange={e => setNameVal(e.target.value)}
+       onKeyDown={e => { if(e.key==="Enter"){ onUpdateName(user.id, nameVal.trim()||user.name); setEditingName(false); } if(e.key==="Escape") setEditingName(false); }}
+       autoFocus spellCheck="false" />
+      <button style={{...s.btn("success"), padding:"6px 12px", fontSize:12}}
+       onClick={() => { onUpdateName(user.id, nameVal.trim()||user.name); setEditingName(false); }}>✓</button>
+      <button style={{...s.btn("secondary"), padding:"6px 10px", fontSize:12}}
+       onClick={() => { setNameVal(user.name); setEditingName(false); }}>✕</button>
      </div>
-     <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))", gap:12, marginTop:12}}>
-      <div style={s.cardHL}>
-       <div style={{fontWeight:900, color:Y, marginBottom:10}}>Metodos de pago</div>
-       {(data?.metodos || []).map(m => <div key={m.metodo_pago} style={{display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:"1px solid #2a2a2a"}}><span>{m.metodo_pago}</span><b style={{color:Y}}>{fmt(m.total)}</b></div>)}
-      </div>
-      <div style={s.cardHL}>
-       <div style={{fontWeight:900, color:Y, marginBottom:10}}>Productos mas vendidos</div>
-       {(data?.productos || []).slice(0, 10).map(p => <div key={p.nombre} style={{display:"flex", justifyContent:"space-between", gap:10, padding:"7px 0", borderBottom:"1px solid #2a2a2a"}}><span style={{minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{p.nombre}</span><b style={{color:Y}}>{p.cantidad} · {fmt(p.total)}</b></div>)}
-      </div>
-      <div style={s.cardHL}>
-       <div style={{fontWeight:900, color:Y, marginBottom:10}}>SUNAT</div>
-       {[["Aceptados", comp.aceptados || 0, "#27ae60"],["Pendientes", comp.pendientes || 0, "#e67e22"],["Rechazados", comp.rechazados || 0, "#e74c3c"]].map(([label, value, color]) => (
-        <div key={label} style={{display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:"1px solid #2a2a2a"}}><span>{label}</span><b style={{color}}>{value}</b></div>
-       ))}
-       {(data?.comprobantes || []).slice(0, 8).map(c => (
-        <div key={c.id_comprobante} style={{display:"flex", justifyContent:"space-between", gap:8, alignItems:"center", padding:"7px 0", borderBottom:"1px solid #2a2a2a", fontSize:12}}>
-         <span>{c.serie}-{String(c.correlativo).padStart(8,"0")} · {c.estado_sunat}</span>
-         {c.estado_sunat !== "ACEPTADO" && (
-          <button style={{...s.btn("secondary"), padding:"3px 8px", fontSize:10}} onClick={async () => { await API.facturacion.enviar(c.id_comprobante); load(); }}>Reenviar</button>
-         )}
-        </div>
-       ))}
-      </div>
+    ) : (
+     <div style={{display:"flex", alignItems:"center", gap:8}}>
+      <span style={{fontSize:14, fontWeight:700, color:"#eee"}}>{user.name}</span>
+      <button style={{...s.btn("secondary"), padding:"2px 8px", fontSize:10}}
+       onClick={() => setEditingName(true)}>✏️ Editar</button>
      </div>
-     {isAdmin && (
-      <div style={{...s.cardHL, marginTop:12}}>
-       {factConfig && (
-        <div style={{marginBottom:12, padding:"10px 12px", background:"#111", border:"1px solid #2a2a2a", borderRadius:8, fontSize:12}}>
-         <b style={{color:Y}}>Configuracion SUNAT:</b> {factConfig.empresa?.ruc} · {factConfig.sunat?.modo} · Usuario {factConfig.sunat?.usuario_configurado ? "listo" : "pendiente"} · Clave {factConfig.sunat?.clave_configurada ? "lista" : "pendiente"}
-        </div>
-       )}
-       <div style={{fontWeight:900, color:Y, marginBottom:10}}>Auditoria</div>
-       {auditoria.length === 0 ? <div style={{color:"#666"}}>Sin eventos en el rango.</div> : auditoria.map(ev => (
-        <div key={ev.id_evento} style={{display:"grid", gridTemplateColumns:"130px 1fr 1fr", gap:8, padding:"7px 0", borderBottom:"1px solid #2a2a2a", fontSize:12}}>
-         <span style={{color:"#888"}}>{new Date(ev.creado_en).toLocaleString("es-PE", { hour:"2-digit", minute:"2-digit", day:"2-digit", month:"2-digit" })}</span>
-         <b>{ev.accion}</b>
-         <span style={{color:"#aaa"}}>{ev.usuario || "Sistema"} · {ev.entidad || ""} {ev.entidad_id || ""}</span>
-        </div>
-       ))}
-      </div>
-     )}
-    </>
-   )}
+    )}
    </div>
+
+   {/* Roles */}
+   <div style={{fontSize:11, color:"#888", marginBottom:5, textTransform:"uppercase", letterSpacing:1}}>Roles</div>
+   <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:10}}>
+    {allRoles.map(role => {
+     const info = ROLE_INFO[role]; const active = user.roles.includes(role);
+     return (
+      <button key={role} onClick={() => onUpdateRoles(user.id, toggleRole(user.roles, role))}
+       style={{...s.btn(active?"primary":"secondary"), fontSize:10, border:active?`1px solid ${info.color}`:"1px solid #333"}}>
+       {info.icon} {info.label}
+      </button>
+     );
+    })}
+   </div>
+
+   {/* Acciones */}
+   <div style={{display:"flex", gap:6}}>
+    <button style={{...s.btn("warn"), flex:1, fontSize:11, padding:"6px 0"}}
+     onClick={onResetPin}>🔑 Resetear PIN</button>
+    {!user.roles.includes("admin") && (
+     <button style={{...s.btn("danger"), flex:1, fontSize:11, padding:"6px 0"}}
+      onClick={onDelete}>🗑 Eliminar</button>
+    )}
+   </div>
+  </div>
  );
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// STAFF MANAGER — Gestión de personal y PINs (solo admin)
+// ═══════════════════════════════════════════════════════════════════
+function StaffManager({ staff, onSaveStaff, isMobile, s, Y }) {
+ const [editing, setEditing]   = useState(null);
+ const [showAdd, setShowAdd]   = useState(false);
+ const [newName, setNewName]   = useState("");
+ const [newRoles, setNewRoles] = useState(["mesero"]);
+ const [resetTarget, setResetTarget] = useState(null);
+ const [localToast, setLocalToast]   = useState(null);
+
+ const toast_ = (msg,color="#27ae60") => { setLocalToast({msg,color}); setTimeout(()=>setLocalToast(null),2500); };
+ const allRoles = ["admin","cajero","mesero","cocinero"];
+ const toggleRole = (arr, role) => arr.includes(role) ? arr.filter(r=>r!==role) : [...arr, role];
+
+ const handleAdd = () => {
+  if (!newName.trim() || !newRoles.length) return;
+  const u = { id:`u_${Date.now()}`, name:newName.trim(), roles:newRoles, pinHash:null };
+  onSaveStaff([...staff, u]);
+  setNewName(""); setNewRoles(["mesero"]); setShowAdd(false);
+  toast_(`✅ ${u.name} agregado`);
+ };
+
+ const handleResetPin = (userId) => {
+  onSaveStaff(staff.map(u => u.id===userId ? {...u, pinHash:null} : u));
+  setResetTarget(null);
+  toast_("🔑 PIN reseteado", "#e67e22");
+ };
+
+ const handleDelete = (userId) => {
+  onSaveStaff(staff.filter(u => u.id !== userId));
+  toast_("🗑 Usuario eliminado", "#e74c3c");
+ };
+
+ const handleUpdateRoles = (userId, roles) => {
+  if (!roles.length) return;
+  onSaveStaff(staff.map(u => u.id===userId ? {...u, roles} : u));
+ };
+
+ return (
+  <div>
+   <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14}}>
+    <div style={s.title}>👥 GESTIÓN DE PERSONAL</div>
+    <button style={{...s.btn("success"), padding:"6px 14px", fontSize:12}} onClick={() => setShowAdd(v=>!v)}>
+     {showAdd ? "Cancelar" : "+ Agregar"}
+    </button>
+   </div>
+
+   {localToast && <div style={{background:localToast.color,color:"#fff",padding:"8px 14px",borderRadius:8,fontSize:12,fontWeight:800,marginBottom:12}}>{localToast.msg}</div>}
+
+   {showAdd && (
+    <div style={{...s.cardHL, marginBottom:14, padding:isMobile?10:14}}>
+     <div style={{fontWeight:900, color:Y, marginBottom:10}}>Nuevo integrante</div>
+     <input style={{...s.input, marginBottom:8}} placeholder="Nombre (Ej: María, Carlos...)"
+      value={newName} onChange={e => setNewName(e.target.value)} spellCheck="false" />
+     <div style={{fontSize:11, color:"#888", marginBottom:6, textTransform:"uppercase", letterSpacing:1}}>Roles asignados</div>
+     <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:12}}>
+      {allRoles.map(role => {
+       const info = ROLE_INFO[role]; const active = newRoles.includes(role);
+       return (
+        <button key={role} onClick={() => setNewRoles(r => toggleRole(r, role))}
+         style={{...s.btn(active?"primary":"secondary"), fontSize:11, border:active?`1px solid ${info.color}`:"1px solid #333"}}>
+         {info.icon} {info.label}
+        </button>
+       );
+      })}
+     </div>
+     <button style={{...s.btn("success"), width:"100%"}} onClick={handleAdd}
+      disabled={!newName.trim() || !newRoles.length}>Guardar integrante</button>
+    </div>
+   )}
+
+   {staff.map(user => {
+    const isEdit = editing?.id === user.id;
+    return (
+     <div key={user.id} style={{...s.card, marginBottom:8, padding:isMobile?10:12}}>
+      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:isEdit?10:0}}>
+       <div>
+        <div style={{fontWeight:900, fontSize:14}}>{user.name}</div>
+        <div style={{fontSize:10, color:"#555", marginTop:2}}>
+         {user.roles.map(r=>`${ROLE_INFO[r]?.icon} ${ROLE_INFO[r]?.label||r}`).join(" · ")}
+         {" · "}<span style={{color:user.pinHash?"#27ae60":"#e74c3c"}}>{user.pinHash?"PIN activo ✓":"Sin PIN"}</span>
+        </div>
+       </div>
+       <button style={{...s.btn("secondary"), fontSize:11, padding:"4px 10px"}}
+        onClick={() => setEditing(isEdit ? null : user)}>
+        {isEdit ? "Cerrar" : "Editar"}
+       </button>
+      </div>
+      {isEdit && (
+       <EditUserInline
+        user={user}
+        allRoles={allRoles}
+        toggleRole={toggleRole}
+        onUpdateRoles={handleUpdateRoles}
+        onUpdateName={(uid, name) => {
+         onSaveStaff(staff.map(u => u.id===uid ? {...u, name} : u));
+         toast_(`✅ Nombre actualizado`);
+        }}
+        onResetPin={() => setResetTarget(user.id)}
+        onDelete={() => handleDelete(user.id)}
+        s={s} Y={Y}
+       />
+      )}
+     </div>
+    );
+   })}
+
+   {resetTarget && (
+    <div style={s.overlay} onClick={() => setResetTarget(null)}>
+     <div style={{...s.modal, maxWidth:300, textAlign:"center"}} onClick={e => e.stopPropagation()}>
+      <div style={{fontSize:36, marginBottom:10}}>🔑</div>
+      <div style={{fontWeight:900, fontSize:16, marginBottom:8}}>¿Resetear PIN?</div>
+      <div style={{color:"#888", fontSize:12, marginBottom:20}}>El usuario creará un nuevo PIN la próxima vez que entre.</div>
+      <div style={{display:"flex", gap:8}}>
+       <button style={{...s.btn("secondary"), flex:1}} onClick={() => setResetTarget(null)}>Cancelar</button>
+       <button style={{...s.btn("warn"), flex:2, fontWeight:900}} onClick={() => handleResetPin(resetTarget)}>Resetear</button>
+      </div>
+     </div>
+    </div>
+   )}
+  </div>
+ );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// APP COMPONENTE PRINCIPAL
+// ═══════════════════════════════════════════════════════════════════
 export default function App() {
  const width = useWindowWidth();
  const isMobile = width < 480;
@@ -4133,302 +4621,418 @@ export default function App() {
  const isDesktop = width >= 768;
  const isWide = width >= 1024;
 
- const [currentUser, setCurrentUser] = useState(null);
- const [restoringSession, setRestoringSession] = useState(true);
+ const [currentUser, setCurrentUser] = useState(null); 
+
  const [tab, setTab] = useState("mesas");
+ const [orders, setOrders] = useState([]);
+ const ordersRef = useRef([]); // always current, avoids stale closures in async functions
+ useEffect(() => { ordersRef.current = orders; }, [orders]);
+ const [history, setHistory] = useState([]);
+ const [menu, setMenu] = useState(MENU_BASE);
  const [draft, setDraft] = useState(newDraft());
  const [cartaCatFilter, setCartaCatFilter] = useState("Todos");
  const [showAdd, setShowAdd] = useState(false);
- const [newItem, setNewItem] = useState({ name:"", cat:"Sin categoria", price:"" });
- const [splash, setSplash] = useState(false);
+ const [newItem, setNewItem] = useState({ name:"", cat:"Hamburguesas", price:"" });
+ const [loaded, setLoaded] = useState(false);
+ const [splash, setSplash] = useState(true);
  const [toast, setToast] = useState(null);
+ 
  const [editingOrder, setEditingOrder] = useState(null);
  const [confirmDelete, setConfirmDelete] = useState(null);
- const [anulacionModal, setAnulacionModal] = useState(null);
+ const [anulacionModal, setAnulacionModal] = useState(null); // order to annul
  const [mesaModal, setMesaModal] = useState(null);
+ const [solicitudes, setSolicitudes] = useState([]);
+ const [staff, setStaff] = useState([]);
+ const [caja, setCaja] = useState(null); // null = no abierta
  const [cobrarTarget, setCobrarTarget] = useState(null);
- const [splitTarget, setSplitTarget] = useState(null);
+ const [splitTarget, setSplitTarget] = useState(null); 
  const [mergeModal, setMergeModal] = useState(null);
  const [mergeName, setMergeName] = useState("");
- const [soundConfig, setSoundConfig] = useState(() => {
-  try { return JSON.parse(localStorage.getItem("papachos_sound_config")) || { volume:0.75, freq:880, beeps:3, type:"square" }; }
-  catch { return { volume:0.75, freq:880, beeps:3, type:"square" }; }
- });
-
- useEffect(() => {
-  localStorage.setItem("papachos_sound_config", JSON.stringify(soundConfig));
- }, [soundConfig]);
-
- useEffect(() => {
-  let cancelled = false;
-  const token = localStorage.getItem("token");
-  const saved = localStorage.getItem("papachos_session_user");
-  if (!token) {
-   setRestoringSession(false);
-   return () => { cancelled = true; };
-  }
-
-  if (saved) {
-   try {
-    const parsed = JSON.parse(saved);
-    setCurrentUser(parsed);
-    setSplash(false);
-   } catch {
-    localStorage.removeItem("papachos_session_user");
-   }
-  }
-
-  API.auth.me()
-   .then((res) => {
-    if (cancelled) return;
-    const restored = buildSessionUser(res.usuario);
-    setCurrentUser(restored);
-    localStorage.setItem("papachos_session_user", JSON.stringify(restored));
-    setSplash(false);
-   })
-   .catch(() => {
-    if (cancelled) return;
-    localStorage.removeItem("token");
-    localStorage.removeItem("papachos_session_user");
-    setCurrentUser(null);
-   })
-   .finally(() => {
-    if (!cancelled) setRestoringSession(false);
-   });
-
-  return () => { cancelled = true; };
- }, []);
+ const [mesasArr, setMesasArr] = useState([]);
+ const [soundConfig, setSoundConfig] = useState({ volume:0.75, freq:880, beeps:3, type:"square" });
 
  // ── Anti-double-cobro guard ─────────────────────────────────────────
- useEffect(() => {
-  if (!splash || currentUser || restoringSession) return undefined;
-  const timer = setTimeout(() => setSplash(false), 1600);
-  return () => clearTimeout(timer);
- }, [splash, currentUser, restoringSession]);
-
  const cobrarProcessingRef = useRef(false);
 
- // ── Hook principal — reemplaza todos los onSnapshot de Firestore ────
- const {
-  orders,
-  history,
-  menu,
-  configData,
-  mesasArr,
-  solicitudesData: solicitudes,
-  staffData:  staff,
-  cajaData:   caja,
-  loaded,
-  loadError,
-  refreshOrders,
-  refreshHistory,
-  refreshMenu,
-  refreshMesas,
-  refreshSolicitudes,
-  refreshStaff,
-  refreshCaja,
- } = useAppData(currentUser);
- const allCats = [...new Set(menu.map(i => i.cat).filter(Boolean))];
- const beverageCategories = getBeverageCategories(configData);
- const firstMenuCat = allCats[0] || "Sin categoria";
+ // ── Sequential save queue: prevents race-condition order loss ───────
+ const saveQueueRef = useRef(Promise.resolve());
 
- // ordersRef — siempre actualizado para evitar stale closures
- const ordersRef = useRef([]);
- useEffect(() => { ordersRef.current = orders; }, [orders]);
+ useEffect(() => {
+ if (!currentUser) return;
+ setLoaded(false);
+ const localFS = FS(currentUser.localId);
+ 
+ // All unsub vars declared in outer scope so cleanup can reference them
+ let unsubOrders, unsubHistory, unsubMenu, unsubConfig, unsubSolicitudes, unsubStaff, unsubCaja;
 
- const cajaRef2 = useRef(null);
- useEffect(() => { cajaRef2.current = caja; }, [caja]);
+ const setupListeners = () => {
+  unsubOrders = onSnapshot(collection(db, `mrpapachos_${currentUser.localId}_activos`), (snapshot) => {
+   setOrders(snapshot.docs.map(d => d.data()));
+  });
+  unsubMenu = onSnapshot(localFS.menuRef(), (docSnap) => {
+   if (docSnap.exists()) setMenu([...MENU_BASE, ...(docSnap.data().list || [])]); else setMenu(MENU_BASE);
+  });
+  unsubHistory = onSnapshot(query(localFS.historyCol(), orderBy("createdAt", "desc"), limit(1000)), (snapshot) => {
+   setHistory(snapshot.docs.map(d => ({ _fid: d.id, ...d.data() })));
+  });
+  unsubConfig = onSnapshot(localFS.configRef(), (docSnap) => {
+   if (docSnap.exists() && docSnap.data().mesas) setMesasArr(docSnap.data().mesas);
+   else setMesasArr([1, 2, 3, 4, 5, 6]);
+  });
+  unsubSolicitudes = onSnapshot(localFS.solicitudesRef(), (docSnap) => {
+   if (docSnap.exists()) setSolicitudes(docSnap.data().list || []);
+   else setSolicitudes([]);
+  });
+  unsubStaff = onSnapshot(localFS.staffRef(), (docSnap) => {
+   if (docSnap.exists()) {
+    const incoming = docSnap.data().users;
+    if (Array.isArray(incoming) && incoming.length > 0) {
+     setStaff(incoming);
+     // Keep localStorage backup fresh
+     try { localStorage.setItem(`staff_backup_${currentUser.localId}`, JSON.stringify({ users: incoming, ts: new Date().toISOString() })); } catch(_) {}
+    }
+    // If incoming is empty, keep current state (don't overwrite with [])
+   }
+   // If doc doesn't exist, also keep current state (may be mid-write)
+  });
+  unsubCaja = onSnapshot(localFS.cajaRef(), async (docSnap) => {
+   if (!docSnap.exists()) { setCaja(null); return; }
+   const data = docSnap.data();
+   // Corrección defensiva: si Firestore dice isOpen pero closedAt ya existe, algo falló antes
+   // al guardar el cierre. Lo marcamos como cerrado automáticamente.
+   if (data.isOpen && data.closedAt) {
+    console.warn("Caja en estado inconsistente (isOpen+closedAt). Corrigiendo...");
+    const fixed = { ...data, isOpen: false, _autoFixedAt: new Date().toISOString() };
+    try { await setDoc(localFS.cajaRef(), fixed); } catch(e) { console.error("autofix caja error:", e); }
+    setCaja(fixed);
+    return;
+   }
+   setCaja(data);
+  });
+  setLoaded(true);
+ };
+
+ setupListeners();
+ return () => {
+  [unsubOrders, unsubHistory, unsubMenu, unsubConfig, unsubSolicitudes, unsubStaff, unsubCaja]
+   .forEach(fn => { try { if (fn) fn(); } catch(e) {} });
+ };
+ }, [currentUser]);
 
  const showToast = (msg,color="#27ae60") => { setToast({msg,color}); setTimeout(()=>setToast(null),2800); };
- const updateCurrentUserAuthFlags = useCallback((patch) => {
-  setCurrentUser(prev => {
-   if (!prev) return prev;
-   const next = { ...prev, ...patch };
-   localStorage.setItem("papachos_session_user", JSON.stringify(next));
-   return next;
-  });
- }, []);
+ 
+ // Queued saveOrders: each write waits for the previous one to finish,
+ // preventing the classic read-modify-overwrite race that deletes active orders.
+ const saveOrders = async (newOrdersArray) => {
+  const oldOrders = ordersRef.current;
+  const colRef = collection(db, `mrpapachos_${currentUser.localId}_activos`);
+  const promises = [];
 
+  // 1. Guardar pedidos nuevos o actualizados (sin pisar los de otros)
+  newOrdersArray.forEach(newObj => {
+    const oldObj = oldOrders.find(o => o.id === newObj.id);
+    if (!oldObj || JSON.stringify(oldObj) !== JSON.stringify(newObj)) {
+      promises.push(setDoc(doc(colRef, newObj.id), newObj));
+    }
+  });
+
+  // 2. Borrar pedidos que ya se cobraron o anularon y salen de la lista activa
+  oldOrders.forEach(oldObj => {
+    if (!newOrdersArray.some(newObj => newObj.id === oldObj.id)) {
+      promises.push(deleteDoc(doc(colRef, oldObj.id)));
+    }
+  });
+
+  try {
+    await Promise.all(promises);
+  } catch (e) {
+    console.error("Error sincronizando en tiempo real:", e);
+  }
+ };
  const toggleItemCheck = async (order, itemIdx, isFood) => {
+
+  if (!order || !order.items || !order.items[itemIdx]) {
+    console.warn("Pedido o ítem no encontrado para actualizar check");
+    return;
+  }
   const item = order.items[itemIdx];
   const maxQty = item.qty;
   const checks = order.itemChecks || {};
+  
+  // Ciclo de marcación: 0 -> 1 -> 2 ... -> Máximo -> 0
   let valAnterior = checks[itemIdx];
   if (valAnterior === true) valAnterior = maxQty;
   let next = (Number(valAnterior) || 0) + 1;
   if (next > maxQty) next = 0;
+  
   const newItemChecks = { ...checks, [itemIdx]: next };
   const updatedOrder = { ...order, itemChecks: newItemChecks };
+
+  // Si es comida, actualizamos automáticamente el estado general (Listo/Pendiente)
   if (isFood) {
-   const nonKitchenCategories = asArray(pickConfig(configData, ["categorias_no_cocina", "nonKitchenCategories"], []));
-   const kitchenItems = order.items.filter(i => !nonKitchenCategories.includes(i.cat));
+   const kitchenItems = order.items.filter(i => i.cat !== "Tapers" && i.id !== "TAPER" && !BEVERAGE_CATS.includes(i.cat));
    const isFullyDone = kitchenItems.length > 0 && kitchenItems.every((ki) => {
     const kiIdx = order.items.indexOf(ki);
     let val = (kiIdx === itemIdx) ? next : newItemChecks[kiIdx];
     return Number(val || 0) === ki.qty;
    });
-   updatedOrder.kitchenStatus = isFullyDone ? "listo" : "pendiente";
+   updatedOrder.kitchenStatus = isFullyDone ? 'listo' : 'pendiente';
   }
+
+  // Guardamos el cambio en Firebase para que el otro local/dispositivo lo vea
   try {
-   await API.pedidos.actualizarChecks(order.id_pedido, {
-    idx_item:      itemIdx,
-    checks:        newItemChecks,
-    kitchen_status: updatedOrder.kitchenStatus,
-   });
-   await refreshOrders();
-  } catch (err) {
-   showToast("No se pudo actualizar el check: " + err.message, "#e74c3c");
-  }
+   const colRef = collection(db, `mrpapachos_${currentUser.localId}_activos`);
+   await setDoc(doc(colRef, order.id), updatedOrder);
+  } catch(e) { console.error("Error al marcar item:", e); }
+ };
+ const saveMenu = async (v) => { setMenu(v); await FS(currentUser.localId).saveMenu(v.filter(i=>i.id.startsWith("CUSTOM_")||i.id.startsWith("TP")&&!["TP01","TP02","TP03","TP04","TP05"].includes(i.id))); };
+ const addHistory = async (o) => { await FS(currentUser.localId).addHistory(o); };
+ const saveSolicitudes = async (list) => {
+  const threshold = Date.now() - 48 * 60 * 60 * 1000;
+  const cleaned = list.filter(s => s.status === "pendiente" || new Date(s.resolvedAt || s.createdAt).getTime() > threshold);
+  await FS(currentUser.localId).saveSolicitudes(cleaned);
  };
 
- // ── Caja ────────────────────────────────────────────────────────────
- const abrirCaja = async (fondoInicial) => {
+ const updateHistoryDoc = async (fid, data) => {
   try {
-   await API.caja.abrir(parseFloat(fondoInicial) || 0);
-   await refreshCaja();
-   const fecha = new Date().toLocaleDateString("es-PE",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
-   const hora  = new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"});
-   showToast(`🟢 Caja abierta — ${fecha} · ${hora}`, "#27ae60");
-  } catch (err) {
-   showToast("⚠️ Error al abrir la caja: " + err.message, "#e74c3c");
+   await setDoc(doc(db, `mrpapachos_${currentUser.localId}_historial`, fid), data, { merge: true });
+  } catch(e) { console.error("updateHistoryDoc error:", e); }
+ };
+
+ const cajaRef2 = useRef(null); // mirror of caja state for sync access in async closures
+ useEffect(() => { cajaRef2.current = caja; }, [caja]);
+
+ // saveCaja: guarda en Firestore con hasta 3 reintentos. Retorna true si tuvo éxito.
+const saveCaja = async (data) => {
+  // Limpieza profunda de datos para asegurar que no viajen undefineds a Firebase
+  const cleanData = JSON.parse(JSON.stringify(data));
+  
+  try {
+    const docRef = FS(currentUser.localId).cajaRef();
+    await setDoc(docRef, cleanData, { merge: false }); // No usar merge para asegurar estado total
+    return true;
+  } catch (e) {
+    console.error("Error crítico al guardar estado de caja:", e);
+    return false;
   }
+};
+
+ const abrirCaja = async (fondoInicial) => {
+  const sessionId = `caja_${Date.now()}`;
+  const openedAt = new Date().toISOString();
+  const fecha = new Date().toLocaleDateString("es-PE",{weekday:"long", day:"numeric", month:"long", year:"numeric"});
+  const hora  = new Date().toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"});
+  
+  // ─── FIX: solo conservar cortes de HOY al abrir nueva sesión ───
+  const todayStr = new Date().toDateString();
+  const cortesHoy = (caja?.cortes || []).filter(c =>
+    new Date(c.cierreAt).toDateString() === todayStr
+  );
+  
+  const data = {
+    isOpen: true,
+    sessionId,
+    openedAt,
+    openedBy: currentUser.name,
+    fondoInicial: parseFloat(fondoInicial) || 0,
+    cortes: cortesHoy,           // ← solo los de hoy
+    _savedAt: new Date().toISOString(),
+  };
+  // ... resto igual
+  // Guardar primero en Firestore; actualizar estado local solo si tuvo éxito
+  const ok = await saveCaja(data);
+  if (!ok) {
+   showToast("⚠️ Error al abrir la caja. Verifica tu conexión e intenta de nuevo.", "#e74c3c");
+   return;
+  }
+  setCaja(data);
+  showToast(`🟢 Caja abierta — ${fecha} · ${hora} | Todos los pedidos de ahora en adelante se registrarán en esta sesión`, "#27ae60");
  };
 
  const cerrarCaja = async () => {
-  try {
-   const corte = await API.caja.cerrar();
-   await refreshCaja();
-   showToast("🔒 Caja cerrada correctamente", "#e67e22");
-   return corte;
-  } catch (err) {
-   showToast("⚠️ Error al cerrar caja: " + err.message, "#e74c3c");
+  if (!cajaRef2.current?.isOpen) return;
+  const sessionId = cajaRef2.current.sessionId;
+  const openedAt = new Date(cajaRef2.current.openedAt);
+  const cajaDay = openedAt.toDateString(); // e.g. "Fri Apr 18 2026"
+
+  // An order belongs to THIS session close only if:
+  // 1. It was CREATED on the same calendar day the caja was opened (day boundary)
+  // 2. AND its sessionId matches (if stamped) OR it was paid after caja opened (legacy)
+  //
+  // This prevents cross-midnight accumulation when the caja isn't closed at 00:00.
+  const inThisSession = (o) => {
+   // Day boundary: always use createdAt to assign the order to a calendar day
+   const orderDay = new Date(o.createdAt).toDateString();
+   if (orderDay !== cajaDay) return false; // different calendar day → different session
+
+   if (o._cajaSessionId) return o._cajaSessionId === sessionId;
+   // Legacy orders (no stamp): same day + paid/created after caja opened
+   return new Date(o.paidAt || o.createdAt).getTime() >= openedAt.getTime();
+  };
+
+  const pagadosSesion = history.filter(o =>
+   o.status === "pagado" && !o.anulado && inThisSession(o)
+  );
+  const activosSesion = ordersRef.current.filter(o =>
+   o.isPaid && !o.anulado && inThisSession(o)
+  );
+  const todosSesion = [...pagadosSesion, ...activosSesion];
+  const efectivo  = todosSesion.reduce((s,o) => s + getPay(o,"efectivo"), 0);
+  const yape      = todosSesion.reduce((s,o) => s + getPay(o,"yape"), 0);
+  const tarjeta   = todosSesion.reduce((s,o) => s + getPay(o,"tarjeta"), 0);
+  const total     = todosSesion.reduce((s,o) => s + o.total, 0);
+  const corte = {
+   cierreAt: new Date().toISOString(),
+   cerradoBy: currentUser.name,
+   fondoInicial: cajaRef2.current.fondoInicial,
+   openedAt: cajaRef2.current.openedAt,
+   sessionId,
+   efectivo, yape, tarjeta, total,
+   totalEnCaja: cajaRef2.current.fondoInicial + efectivo,
+   pedidosCobrados: todosSesion.length,
+  };
+  const data = {
+   isOpen: false,
+   sessionId,
+   openedAt: cajaRef2.current.openedAt,
+   openedBy: cajaRef2.current.openedBy,
+   fondoInicial: cajaRef2.current.fondoInicial,
+   closedAt: corte.cierreAt,
+   closedBy: currentUser.name,
+   cortes: [...(cajaRef2.current.cortes || []), corte],
+   ultimoCorte: corte,
+   _savedAt: new Date().toISOString(),
+  };
+  // Guardar primero en Firestore; actualizar estado local solo si tuvo éxito
+  const ok = await saveCaja(data);
+  if (!ok) {
+   showToast("⚠️ Error al guardar el cierre. Verifica tu conexión e intenta de nuevo.", "#e74c3c");
    return null;
+  }
+  setCaja(data);
+  showToast("🔒 Caja cerrada correctamente", "#e67e22");
+  return corte;
+ };
+ const saveStaff = async (users) => {
+  if (!Array.isArray(users) || users.length === 0) {
+   showToast("⚠️ No se puede guardar: lista vacía", "#e74c3c");
+   return;
+  }
+  if (!users.some(u => u.roles?.includes("admin"))) {
+   showToast("⚠️ No se puede guardar: debe haber al menos un Administrador", "#e74c3c");
+   return;
+  }
+  // Optimistic update on UI
+  setStaff(users);
+  // Write to Firebase with validation guard built in
+  const ok = await FS(currentUser.localId).saveStaff(users);
+  if (!ok) {
+   showToast("⚠️ Error al guardar personal — intenta de nuevo", "#e74c3c");
+   // Revert optimistic update by re-reading Firebase
+   const fresh = await FS(currentUser.localId).getStaff();
+   if (fresh && fresh.length > 0) setStaff(fresh);
   }
  };
 
- // ── Solicitudes ──────────────────────────────────────────────────────
+ // Crear solicitud de aprobación (para no-admins)
  const crearSolicitud = async (solicitud) => {
+  // Evitar duplicados: si ya hay una solicitud pendiente del mismo tipo para el mismo pedido/ítem
   const existe = solicitudes.find(s =>
-   s.estado === "PENDIENTE" &&
-   s.tipo === solicitud.type?.toUpperCase() &&
-   s.id_pedido === solicitud.orderId
+   s.status === "pendiente" &&
+   s.type === solicitud.type &&
+   s.orderId === solicitud.orderId &&
+   (solicitud.type === "aviso_bebida"
+    ? s.itemIdx === solicitud.itemIdx   // para bebidas, dedup por ítem específico
+    : solicitud.type !== "precio" || s.cartId === solicitud.cartId)
   );
   if (existe) {
    showToast("⚠️ Ya existe una solicitud pendiente para este pedido", "#e67e22");
    return;
   }
-  try {
-   await API.solicitudes.crear({
-    tipo:      solicitud.type?.toUpperCase(),
-    id_pedido: solicitud.orderId || null,
-    payload:   solicitud,
-   });
-   await refreshSolicitudes();
+  const newSol = { ...solicitud, id: `sol_${Date.now()}`, status:"pendiente", createdAt: new Date().toISOString() };
+  const updated = [...solicitudes, newSol];
+  setSolicitudes(updated);
+  await saveSolicitudes(updated);
+  if (solicitud.type === 'aviso_bebida') {
+   showToast(`🥤 Bebida marcada — aviso enviado a ${solicitud.forMesero}`, "#3498db");
+  } else {
    showToast("📨 Solicitud enviada al Administrador", "#8e44ad");
-  } catch (err) {
-   showToast("⚠️ Error al enviar solicitud: " + err.message, "#e74c3c");
   }
  };
 
- const resolverSolicitud = async (solId, decision, rejectReason = "") => {
-  try {
-   await API.solicitudes.resolver(solId, {
-    decision:       decision === "aprobada" ? "APROBADO" : "RECHAZADO",
-    motivo_rechazo: rejectReason || undefined,
-   });
-   await refreshSolicitudes();
-   if (decision === "aprobada") {
-    showToast("✅ Solicitud aprobada y aplicada", "#27ae60");
-   } else {
-    showToast(`❌ Solicitud rechazada${rejectReason ? ": " + rejectReason : ""}`, "#e74c3c");
+ // Resolver solicitud (admin aprueba o rechaza)
+ const resolverSolicitud = async (solId, decision, rejectReason="") => {
+  const curSols = solicitudes; // capture current value
+  const sol = curSols.find(s => s.id === solId);
+  if (!sol) return;
+  const updated = curSols.map(s => s.id === solId
+   ? { ...s, status: decision, resolvedAt: new Date().toISOString(), resolvedBy: currentUser.name, rejectReason }
+   : s
+  );
+  setSolicitudes(updated);
+  await saveSolicitudes(updated);
+
+  if (decision === "aprobada") {
+   if (sol.type === "anulacion") {
+    await anularPedido(
+     ordersRef.current.find(o => o.id === sol.orderId) || sol.orderSnapshot,
+     sol.replacementItems || [],
+     sol.motivo,
+     true // skipSolicitudUpdate
+    );
+   } else if (sol.type === "precio") {
+    const cur = ordersRef.current;
+    const orderExists = cur.find(o => o.id === sol.orderId);
+    if (!orderExists) {
+     showToast("⚠️ El pedido ya no existe (pudo haberse cobrado)", "#e67e22");
+    } else {
+     const newOrders = cur.map(o => {
+      if (o.id !== sol.orderId) return o;
+      const newItems = o.items.map(i => i.cartId === sol.cartId ? { ...i, price: sol.newPrice, priceNote: `Admin: ${sol.priceMotivo||"ajuste"}` } : i);
+      return { ...o, items: newItems, total: newItems.reduce((s,i)=>s+i.price*i.qty,0) };
+     });
+     setOrders(newOrders);
+     await saveOrders(newOrders);
+     showToast(`✅ Precio de "${sol.itemName}" actualizado a S/.${sol.newPrice?.toFixed(2)}`, "#27ae60");
+    }
+   } else if (sol.type === "cobro") {
+    // The actual Firestore update is handled inside SolicitudesPanel before calling onResolve
+    showToast(`✅ Corrección de cobro aplicada · Mesa ${sol.orderTable}`, "#27ae60");
    }
-  } catch (err) {
-   showToast("⚠️ Error al resolver solicitud: " + err.message, "#e74c3c");
+  } else {
+   showToast(`❌ Solicitud rechazada${rejectReason ? `: ${rejectReason}` : ""}`, "#e74c3c");
+   // The non-admin will see it in their solicitudes tab
   }
  };
 
- // ── Menú ─────────────────────────────────────────────────────────────
- // ── Staff ────────────────────────────────────────────────────────────
- const createStaffUser = async (body) => {
-  const saved = await API.staff.crear(body);
-  await refreshStaff();
-  return normalizeStaffUser(saved || body);
- };
-
- const updateStaffUser = async (id, body) => {
-  await API.staff.actualizar(id, body);
-  await refreshStaff();
- };
-
-const resetStaffPin = async (id, newPin = null) => {
-  await API.staff.resetPin(id, newPin);
-  await refreshStaff();
- };
-
- const updateStaffAccess = async (id, body) => {
-  const saved = await API.staff.actualizarAcceso(id, body);
-  await refreshStaff();
-  return normalizeStaffUser(saved || {});
- };
-
- const deleteStaffUser = async (id) => {
-  await API.staff.eliminar(id);
-  await refreshStaff();
- };
-
- // ── Mesas ────────────────────────────────────────────────────────────
  const addMesa = async () => {
-  try {
-   await API.mesas.agregar();
-   await refreshMesas();
-   showToast("🪑 Mesa agregada");
-  } catch (err) {
-   showToast("⚠️ " + err.message, "#e74c3c");
-  }
+ const newMesas = [...mesasArr, mesasArr.length > 0 ? Math.max(...mesasArr) + 1 : 1];
+ setMesasArr(newMesas);
+ await FS(currentUser.localId).saveConfig({ mesas: newMesas });
+ showToast(" Mesa agregada con éxito");
  };
 
  const removeMesa = async () => {
-  if (mesasArr.length === 0) return;
-  const lastMesa = mesasArr[mesasArr.length - 1];
-  const hasOrders = ordersRef.current.some(o =>
-   String(o.table || "").trim() === String(lastMesa) && o.orderType === "mesa"
-  );
-  if (hasOrders) {
-   showToast(`⚠️ La Mesa ${lastMesa} tiene pedidos activos. Cóbrelos primero.`, "#e74c3c");
-   return;
-  }
-  try {
-   const mesasRes = await API.mesas.listar();
-   const mesa = mesasRes.find(m => m.numero === lastMesa);
-   if (mesa) await API.mesas.eliminar(mesa.id_mesa);
-   await refreshMesas();
-   showToast("🪑 Mesa quitada", "#888");
-  } catch (err) {
-   showToast("⚠️ " + err.message, "#e74c3c");
-  }
+ if (mesasArr.length === 0) return;
+ const lastMesa = mesasArr[mesasArr.length - 1];
+ 
+ const hasOrders = ordersRef.current.some(o => o.table === String(lastMesa) && o.orderType !== "llevar");
+ if (hasOrders) {
+ showToast(` La Mesa ${lastMesa} tiene pedidos activos. Cóbrelos primero.`, "#e74c3c");
+ return;
+ }
+
+ const newMesas = mesasArr.slice(0, -1);
+ setMesasArr(newMesas);
+ await FS(currentUser.localId).saveConfig({ mesas: newMesas });
+ showToast(" Mesa quitada", "#888");
  };
 
- // ── Cocina ───────────────────────────────────────────────────────────
  const markKitchenListo = async (orderId) => {
-  try {
-   await API.pedidos.actualizarCocina(orderId, "LISTO");
-   await refreshOrders();
-  } catch (err) {
-   showToast("No se pudo actualizar cocina: " + err.message, "#e74c3c");
-  }
+ const newOrders = ordersRef.current.map(o => o.id === orderId ? {...o, kitchenStatus:'listo'} : o);
+ setOrders(newOrders);
+ await saveOrders(newOrders);
  };
-
- const finishPaidOrder = async (id) => {
-  try {
-  await API.pedidos.finalizar(id);
-  await Promise.all([refreshOrders(), refreshHistory()]);
-  showToast("✅ Pedido entregado y archivado");
-  } catch (err) {
-   showToast("No se pudo finalizar el pedido: " + err.message, "#e74c3c");
-  }
- };
-
- const updateHistoryDoc = async () => {};
 
  const addItem = (item) => setDraft(d => {
  const cartIdToUse = item.cartId || item.id;
@@ -4471,217 +5075,368 @@ const resetStaffPin = async (id, newPin = null) => {
 
  const draftTotal = draft.items.reduce((s,i)=>s+i.price*i.qty,0);
 
- const mapOrderItemsForApi = (items = []) => items.map(i => ({
-  id_producto:     i.id_producto || i.id,
-  cantidad:        i.qty,
-  precio_unitario: i.price,
-  notas_plato:     [
-   ...(i.individualNotes?.filter(Boolean) || []),
-   ...(i.salsas ? Object.entries(i.salsas).map(([k,v]) => `${k}: ${v}`) : []),
-   i._comboNote || "",
-   i.notes || "",
-  ].filter(Boolean).join(", ") || null,
-  es_para_llevar: !!i.isLlevar,
- }));
-
  // ── Guard: caja debe estar abierta para operar ────────────────────
- const cajaAbierta = !!(caja?.isOpen);
+ const cajaAbierta = !!cajaRef2.current?.isOpen;
+ const requireCaja = (fn) => (...args) => {
+  if (!cajaAbierta) { showToast("🔴 Abre la caja antes de operar", "#e74c3c"); return; }
+  return fn(...args);
+ };
+
  const submitOrder = async (forceMerge = null) => {
-  if (!cajaAbierta) { showToast("🔴 Abre la caja antes de tomar pedidos", "#e74c3c"); return; }
-  if (draft.orderType === "mesa" && !draft.table.trim()) return;
-  if (!draft.items.length) return;
+ if (!cajaAbierta) { showToast("🔴 Abre la caja antes de tomar pedidos", "#e74c3c"); return; }
+ if (draft.orderType === "mesa" && !draft.table.trim()) return;
+ if (!draft.items.length) return;
+ // ── Guard: llevar con cobro diferido solo para admins ──────────────
+ // (removed — all llevar orders now wait for payment regardless of role)
+ const total = draftTotal;
 
-  const total = draft.items.reduce((s,i) => s + i.price * i.qty, 0);
+ // ── PEDIDO MIXTO (mesa + llevar): split automatically ────────────────
+ // Mesa items → cocina ahora. Llevar items → esperando cobro (no van a cocina aún).
+ const llevarItems = draft.items.filter(i => i.isLlevar);
+ const mesaItems   = draft.items.filter(i => !i.isLlevar);
+ if (forceMerge === null && draft.orderType === "mesa" && llevarItems.length > 0 && mesaItems.length > 0) {
+  const llevarTotal = llevarItems.reduce((s,i)=>s+i.price*i.qty,0);
+  const mesaTotal   = mesaItems.reduce((s,i)=>s+i.price*i.qty,0);
+  // Ítems de mesa → cocina inmediatamente
+  const mesaOrder = {
+   id: Date.now().toString(),
+   orderType: "mesa", table: draft.table, phone: "", deliveryAddress: "",
+   notes: draft.notes || "", items: mesaItems, total: mesaTotal,
+   isPaid: false, status: "pendiente", kitchenStatus: "pendiente",
+   createdAt: new Date().toISOString(), taperCost: 0,
+   _cajaSessionId: cajaRef2.current?.sessionId || null,
+   _mesero: currentUser?.name || null,
+   payTiming: "despues",
+  };
+  // Ítems para llevar → esperan cobro, NO van a cocina todavía
+  const llevarOrder = {
+   id: (Date.now() + 1).toString(),
+   orderType: "llevar",
+   table: draft.table ? `[Llevar — Mesa ${draft.table}]` : "Para llevar",
+   phone: draft.phone || "", deliveryAddress: draft.deliveryAddress || "",
+   notes: draft.notes || "", items: llevarItems, total: llevarTotal,
+   isPaid: false, status: "esperando_cobro", kitchenStatus: "esperando_cobro",
+   createdAt: new Date().toISOString(), taperCost: 0,
+   _cajaSessionId: cajaRef2.current?.sessionId || null,
+   _mesero: currentUser?.name || null,
+   _linkedMesaTable: draft.table,
+  };
+  const newOrders = [...ordersRef.current, mesaOrder, llevarOrder];
+  setOrders(newOrders); await saveOrders(newOrders);
+  setDraft(newDraft());
+  showToast(`🍽 Mesa enviada a cocina · 🥡 Para llevar esperando cobro`, "#3498db");
+  setTab("pedidos");
+  return;
+ }
 
-  // ── MERGE: agregar ítems a pedido existente ──────────────────────
-  if (forceMerge === "merge" && mergeModal) {
-   const existing = mergeModal.existingOrder;
-   try {
-    await API.pedidos.agregarItems(existing.id_pedido, {
-     items: mapOrderItemsForApi(mergeModal.newDraftData.items),
-    });
-    await refreshOrders();
-    setDraft(newDraft()); setMergeModal(null); setMergeName("");
-    showToast(`✅ Ítems agregados a Mesa ${existing.table}`);
-    setTab("pedidos");
-   } catch (err) {
-    showToast("⚠️ Error al agregar ítems: " + err.message, "#e74c3c");
-   }
-   return;
-  }
+ const existingMesaOrder = ordersRef.current.find(o => o.table === draft.table.trim() && o.orderType === "mesa" && !o.isPaid) ?? null;
 
-  // ── PEDIDO NUEVO separado ────────────────────────────────────────
-  if (forceMerge === null && mergeModal) { setMergeModal(null); setMergeName(""); }
+ if (existingMesaOrder && forceMerge === null) {
+ setMergeModal({ existingOrder: existingMesaOrder, newDraftData: { ...draft, total } });
+ setMergeName(""); return;
+ }
 
-  // Verificar si ya existe pedido en esa mesa
-  const existingMesaOrder = ordersRef.current.find(o =>
-   o.table === draft.table?.trim() && o.orderType === "mesa" && !o.isPaid
-  ) ?? null;
+ let finalItems = forceMerge === "merge" ? [...mergeModal.newDraftData.items] : [...draft.items];
 
-  if (existingMesaOrder && forceMerge === null && draft.orderType === "mesa") {
-   setMergeModal({ existingOrder: existingMesaOrder, newDraftData: { ...draft, total } });
-   setMergeName(""); return;
-  }
+ if (forceMerge === "merge" && mergeModal) {
+ const existing = mergeModal.existingOrder;
+ const isLlevarDraft = mergeModal.newDraftData.orderType === "llevar";
+ const newItems = finalItems.map(i => {
+ let nameTag = mergeName.trim() ? `[Llevar: ${mergeName.trim()}]` : "";
+ return { ...i, _isAdicion: true, ...(isLlevarDraft ? { isLlevar: true } : {}), individualNotes: isLlevarDraft && nameTag ? i.individualNotes.map(n => n ? `${nameTag} ${n}` : nameTag) : i.individualNotes }
+ });
+ const mergedItems = [...existing.items];
+ newItems.forEach(newItem => {
+ if (newItem.isLlevar) { newItem.cartId = `${newItem.cartId}-LLEVAR-${Date.now()}`; mergedItems.push(newItem); } 
+ else {
+ const idx = mergedItems.findIndex(i => i.cartId === newItem.cartId && !i.isLlevar && JSON.stringify(i.salsas) === JSON.stringify(newItem.salsas));
+ if (idx >= 0) { mergedItems[idx] = { ...mergedItems[idx], qty: mergedItems[idx].qty + newItem.qty, individualNotes: [...(mergedItems[idx].individualNotes || []), ...(newItem.individualNotes || [])] }; } 
+ else { mergedItems.push(newItem); }
+ }
+ });
+ const updated = { ...existing, items: mergedItems, total: mergedItems.reduce((s, i) => s + i.price * i.qty, 0), notes: [existing.notes, mergeModal.newDraftData.notes].filter(Boolean).join(" | "), taperCost: 0, kitchenStatus: 'pendiente', _cajaSessionId: existing._cajaSessionId || cajaRef2.current?.sessionId || null, _adicionPor: currentUser?.name || null, _adicionAt: new Date().toISOString() };
+ const mergedList = ordersRef.current.map(o => o.id === existing.id ? updated : o);
+ setOrders(mergedList);
+ await saveOrders(mergedList);
+ setDraft(newDraft()); setMergeModal(null); setMergeName(""); showToast(` Ítems agregados a Mesa ${existing.table}`); setTab("pedidos"); return;
+ }
 
-  try {
-   await API.pedidos.crear({
-    tipo_pedido:           draft.orderType === "mesa" ? "MESA" : "LLEVAR",
-    identificador_cliente: draft.orderType === "mesa" ? `Mesa ${draft.table}` : (draft.phone || "Para llevar"),
-    notas_generales:       draft.notes || null,
-    items:                 mapOrderItemsForApi(draft.items),
-   });
-   await refreshOrders();
-   setDraft(newDraft());
-   if (draft.orderType === "llevar") {
-    showToast("🥡 Para llevar registrado — esperando cobro", "#3498db");
-   } else {
-    showToast("✅ Pedido enviado a cocina");
-   }
-   setTab("pedidos");
-  } catch (err) {
-   showToast("⚠️ Error al crear pedido: " + err.message, "#e74c3c");
-  }
+ if (mergeModal) { setMergeModal(null); setMergeName(""); }
+ const finalDraft = { ...draft, items: finalItems, taperCost: 0 }; 
+
+ if (draft.orderType === "llevar") {
+  // Para llevar: siempre espera cobro antes de ir a cocina
+  const order = {
+   id: Date.now().toString(), ...finalDraft, total,
+   isPaid: false, status: "esperando_cobro", kitchenStatus: "esperando_cobro",
+   createdAt: new Date().toISOString(),
+   _cajaSessionId: cajaRef2.current?.sessionId || null,
+   _mesero: currentUser?.name || null,
+  };
+  const newOrders = [...ordersRef.current, order];
+  setOrders(newOrders); await saveOrders(newOrders);
+  setDraft(newDraft());
+  showToast(`🥡 Para llevar registrado — esperando cobro del cajero`, "#3498db");
+  setTab("pedidos");
+ } else if (draft.payTiming === "ahora") {
+  setCobrarTarget({ type: 'new', data: { id:Date.now().toString(), ...finalDraft, total, createdAt:new Date().toISOString(), _cajaSessionId: cajaRef2.current?.sessionId || null } });
+ } else {
+  const order = { id:Date.now().toString(), ...finalDraft, total, isPaid: false, status:"pendiente", kitchenStatus:"pendiente", createdAt:new Date().toISOString(), _cajaSessionId: cajaRef2.current?.sessionId || null, _mesero: currentUser?.name || null };
+  const newOrders = [...ordersRef.current, order];
+  setOrders(newOrders); await saveOrders(newOrders);
+  setDraft(newDraft()); showToast(` Pedido enviado a cocina`); setTab("pedidos");
+ }
  };
 
-const handleConfirmCobro = async (paymentData) => {
-  if (!cobrarTarget) return;
-  if (!cajaAbierta) { showToast("🔴 Abre la caja antes de cobrar", "#e74c3c"); setCobrarTarget(null); return; }
-  if (cobrarProcessingRef.current) { showToast("⏳ Espera, procesando cobro anterior...", "#e67e22"); return; }
-  cobrarProcessingRef.current = true;
+ const handleConfirmCobro = async (paymentData) => {
+ if (!cobrarTarget) return;
+ if (!cajaAbierta) { showToast("🔴 Abre la caja antes de cobrar", "#e74c3c"); setCobrarTarget(null); return; }
+ // ── Anti-doble-cobro: bloquea si ya hay un cobro procesándose ──────
+ if (cobrarProcessingRef.current) {
+  showToast("⏳ Espera, procesando cobro anterior...", "#e67e22");
+  return;
+ }
+ cobrarProcessingRef.current = true;
+ const cur = ordersRef.current; // always fresh, no stale closure
+ const target = cobrarTarget; setCobrarTarget(null);
+ const payments = { efectivo: paymentData.efectivo, yape: paymentData.yape, tarjeta: paymentData.tarjeta };
+ const descuentoData = paymentData.descuentoPct > 0 ? {
+ descuentoPct: paymentData.descuentoPct,
+ descuentoAmt: paymentData.descuentoAmt,
+ descuentoMotivo: paymentData.descuentoMotivo || "",
+ totalOriginal: paymentData.totalOriginal,
+ } : {};
 
-  const target = cobrarTarget;
-  setCobrarTarget(null);
+ if (target.type === 'split') {
+ const originalOrder = target.data.originalOrder;
+ const splitItems = target.data.splitItems;
+ const paidItems = splitItems.map(si => ({...si, qty: si.splitQty}));
+ const thisSplitRecord = { items: paidItems, total: target.data.total, payments, paidAt: new Date().toISOString() };
+ const accumulatedSplits = [...(originalOrder.splitPayments || []), thisSplitRecord];
+ let remainingItems = originalOrder.items.map(origItem => {
+ const splitItem = splitItems.find(si => si.cartId === origItem.cartId);
+ if (splitItem) return { ...origItem, qty: origItem.qty - splitItem.splitQty, individualNotes: origItem.individualNotes.slice(splitItem.splitQty) };
+ return origItem;
+ }).filter(i => i.qty > 0);
+ if (remainingItems.length === 0) {
+ // Sumar todos los pagos y el total real de todas las divisiones
+ const totalEf = accumulatedSplits.reduce((s,sp) => s + (sp.payments?.efectivo || 0), 0);
+ const totalYa = accumulatedSplits.reduce((s,sp) => s + (sp.payments?.yape || 0), 0);
+ const totalTa = accumulatedSplits.reduce((s,sp) => s + (sp.payments?.tarjeta || 0), 0);
+ const totalCobrado = accumulatedSplits.reduce((s,sp) => s + (sp.total || 0), 0);
+ // Recuperar ítems originales si fueron guardados, sino usar los acumulados de splits
+ const allItems = originalOrder.originalItems || [
+ ...accumulatedSplits.flatMap(sp => sp.items || []),
+ ...remainingItems
+ ];
+ const finalOrder = {
+ ...originalOrder,
+ isPaid: true,
+ status: "pagado",
+ payments: { efectivo: totalEf, yape: totalYa, tarjeta: totalTa },
+ splitPayments: accumulatedSplits,
+ paidAt: new Date().toISOString(),
+ total: totalCobrado,
+ items: allItems,
+ ...descuentoData,
+ _cajaSessionId: originalOrder._cajaSessionId || cajaRef2.current?.sessionId || null,
+ _cajaOpenedAt: originalOrder._cajaOpenedAt || cajaRef2.current?.openedAt || null,
+ };
+ const newOrders = cur.filter(x => x.id !== originalOrder.id);
+ setOrders(newOrders);
+ await Promise.all([addHistory(finalOrder), saveOrders(newOrders)]);
+ showToast("✅ Cuenta completa cobrada y archivada");
+ } else {
+ const newTotal = remainingItems.reduce((s,i) => s+i.price*i.qty, 0);
+ // Guardar ítems originales la primera vez que se hace una división
+ const originalItems = originalOrder.originalItems || originalOrder.items;
+ const updatedOriginal = { ...originalOrder, items:remainingItems, total:newTotal, splitPayments:accumulatedSplits, originalItems };
+ const newOrders = cur.map(o => o.id === originalOrder.id ? updatedOriginal : o);
+ setOrders(newOrders);
+ await saveOrders(newOrders);
+ showToast(`✅ División cobrada · Quedan ${fmt(newTotal)}`);
+ }
+ cobrarProcessingRef.current = false;
+ setTab("pedidos"); return;
+ }
 
-  const getPrimaryMethod = (p) => {
-   if (p.tarjeta > 0) return "TARJETA";
-   if (p.yape > 0)    return "YAPE";
-   return "EFECTIVO";
-  };
-
-  const payments = {
-   efectivo: paymentData.efectivo || 0,
-   yape:     paymentData.yape     || 0,
-   tarjeta:  paymentData.tarjeta  || 0,
-  };
-
-  try {
-   const id_pedido = target.data?.id_pedido || target.data?.id;
-   let comprobanteMsg = "";
-
-   await API.pedidos.cobrar(id_pedido, {
-    metodo_pago:      getPrimaryMethod(payments),
-    monto:            paymentData.totalFinal || target.data.total,
-    descuento_pct:    paymentData.descuentoPct    || 0,
-    descuento_motivo: paymentData.descuentoMotivo || "",
-    payments,
-   });
-
-   if (paymentData.comprobante) {
-    try {
-     const comprobanteRes = await API.facturacion.emitir({
-      id_pedido,
-      tipo_comprobante: paymentData.comprobante.tipo_comprobante,
-      cliente: paymentData.comprobante.cliente,
-      monto_descuento: paymentData.descuentoAmt || 0,
-     });
-     const serie = comprobanteRes?.comprobante?.serie || comprobanteRes?.ticket?.serie;
-     comprobanteMsg = serie ? ` Comprobante ${serie} preparado para SUNAT.` : " Comprobante preparado para SUNAT.";
-    } catch (factErr) {
-     comprobanteMsg = ` Comprobante pendiente: ${factErr.message}`;
-    }
-   }
-
-   await Promise.all([refreshOrders(), refreshHistory(), refreshCaja()]);
-
-   setDraft(newDraft());
-   showToast(`Pedido cobrado y archivado.${comprobanteMsg}`, comprobanteMsg.includes("pendiente") ? "#e67e22" : "#27ae60");
-   setTab("pedidos");
-  } catch (err) {
-   showToast("⚠️ Error al cobrar: " + err.message, "#e74c3c");
+ if (target.type === 'new') {
+ const isLlevarOrder = target.data.orderType === 'llevar';
+ const baseOrder = {
+  ...target.data,
+  isPaid: true,
+  payments, paidAt: new Date().toISOString(),
+  ...descuentoData,
+  ...(paymentData.descuentoPct > 0 ? { total: paymentData.totalFinal } : {}),
+  _cajaSessionId: target.data._cajaSessionId || cajaRef2.current?.sessionId || null,
+  _cajaOpenedAt: target.data._cajaOpenedAt || cajaRef2.current?.openedAt || null,
+ };
+ if (isLlevarOrder) {
+  // Llevar pagado al momento → pasa por cocina primero, se archiva cuando se entrega
+  // kitchenStatus siempre "pendiente": cocina DEBE ver el pedido aunque ya esté cobrado
+  const llevarOrder = { ...baseOrder, status: "pagado", kitchenStatus: "pendiente" };
+  const ordersToAdd = [llevarOrder];
+  if (target.data._pendingMesaDraft) {
+   // Pedido mixto: también enviar los ítems de mesa a cocina
+   const mesaDraft = target.data._pendingMesaDraft;
+   const mesaOrder = {
+    id: (Date.now() + 1).toString(),
+    ...mesaDraft,
+    isPaid: false, status: "pendiente", kitchenStatus: "pendiente",
+    createdAt: new Date().toISOString(),
+    _cajaSessionId: cajaRef2.current?.sessionId || null,
+    _mesero: currentUser?.name || null,
+   };
+   ordersToAdd.push(mesaOrder);
+   showToast("✅ Para llevar cobrado · Ambos pedidos enviados a cocina");
+  } else {
+   showToast("✅ 🥡 Para llevar cobrado · Enviado a cocina");
   }
-
+  const newOrders = [...cur, ...ordersToAdd];
+  setOrders(newOrders); await saveOrders(newOrders);
   cobrarProcessingRef.current = false;
+  setDraft(newDraft()); setTab("pedidos");
+ } else {
+  const order = { ...baseOrder, status: "pendiente", kitchenStatus: "pendiente" };
+  const newOrders = [...cur, order];
+  setOrders(newOrders); await saveOrders(newOrders);
+  cobrarProcessingRef.current = false;
+  setDraft(newDraft()); showToast("✅ Pedido cobrado y enviado a cocina"); setTab("pedidos");
+ }
+ } else if (target.type === 'existing') {
+ const o = target.data;
+ const isLlevarEsperando = o.orderType === 'llevar' && o.status === 'esperando_cobro';
+ const hasSplits = o.splitPayments && o.splitPayments.length > 0;
+ let finished;
+ const sessionStamp = { _cajaSessionId: o._cajaSessionId || cajaRef2.current?.sessionId || null, _cajaOpenedAt: o._cajaOpenedAt || cajaRef2.current?.openedAt || null };
+ if (hasSplits) {
+ const thisFinalRecord = { items: o.items, total: paymentData.totalFinal, payments, paidAt: new Date().toISOString() };
+ const allSplits = [...o.splitPayments, thisFinalRecord];
+ const totalEf = allSplits.reduce((s, sp) => s + (sp.payments?.efectivo || 0), 0);
+ const totalYa = allSplits.reduce((s, sp) => s + (sp.payments?.yape || 0), 0);
+ const totalTa = allSplits.reduce((s, sp) => s + (sp.payments?.tarjeta || 0), 0);
+ const totalCobrado = allSplits.reduce((s, sp) => s + (sp.total || 0), 0);
+ const allItems = o.originalItems || o.items;
+ finished = { ...o, isPaid: true, status: "pagado", payments: { efectivo: totalEf, yape: totalYa, tarjeta: totalTa }, splitPayments: allSplits, paidAt: new Date().toISOString(), total: totalCobrado, items: allItems, ...descuentoData, ...sessionStamp };
+ } else {
+ finished = { ...o, isPaid:true, status:"pagado", payments, paidAt:new Date().toISOString(), ...descuentoData, ...(paymentData.totalFinal !== undefined ? { total: paymentData.totalFinal } : {}), ...sessionStamp };
+ }
+ // Guard: verificar que el pedido aún existe (no fue cobrado en otra sesión)
+ if (!cur.find(x => x.id === o.id)) {
+  showToast("⚠️ Este pedido ya fue cobrado en otra sesión", "#e74c3c");
+  cobrarProcessingRef.current = false;
+  return;
+ }
+ if (isLlevarEsperando) {
+  // Para llevar recién cobrado → ahora sí va a cocina (permanece en orders activos)
+  const llevarListo = { ...finished, status: "pagado", kitchenStatus: "pendiente" };
+  const newOrders = cur.map(x => x.id === o.id ? llevarListo : x);
+  setOrders(newOrders);
+  await saveOrders(newOrders);
+  cobrarProcessingRef.current = false;
+  showToast("✅ 🥡 Para llevar cobrado — enviado a cocina");
+ } else {
+  const newOrders = cur.filter(x => x.id !== o.id);
+  setOrders(newOrders);
+  await Promise.all([addHistory(finished), saveOrders(newOrders)]);
+  cobrarProcessingRef.current = false;
+  showToast("✅ Pedido cobrado y archivado");
+ }
+ }
+ cobrarProcessingRef.current = false;
  };
 
+ const finishPaidOrder = async (id) => {
+ const cur = ordersRef.current;
+ const o = cur.find(x=>x.id===id); if (!o) return;
+ const newOrders = cur.filter(x=>x.id!==id);
+ setOrders(newOrders);
+ const finished = { ...o, status:"pagado" };
+ await Promise.all([addHistory(finished), saveOrders(newOrders)]);
+ showToast("✅ Pedido entregado y archivado");
+ };
 
  const cancelOrder = async (id) => {
-  await API.pedidos.anular(id, { motivo: "Cancelado" });
-  await Promise.all([refreshOrders(), refreshHistory()]);
-  showToast("🚫 Pedido cancelado","#e74c3c");
+ const cur = ordersRef.current;
+ const o = cur.find(x=>x.id===id); if (!o) return;
+ const newOrders = cur.filter(x=>x.id!==id);
+ setOrders(newOrders);
+ const finished = {...o, status:"cancelado", cancelledAt:new Date().toISOString(), createdAt:o.createdAt||new Date().toISOString()};
+ await Promise.all([addHistory(finished), saveOrders(newOrders)]);
+ showToast("🚫 Pedido cancelado","#e74c3c");
  };
 
  const deleteOrderPermanent = async (id) => {
-  await API.pedidos.anular(id, { motivo: "Eliminado" });
-  await Promise.all([refreshOrders(), refreshHistory()]);
-  setConfirmDelete(null); showToast("🗑 Pedido eliminado","#888");
+ const newOrders = ordersRef.current.filter(x=>x.id!==id);
+ setOrders(newOrders); await saveOrders(newOrders);
+ setConfirmDelete(null); showToast("🗑 Pedido eliminado","#888");
  };
 
  // Anulación con reemplazo (solo admin o por solicitud aprobada)
- const anularPedido = async (order, items, motivo, skipSolicitudUpdate = false) => {
+ const anularPedido = async (originalOrder, replacementItems, motivo, _skip=false) => {
+ const cur = ordersRef.current;
+ const now = new Date().toISOString();
+// En submitOrder y anularPedido:
+const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+ const hasReplacement = replacementItems && replacementItems.length > 0;
+ // Mark as anulado in orders array (needed for 25-sec kitchen flash in CocinaComponent)
+ const anuladoOrder = { ...originalOrder, anulado:true, status:"anulado", isPaid:false, anuladoAt:now, motivoAnulacion:motivo||"", replacedById:hasReplacement?newId:null };
+ let updatedOrders = cur.map(o => o.id === originalOrder.id ? anuladoOrder : o);
+ if (hasReplacement) {
+  const repTotal = replacementItems.reduce((s,i) => s+i.price*i.qty, 0);
+  const replacementOrder = { id:newId, table:originalOrder.table, orderType:originalOrder.orderType, phone:originalOrder.phone||"", deliveryAddress:originalOrder.deliveryAddress||"", notes:originalOrder.notes||"", items:replacementItems, total:repTotal, isPaid:false, status:"pendiente", kitchenStatus:"pendiente", createdAt:now, replacesId:originalOrder.id, taperCost:0, _cajaSessionId: originalOrder._cajaSessionId || cajaRef2.current?.sessionId || null, _mesero: currentUser?.name || null };
+  updatedOrders = [...updatedOrders, replacementOrder];
+ }
+ setOrders(updatedOrders);
+ await saveOrders(updatedOrders);
+ setAnulacionModal(null);
+ showToast("🚫 Pedido anulado" + (hasReplacement ? " · Reemplazo enviado a cocina" : ""), "#e74c3c");
+
+ // After 25 seconds: move anulled order to history and clean from active orders
+ setTimeout(async () => {
   try {
-   await API.pedidos.anular(order.id_pedido || order.id, {
-    motivo: motivo || "Sin motivo",
-    items:  items  || [],
-   });
-   await Promise.all([refreshOrders(), refreshHistory()]);
-   showToast("🗑 Pedido anulado", "#e74c3c");
-   setAnulacionModal(null);
-  } catch (err) {
-   showToast("⚠️ Error al anular: " + err.message, "#e74c3c");
-  }
+   const cur2 = ordersRef.current;
+   const stillThere = cur2.find(o => o.id === originalOrder.id && o.anulado);
+   if (stillThere) {
+    const cleaned = cur2.filter(o => o.id !== originalOrder.id);
+    setOrders(cleaned);
+    await saveOrders(cleaned);
+    await addHistory({ ...anuladoOrder, cancelledAt: now, createdAt: originalOrder.createdAt || now });
+   }
+  } catch(e) { console.error("anular cleanup error:", e); }
+ }, 25500);
  };
 
  const saveEditedOrder = async (updated) => {
- try {
- await API.pedidos.actualizar(updated.id_pedido || updated.id, {
-  tipo_pedido:           updated.orderType === "mesa" ? "MESA" : "LLEVAR",
-  identificador_cliente: updated.orderType === "mesa" ? `Mesa ${updated.table}` : (updated.phone || "Para llevar"),
-  notas_generales:       updated.notes || null,
-  items:                 mapOrderItemsForApi(updated.items || []),
- });
- await refreshOrders();
+ const cur = ordersRef.current;
+ const newOrders = cur.map(o=>o.id===updated.id?updated:o);
+ setOrders(newOrders); await saveOrders(newOrders);
  setEditingOrder(null); showToast("✏️ Pedido actualizado","#f39c12");
- } catch (err) {
-  showToast("No se pudo actualizar el pedido: " + err.message, "#e74c3c");
- }
  };
 
  const addMenuItem = async () => {
  if (!newItem.name.trim()||!newItem.price) return;
- const body = { nombre:newItem.name.trim(), cat:newItem.cat || firstMenuCat, precio:parseFloat(newItem.price), desc:"" };
- try {
-  await API.menu.agregarItem(body);
-  await refreshMenu();
-  setNewItem({name:"",cat:firstMenuCat,price:""}); setShowAdd(false);
-  showToast(`"${body.nombre}" agregado`);
- } catch (err) {
-  showToast("Error al agregar platillo: " + err.message, "#e74c3c");
- }
+ const item = {id:"CUSTOM_"+Date.now(),cat:newItem.cat,name:newItem.name,price:parseFloat(newItem.price),desc:""};
+ await saveMenu([...menu,item]);
+ setNewItem({name:"",cat:"Hamburguesas",price:""}); setShowAdd(false);
+ showToast(` "${item.name}" agregado`);
  };
- const deleteMenuItem = async (id) => {
- try {
-  await API.menu.eliminarItem(id);
-  await refreshMenu();
-  showToast("Platillo eliminado", "#e74c3c");
- } catch (err) {
-  showToast("Error al eliminar platillo: " + err.message, "#e74c3c");
- }
- };
+ const deleteMenuItem = async (id) => { await saveMenu(menu.filter(i=>i.id!==id)); showToast(" Platillo eliminado","#e74c3c"); };
 
  const Y = "#FFD700";
  const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
 
  const s = {
- app: {fontFamily:"'Nunito',sans-serif",background:"radial-gradient(circle at 20% 0%,#1b1b14 0,#0f0f0f 34%,#080808 100%)",color:"#eee",minHeight:"100vh",display:"flex",flexDirection:"row",overflow:"hidden"},
+ app: {fontFamily:"'Nunito',sans-serif",background:"#0f0f0f",color:"#eee",minHeight:"100vh",display:"flex",flexDirection:"row",overflow:"hidden"},
  
  header: {
-   background:`linear-gradient(135deg,#fff3a0 0%,${Y} 34%,#c99a00 100%)`,
+   background:`linear-gradient(135deg,${Y} 0%,#e6b800 100%)`,
    color:"#111",
    padding:isMobile?"8px 12px":"0 20px", // Quitamos el padding vertical para centrar con flex
    display:"flex",
    alignItems:"center",
    justifyContent:"space-between",
-   boxShadow:"0 8px 24px rgba(0,0,0,.35), 0 0 18px rgba(255,215,0,.28)", 
+   boxShadow:"0 2px 12px rgba(255,215,0,.3)", 
    position:"fixed", 
    top:0, left:0, right:0, 
    zIndex:1000, 
@@ -4692,8 +5447,8 @@ const handleConfirmCobro = async (paymentData) => {
  sidebar: (open) => ({
   width: open ? (isMobile ? "100vw" : 220) : (isMobile ? 0 : 64),
   minWidth: open ? (isMobile ? "100vw" : 220) : (isMobile ? 0 : 64),
-  background:"linear-gradient(180deg,#121212 0%,#0b0b0b 100%)",
-  borderRight:"1px solid #26210a",
+  background:"#111",
+  borderRight:"1px solid #1e1e1e",
   display:"flex", flexDirection:"column",
   transition:"width .22s cubic-bezier(.4,0,.2,1), min-width .22s cubic-bezier(.4,0,.2,1)",
   overflow:"hidden", flexShrink:0,
@@ -4714,7 +5469,6 @@ const handleConfirmCobro = async (paymentData) => {
   cursor:"pointer", fontFamily:"'Nunito',sans-serif", fontWeight: active ? 800 : 600,
   fontSize:13, whiteSpace:"nowrap", transition:"all .15s", width:"100%",
   letterSpacing:0.3,
-  boxShadow: active ? `inset 0 0 0 1px ${Y}22` : "none",
  }),
  
  content: {
@@ -4727,22 +5481,20 @@ const handleConfirmCobro = async (paymentData) => {
    overflow:"auto", 
    marginTop:60 // Actualizado a 60 para que no choque con el header
  },
- card: {background:"linear-gradient(180deg,#202020 0%,#181818 100%)",borderRadius:8,padding:isMobile?10:14,marginBottom:10,border:"1px solid #303030",boxShadow:"0 10px 24px rgba(0,0,0,.22)"},
- cardHL: {background:"linear-gradient(180deg,#202018 0%,#181818 100%)",borderRadius:8,padding:isMobile?10:14,marginBottom:10,border:`1px solid ${Y}55`,boxShadow:`0 0 0 1px ${Y}11, 0 12px 26px rgba(0,0,0,.28)`},
- statCard:{background:"linear-gradient(180deg,#202020 0%,#171717 100%)",borderRadius:8,padding:isMobile?"12px 8px":"16px 12px",border:"1px solid #303030",textAlign:"center",boxShadow:"0 8px 18px rgba(0,0,0,.22)"},
+ card: {background:"#1c1c1c",borderRadius:isMobile?10:12,padding:isMobile?10:14,marginBottom:10,border:"1px solid #2a2a2a"},
+ cardHL: {background:"#1c1c1c",borderRadius:isMobile?10:12,padding:isMobile?10:14,marginBottom:10,border:`1px solid ${Y}44`},
+ statCard:{background:"#1c1c1c",borderRadius:isMobile?10:12,padding:isMobile?"12px 8px":"16px 12px",border:"1px solid #2a2a2a",textAlign:"center"},
  statNum: {fontSize:isMobile?22:28,fontWeight:900,color:Y,lineHeight:1},
  statLbl: {fontSize:isMobile?9:11,color:"#777",marginTop:5,textTransform:"uppercase",letterSpacing:1},
- btn: (v="primary")=>({padding:isMobile?"7px 10px":"8px 14px",background:v==="primary"?`linear-gradient(135deg,#fff176 0%,${Y} 52%,#caa300 100%)`:v==="danger"?"linear-gradient(135deg,#e74c3c,#922b21)":v==="success"?"linear-gradient(135deg,#2ecc71,#1e8449)":v==="blue"?"linear-gradient(135deg,#3498db,#1f618d)":v==="warn"?"linear-gradient(135deg,#f39c12,#a04000)":"linear-gradient(180deg,#333,#242424)",color:v==="primary"?"#111":"#fff",border:v==="primary"?`1px solid ${Y}`:"1px solid #3a3a3a",borderRadius:8,cursor:"pointer",fontWeight:800,fontSize:isMobile?11:12,fontFamily:"'Nunito',sans-serif",transition:"opacity .15s, transform .15s, border-color .15s",whiteSpace:"nowrap",boxShadow:v==="primary"?`0 0 12px ${Y}33`:"0 5px 14px rgba(0,0,0,.18)"}),
- input: {background:"linear-gradient(180deg,#252525,#1d1d1d)",border:"1px solid #444",borderRadius:8,padding:isMobile?"8px 10px":"9px 12px",color:"#eee",fontFamily:"'Nunito',sans-serif",fontSize:13,outline:"none",width:"100%",boxSizing:"border-box",boxShadow:"inset 0 1px 0 rgba(255,255,255,.04)"},
+ btn: (v="primary")=>({padding:isMobile?"7px 10px":"8px 14px",background:v==="primary"?Y:v==="danger"?"#c0392b":v==="success"?"#27ae60":v==="blue"?"#2980b9":v==="warn"?"#d35400":"#2a2a2a",color:v==="primary"?"#111":"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:800,fontSize:isMobile?11:12,fontFamily:"'Nunito',sans-serif",transition:"opacity .15s",whiteSpace:"nowrap"}),
+ input: {background:"#222",border:"1px solid #383838",borderRadius:8,padding:isMobile?"8px 10px":"9px 12px",color:"#eee",fontFamily:"'Nunito',sans-serif",fontSize:13,outline:"none",width:"100%",boxSizing:"border-box"},
  tag: (bg, col)=>({display:"inline-block",padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700,background:bg,color:col||"#eee"}),
  grid: (cols)=>({display:"grid",gridTemplateColumns:`repeat(auto-fit, minmax(${cols}px,1fr))`,gap:isMobile?8:10}),
  row: {display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8},
  title: {color:Y,fontFamily:"'Bebas Neue',cursive",fontSize:isMobile?18:22,marginBottom:isMobile?10:14,letterSpacing:1},
  overlay: {position:"fixed",inset:0,background:"rgba(0,0,0,.88)",zIndex:2000,display:"flex",alignItems:isMobile?"flex-end":"center",justifyContent:"center",padding:isMobile?0:16},
- modal: {background:"linear-gradient(180deg,#202020 0%,#171717 100%)",border:`1px solid ${Y}44`,borderRadius:isMobile?"14px 14px 0 0":10,padding:isMobile?"16px 12px 20px":20,width:"100%",maxWidth:isMobile?"100%":600,maxHeight:isMobile?"88vh":"85vh",overflowY:"auto",position:"relative",boxShadow:"0 24px 80px rgba(0,0,0,.55)"},
+ modal: {background:"#1a1a1a",border:`1px solid ${Y}44`,borderRadius:isMobile?"16px 16px 0 0":14,padding:isMobile?"16px 12px 20px":20,width:"100%",maxWidth:isMobile?"100%":600,maxHeight:isMobile?"88vh":"85vh",overflowY:"auto",position:"relative"},
  };
-
- if (restoringSession && localStorage.getItem("token")) return <ErrorBoundary><div style={{background:"#111",color:"#FFD700",height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900}}>Restaurando sesión...</div></ErrorBoundary>;
 
  if (splash) return (
  <ErrorBoundary>
@@ -4755,50 +5507,43 @@ const handleConfirmCobro = async (paymentData) => {
 
  if (!currentUser) return <ErrorBoundary><LoginScreen onLogin={(user) => {
    setCurrentUser(user);
-   localStorage.setItem("papachos_session_user", JSON.stringify(user));
-   const startTab = hasRole(user, "admin") ? "dashboard"
-    : hasRole(user, "cocinero") ? "cocina"
-    : hasRole(user, "cajero") ? "pedidos"
-    : "mesas";
+   const startTab = user.id==='cocinero' ? 'cocina'
+    : user.id==='cajero' ? 'pedidos'
+    : user.id==='mesero' ? 'mesas'
+    : 'dashboard';
    setTab(startTab);
   }} s={s} Y={Y} isMobile={isMobile} /></ErrorBoundary>;
- if (currentUser.needsAliasSetup || currentUser.needsBiometricSetup) {
-  return <ErrorBoundary><AuthSetupModal currentUser={currentUser} onUpdate={updateCurrentUserAuthFlags} s={s} Y={Y} isMobile={isMobile} /></ErrorBoundary>;
- }
  if (!loaded) return <ErrorBoundary><div style={{background:"#111",color:"#FFD700",height:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{textAlign:"center"}}><div style={{marginTop:12,fontWeight:700,letterSpacing:2}}>Cargando Sucursal...</div></div></div></ErrorBoundary>;
 
- const pendingSols = solicitudes.filter(x => String(x.status || x.estado || "").toLowerCase() === "pendiente").length;
+ const pendingSols = solicitudes.filter(x => x.status === "pendiente").length;
  const allTabs = [
  {id:"dashboard",    label:"Inicio"},
  {id:"mesas",        label:"Mesas"},
  {id:"nuevo",        label:"Nuevo"},
  {id:"pedidos",      label:`Pedidos${orders.filter(o=>!o.anulado).length>0?" ("+orders.filter(o=>!o.anulado).length+")":""}` },
  {id:"cocina",       label:`Cocina${orders.filter(o=>o.kitchenStatus!=='listo'&&!o.anulado).length>0?" ("+orders.filter(o=>o.kitchenStatus!=='listo'&&!o.anulado).length+")":""}` },
- {id:"solicitudes",  label: hasRole(currentUser, "admin")
+ {id:"solicitudes",  label: currentUser?.id==="admin"
   ? `Solicitudes${pendingSols>0?" ("+pendingSols+")":""}` 
   : `Mis Solicitudes` },
- {id:"requerimientos", label:"Requerimientos"},
  {id:"historial",    label:"Historial"},
- {id:"reportes",     label:"Reportes"},
  {id:"inventario",   label:"Inventario"},
  {id:"carta",        label:"Carta"},
  {id:"personal",     label:"Personal"},
  ];
 
  const tabs = allTabs.filter(t => {
- if (hasRole(currentUser, "admin")) return true;
- const allowed = new Set();
- if (hasRole(currentUser, "cajero")) ['dashboard','pedidos','historial','reportes','solicitudes'].forEach(id => allowed.add(id));
- if (hasRole(currentUser, "mesero")) ['mesas','nuevo','pedidos','solicitudes'].forEach(id => allowed.add(id));
- if (hasRole(currentUser, "cocinero")) ['cocina','requerimientos'].forEach(id => allowed.add(id));
- return allowed.has(t.id);
+ if (currentUser.id === 'admin') return true;
+ if (currentUser.id === 'cajero') return ['dashboard','pedidos','historial','solicitudes'].includes(t.id);
+ if (currentUser.id === 'mesero') return ['mesas','nuevo','pedidos','solicitudes'].includes(t.id);
+ if (currentUser.id === 'cocinero') return ['cocina'].includes(t.id);
+ return false;
  });
 
  // Badge en el tab solicitudes (llamar atención al admin)
- const myPendingSols = solicitudes.filter(x => String(x.status || x.estado || "").toLowerCase() === "pendiente" && ((x.requestedBy || x.id_usuario_origen) === currentUser.userId || (x.requestedBy || x.id_usuario_origen) === currentUser.id)).length;
- const SolBadge = pendingSols > 0 && hasRole(currentUser, "admin")
+ const myPendingSols = solicitudes.filter(x => x.status === "pendiente" && (x.requestedBy === currentUser.userId || x.requestedBy === currentUser.id)).length;
+ const SolBadge = pendingSols > 0 && currentUser.id === 'admin'
   ? null  // shown directly in header as 🔔 button — no floating badge needed
-  : myPendingSols > 0 && !hasRole(currentUser, "admin")
+  : myPendingSols > 0 && currentUser.id !== 'admin'
   ? <div style={{position:"fixed",top:56,right:8,background:"#8e44ad",color:"#fff",borderRadius:12,padding:"2px 8px",fontSize:11,fontWeight:900,zIndex:1900,boxShadow:"0 2px 8px rgba(0,0,0,.5)"}}>⏳ {myPendingSols} solicitud{myPendingSols>1?"es":""} en revisión</div>
   : null;
 
@@ -4806,7 +5551,6 @@ const handleConfirmCobro = async (paymentData) => {
  <ErrorBoundary>
  <>
  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito:wght@400;700;900&display=swap" rel="stylesheet"/>
- {SolBadge}
  <div style={s.app}>
 
  {/* ── HEADER fixed top bar ── */}
@@ -4825,12 +5569,12 @@ const handleConfirmCobro = async (paymentData) => {
   </div>
   <div style={{display:"flex", gap:8, alignItems:"center"}}>
    {!isMobile && <span style={{fontSize:11,color:"#333",fontWeight:700}}>{currentUser.name} · {currentUser.label}</span>}
-   {hasRole(currentUser, "admin") && pendingSols > 0 && (
+   {currentUser?.id==="admin" && pendingSols > 0 && (
     <button style={{background:"#e74c3c",color:"#fff",border:"none",borderRadius:8,padding:"4px 10px",fontWeight:900,fontSize:11,cursor:"pointer"}} onClick={()=>setTab("solicitudes")}>
      🔔 {pendingSols}
     </button>
    )}
-   <button style={{background:"#c0392b",color:"#fff",border:"none",borderRadius:8,padding:"4px 10px",fontWeight:800,fontSize:11,cursor:"pointer"}} onClick={()=>{ localStorage.removeItem("token"); localStorage.removeItem("papachos_session_user"); setCurrentUser(null); }}>Salir</button>
+   <button style={{background:"#c0392b",color:"#fff",border:"none",borderRadius:8,padding:"4px 10px",fontWeight:800,fontSize:11,cursor:"pointer"}} onClick={()=>setCurrentUser(null)}>Salir</button>
   </div>
  </header>
 
@@ -4850,7 +5594,7 @@ const handleConfirmCobro = async (paymentData) => {
 
   <div style={{overflowY:"auto", flex:1, paddingTop:8, paddingBottom:isMobile?80:24}}>
   {tabs.map(t => {
-   const icons = {dashboard:"🏠",mesas:"🍽",nuevo:"➕",pedidos:"📋",cocina:"👨‍🍳",solicitudes:"📨",requerimientos:"🧾",historial:"📅",reportes:"📊",inventario:"📦",carta:"📖",personal:"👥"};
+   const icons = {dashboard:"🏠",mesas:"🍽",nuevo:"➕",pedidos:"📋",cocina:"👨‍🍳",solicitudes:"📨",historial:"📅",inventario:"📦",carta:"📖",personal:"👥"};
    const hasCount = t.label.includes("(");
    const labelClean = t.label.replace(/\s*\(.*\)/, "");
    const count = hasCount ? t.label.match(/\((\d+)\)/)?.[1] : null;
@@ -4886,12 +5630,11 @@ const handleConfirmCobro = async (paymentData) => {
   <div style={s.content}>
 
   {toast&&(<div style={{position:"fixed",bottom:isMobile ? 90 : 20,left:"50%",transform:"translateX(-50%)",background:toast.color,color:"#fff",padding:"10px 20px",borderRadius:12,fontWeight:800,zIndex:9999,fontSize:14,boxShadow:"0 4px 20px rgba(0,0,0,.5)",whiteSpace:"nowrap"}}>{toast.msg}</div>)}
-  {loadError&&(<div style={{background:"#3a1c1c",border:"1px solid #e74c3c55",color:"#ffb4a8",padding:"8px 12px",borderRadius:8,marginBottom:12,fontSize:12,fontWeight:700}}>Backend: {loadError.message || "No se pudieron cargar todos los datos"}</div>)}
 
   {cobrarTarget && <div style={s.overlay} onClick={()=>setCobrarTarget(null)}><CobrarModal orderContext={cobrarTarget.data} total={cobrarTarget.data.total} onConfirm={handleConfirmCobro} onClose={()=>setCobrarTarget(null)} s={s} Y={Y} /></div>}
   {splitTarget && <SplitBillModal order={splitTarget} onProceed={(items, total) => { setCobrarTarget({ type: 'split', data: { originalOrder: splitTarget, splitItems: items, total }}); setSplitTarget(null); }} onClose={() => setSplitTarget(null)} s={s} Y={Y} fmt={fmt} />}
-  {editingOrder&&<div style={s.overlay} onClick={()=>setEditingOrder(null)}><EditOrderModal order={editingOrder} onSave={saveEditedOrder} onClose={()=>setEditingOrder(null)} menu={menu} appConfig={configData} isMobile={isMobile} s={s} Y={Y} isAdmin={hasRole(currentUser, "admin")} currentUser={currentUser} onRequestPrecio={crearSolicitud}/></div>}
-  {mesaModal&&<div style={s.overlay} onClick={()=>setMesaModal(null)}><MesaModalComponent num={mesaModal} orders={orders} setDraft={setDraft} newDraft={newDraft} onClose={()=>setMesaModal(null)} setTab={setTab} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} setAnulacionModal={setAnulacionModal} printOrder={printOrder} isMobile={isMobile} s={s} Y={Y} fmt={fmt} currentUser={currentUser} crearSolicitud={crearSolicitud} isAdmin={hasRole(currentUser, "admin")} /></div>}
+  {editingOrder&&<div style={s.overlay} onClick={()=>setEditingOrder(null)}><EditOrderModal order={editingOrder} onSave={saveEditedOrder} onClose={()=>setEditingOrder(null)} menu={menu} isMobile={isMobile} s={s} Y={Y} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} onRequestPrecio={crearSolicitud}/></div>}
+  {mesaModal&&<div style={s.overlay} onClick={()=>setMesaModal(null)}><MesaModalComponent num={mesaModal} orders={orders} setDraft={setDraft} newDraft={newDraft} onClose={()=>setMesaModal(null)} setTab={setTab} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} setAnulacionModal={setAnulacionModal} printOrder={printOrder} isMobile={isMobile} s={s} Y={Y} fmt={fmt} currentUser={currentUser} crearSolicitud={crearSolicitud} isAdmin={currentUser?.id==="admin"} /></div>}
   
   {mergeModal && (
   <div style={s.overlay} onClick={() => setMergeModal(null)}>
@@ -4910,7 +5653,7 @@ const handleConfirmCobro = async (paymentData) => {
   {anulacionModal && (
   <div style={s.overlay} onClick={() => setAnulacionModal(null)}>
   <AnulacionModal order={anulacionModal}
-   isAdmin={hasRole(currentUser, "admin")}
+   isAdmin={currentUser?.id === 'admin'}
    currentUser={currentUser}
    onConfirm={(items, motivo) => anularPedido(anulacionModal, items, motivo)}
    onRequest={(sol) => crearSolicitud(sol)}
@@ -4922,16 +5665,14 @@ const handleConfirmCobro = async (paymentData) => {
 
   {tab==="dashboard" && <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} caja={caja} abrirCaja={abrirCaja} cerrarCaja={cerrarCaja} currentUser={currentUser} getPay={getPay} soundConfig={soundConfig} setSoundConfig={setSoundConfig} />}
   {tab==="mesas" && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setAnulacionModal={setAnulacionModal} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} mesasArr={mesasArr} addMesa={addMesa} removeMesa={removeMesa} currentUser={currentUser} />}
-  {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} appConfig={configData} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} isTablet={isTablet} mesasArr={mesasArr} cajaAbierta={cajaAbierta} currentUser={currentUser} />}
-  {tab==="pedidos" && <PedidosComponent orders={orders} toggleItemCheck={toggleItemCheck} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} beverageCategories={beverageCategories} />}
-{tab==="cocina" && <CocinaComponent orders={orders} toggleItemCheck={toggleItemCheck} markKitchenListo={markKitchenListo} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} soundConfig={soundConfig} />}
-  {tab==="historial"    && <HistorialComponent history={history} activeOrders={orders} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={hasRole(currentUser, "admin")} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} />}
-  {tab==="reportes"     && <ReportesComponent s={s} Y={Y} fmt={fmt} isAdmin={hasRole(currentUser, "admin")} />}
+  {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} isTablet={isTablet} mesasArr={mesasArr} cajaAbierta={cajaAbierta} currentUser={currentUser} />}
+  {tab==="pedidos" && <PedidosComponent orders={orders} toggleItemCheck={toggleItemCheck} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
+{tab==="cocina" && <CocinaComponent orders={orders} markKitchenListo={markKitchenListo} toggleItemCheck={toggleItemCheck} crearSolicitud={crearSolicitud} currentUser={currentUser} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} soundConfig={soundConfig} />}
+  {tab==="historial"    && <HistorialComponent history={history} activeOrders={orders} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} />}
   {tab==="inventario"   && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/>}
-  {tab==="carta"        && <CartaComponent menu={menu} cartaCatFilter={cartaCatFilter} setCartaCatFilter={setCartaCatFilter} showAdd={showAdd} setShowAdd={setShowAdd} newItem={newItem} setNewItem={setNewItem} addMenuItem={addMenuItem} deleteMenuItem={deleteMenuItem} isMobile={isMobile} s={s} Y={Y} fmt={fmt} ALL_CATS={allCats} />}
+  {tab==="carta"        && <CartaComponent menu={menu} cartaCatFilter={cartaCatFilter} setCartaCatFilter={setCartaCatFilter} showAdd={showAdd} setShowAdd={setShowAdd} newItem={newItem} setNewItem={setNewItem} addMenuItem={addMenuItem} deleteMenuItem={deleteMenuItem} isMobile={isMobile} s={s} Y={Y} fmt={fmt} ALL_CATS={ALL_CATS} />}
   {tab==="solicitudes"  && <SolicitudesPanel solicitudes={solicitudes} onResolve={resolverSolicitud} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} updateHistoryDoc={updateHistoryDoc} />}
-  {tab==="requerimientos" && <RequerimientosComponent currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} />}
-  {tab==="personal"     && <StaffManager staff={staff} onCreateStaff={createStaffUser} onUpdateStaff={updateStaffUser} onUpdateAccess={updateStaffAccess} onResetPin={resetStaffPin} onDeleteStaff={deleteStaffUser} isMobile={isMobile} s={s} Y={Y} localName={currentUser?.localName} currentLocalId={currentUser?.localId} />}
+  {tab==="personal"     && <StaffManager staff={staff} onSaveStaff={saveStaff} isMobile={isMobile} s={s} Y={Y} localName={currentUser?.localName} />}
 
   </div>
  </div>
