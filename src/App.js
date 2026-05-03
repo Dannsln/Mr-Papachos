@@ -394,9 +394,9 @@ function LandingScreen({ onEnter, Y, isMobile }) {
 // ═══════════════════════════════════════════════════════════════════
 // ICONO DE MESA VECTORIAL (SVG) 
 // ═══════════════════════════════════════════════════════════════════
-const IconoMesa = ({ color, size }) => (
+const IconoMesa = ({ color, size, style: extraStyle }) => (
  <svg width={size} height={size * 0.75} viewBox="0 0 120 90" fill="none" xmlns="http://www.w3.org/2000/svg" 
- style={{ marginBottom: 10, filter: color !== "#ffffff" ? `drop-shadow(0px 0px 6px ${color}88)` : 'none' }}>
+ style={{ marginBottom: 10, filter: color !== "#ffffff" ? `drop-shadow(0px 0px 7px ${color}99)` : 'none', ...extraStyle }}>
  <rect x="5" y="30" width="15" height="30" rx="4" stroke={color} strokeWidth="3" />
  <rect x="100" y="30" width="15" height="30" rx="4" stroke={color} strokeWidth="3" />
  <rect x="35" y="5" width="20" height="15" rx="4" stroke={color} strokeWidth="3" />
@@ -406,6 +406,57 @@ const IconoMesa = ({ color, size }) => (
  <rect x="16" y="16" width="88" height="58" rx="8" fill="#1c1c1c" stroke={color} strokeWidth="4" />
  </svg>
 );
+
+// ═══════════════════════════════════════════════════════════════════
+// ICONO PARA LLEVAR — BOLSA TAKEOUT (SVG)
+// Mismo sistema de glow que IconoMesa, mismo prop API { color, size, style }
+// ═══════════════════════════════════════════════════════════════════
+const IconoLlevar = ({ color = "#FFD700", size = 80, style: extraStyle }) => (
+ <svg
+  width={size}
+  height={size * 1.18}
+  viewBox="0 0 80 94"
+  fill="none"
+  xmlns="http://www.w3.org/2000/svg"
+  style={{
+   filter: color !== "#ffffff" ? `drop-shadow(0 0 7px ${color}99)` : "none",
+   marginBottom: 10,
+   ...extraStyle,
+  }}
+ >
+  {/* ── Asa curva ── */}
+  <path
+   d="M 26 30 C 26 8 54 8 54 30"
+   stroke={color} strokeWidth="3.5" strokeLinecap="round" fill="none"
+  />
+  {/* ── Cuerpo de la bolsa ── */}
+  <path
+   d="M 7 30 L 7 88 Q 7 93 12 93 L 68 93 Q 73 93 73 88 L 73 30 Z"
+   stroke={color} strokeWidth="3" fill="#111" strokeLinejoin="round"
+  />
+  {/* ── Solapa superior (doblez) ── */}
+  <path
+   d="M 7 30 L 7 47 Q 40 62 73 47 L 73 30"
+   stroke={color} strokeWidth="2.5" fill="#1a1a1a" strokeLinejoin="round"
+  />
+  {/* ── Ojales del asa ── */}
+  <ellipse cx="26" cy="38" rx="5.5" ry="4.5" stroke={color} strokeWidth="2.2" fill="#111"/>
+  <ellipse cx="54" cy="38" rx="5.5" ry="4.5" stroke={color} strokeWidth="2.2" fill="#111"/>
+  {/* ── Línea decorativa en el cuerpo (textura de bolsa de papel) ── */}
+  <line x1="20" y1="50" x2="20" y2="85" stroke={color} strokeWidth="1.2" strokeOpacity="0.2"/>
+  <line x1="60" y1="50" x2="60" y2="85" stroke={color} strokeWidth="1.2" strokeOpacity="0.2"/>
+  {/* ── Reflejo central (detalle de luz) ── */}
+  <line x1="28" y1="55" x2="52" y2="55" stroke={color} strokeWidth="1" strokeOpacity="0.18" strokeDasharray="3 4"/>
+  <line x1="28" y1="70" x2="52" y2="70" stroke={color} strokeWidth="1" strokeOpacity="0.18" strokeDasharray="3 4"/>
+ </svg>
+);
+
+// ── Selector de ícono por tipo de pedido ─────────────────────────────────────
+// Úsalo en cualquier lugar: <OrdenIcon orderType={o.orderType} color={Y} size={24} />
+const OrdenIcon = ({ orderType, color, size = 24, style }) =>
+ orderType === "llevar"
+  ? <IconoLlevar color={color} size={size} style={{ marginBottom: 0, ...style }} />
+  : <IconoMesa   color={color} size={size} style={{ marginBottom: 0, ...style }} />;
 
 // ═══════════════════════════════════════════════════════════════════
 // STAFF POR DEFECTO (primer arranque)
@@ -2588,37 +2639,82 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
  
  {llevarOrders.length > 0 && (
  <div>
- <div style={{...s.title, fontSize:16}}> PARA LLEVAR ({llevarOrders.length})</div>
- {llevarOrders.map(o => {
-  const isEsperando = o.status === 'esperando_cobro';
-  return (
-  <div key={o.id} style={{...s.card, borderLeft:`4px solid ${isEsperando?"#3498db":o.isPaid?"#27ae60":"#e67e22"}`}}>
-  <div style={s.row}>
-  <div>
-   <span style={{fontWeight:900}}> {o.table}</span>
-   {isEsperando && <span style={{...s.tag("#0a1520","#3498db"), marginLeft:6, fontSize:10}}>⏳ Esperando cobro</span>}
-   {o.isPaid && !isEsperando && <span style={{...s.tag("#1e5c2e"), marginLeft:6}}> Pagado</span>}
+  {/* ── Título de sección con ícono ── */}
+  <div style={{display:"flex", alignItems:"center", gap:10, marginBottom:12}}>
+   <IconoLlevar color={Y} size={26} style={{marginBottom:0}}/>
+   <div style={{...s.title, marginBottom:0, fontSize:16}}>PARA LLEVAR ({llevarOrders.length})</div>
   </div>
-  <span style={{color:Y, fontWeight:900}}>{fmt(o.total)}</span>
-  </div>
-  <div style={{display:"flex", gap:6, marginTop:8, flexWrap:"wrap"}}>
-  {o.isPaid && !isEsperando ? (
-  <button style={{...s.btn("blue"), flex:1}} onClick={() => finishPaidOrder(o.id)}>✅ Entregado</button>
-  ) : isEsperando ? (
-   canCobrarLlevar
-    ? <button style={{...s.btn("success"), flex:2}} onClick={() => setCobrarTarget({type:'existing', data:o})}>💰 Cobrar y enviar a cocina</button>
-    : <div style={{flex:2, background:"#0a1520", border:"1px solid #3498db33", borderRadius:8, padding:"8px 12px", fontSize:12, color:"#3498db", textAlign:"center", fontWeight:700}}>⏳ Esperando al cajero</div>
-  ) : (
-   canCobrarLlevar && <button style={{...s.btn("success"), flex:1}} onClick={() => setCobrarTarget({type:'existing', data:o})}>💰 Cobrar</button>
-  )}
-  {currentUser?.id === 'admin' && <button style={{...s.btn("warn"), padding:"7px 10px"}} onClick={() => setEditingOrder(o)}>✏️</button>}
-  <button style={s.btn("secondary")} onClick={() => printOrder(o)}>🖨</button>
-  {currentUser?.id === 'admin' && (
-  <button style={{...s.btn("danger"), padding:"7px 10px"}} onClick={() => setAnulacionModal(o)}>🚫</button>
-  )}
-  </div>
-  </div>
- );})}
+
+  {llevarOrders.map(o => {
+   const isEsperando = o.status === 'esperando_cobro';
+   const llevarColor = isEsperando ? "#3498db" : o.isPaid ? "#27ae60" : "#e67e22";
+   const bgColor     = isEsperando ? "#060f18"  : o.isPaid ? "#061209"  : "#111";
+   const previewItems = (o.items||[]).slice(0,2).map(i=>`${i.qty}× ${i.name}`).join(' · ');
+   const extraCount   = (o.items||[]).length - 2;
+
+   return (
+   <div key={o.id} style={{
+    background: bgColor,
+    border: `2px solid ${llevarColor}44`,
+    borderRadius: 14,
+    padding: isMobile ? "12px 12px" : "14px 16px",
+    marginBottom: 12,
+    position: "relative",
+    overflow: "hidden",
+   }}>
+    {/* Barra de acento izquierda */}
+    <div style={{position:"absolute", left:0, top:0, bottom:0, width:4, background:llevarColor, borderRadius:"4px 0 0 4px"}}/>
+
+    {/* Fila superior: ícono + info + total */}
+    <div style={{display:"flex", alignItems:"center", gap:12, marginBottom:10}}>
+     {/* Ícono con glow */}
+     <div style={{flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", width:isMobile?44:52, height:isMobile?52:62, background:`${llevarColor}12`, borderRadius:10, border:`1px solid ${llevarColor}33`}}>
+      <IconoLlevar color={llevarColor} size={isMobile?30:36} style={{marginBottom:0}}/>
+     </div>
+
+     {/* Nombre + preview ítems */}
+     <div style={{flex:1, minWidth:0}}>
+      <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:isMobile?18:20, color:llevarColor, letterSpacing:1, lineHeight:1.1}}>
+       {o.table || "Sin nombre"}
+      </div>
+      {o._mesero && <div style={{fontSize:10, color:"#555", marginTop:1}}>por {o._mesero}</div>}
+      {previewItems && (
+       <div style={{fontSize:11, color:"#666", marginTop:3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>
+        {previewItems}{extraCount > 0 && <span style={{color:"#444"}}> +{extraCount} más</span>}
+       </div>
+      )}
+     </div>
+
+     {/* Total + estado */}
+     <div style={{textAlign:"right", flexShrink:0}}>
+      <div style={{fontWeight:900, fontSize:isMobile?18:20, color:Y}}>{fmt(o.total)}</div>
+      <div style={{marginTop:4}}>
+       {isEsperando && <span style={{...s.tag("#051020","#3498db"), fontSize:9, border:`1px solid #3498db44`}}>⏳ Cobro pendiente</span>}
+       {o.isPaid && !isEsperando && <span style={{...s.tag("#051505","#27ae60"), fontSize:9, border:`1px solid #27ae6044`}}>✅ En cocina</span>}
+      </div>
+     </div>
+    </div>
+
+    {/* Fila de botones */}
+    <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
+    {o.isPaid && !isEsperando ? (
+     <button style={{...s.btn("blue"), flex:1}} onClick={() => finishPaidOrder(o.id)}>✅ Entregado</button>
+    ) : isEsperando ? (
+     canCobrarLlevar
+      ? <button style={{...s.btn("success"), flex:2}} onClick={() => setCobrarTarget({type:'existing', data:o})}>💰 Cobrar y enviar a cocina</button>
+      : <div style={{flex:2, background:"#0a1520", border:"1px solid #3498db33", borderRadius:8, padding:"8px 12px", fontSize:12, color:"#3498db", textAlign:"center", fontWeight:700}}>⏳ Esperando al cajero</div>
+    ) : (
+     canCobrarLlevar && <button style={{...s.btn("success"), flex:1}} onClick={() => setCobrarTarget({type:'existing', data:o})}>💰 Cobrar</button>
+    )}
+    {currentUser?.id === 'admin' && <button style={{...s.btn("warn"), padding:"7px 10px"}} onClick={() => setEditingOrder(o)}>✏️</button>}
+    <button style={s.btn("secondary")} onClick={() => printOrder(o)}>🖨</button>
+    {currentUser?.id === 'admin' && (
+     <button style={{...s.btn("danger"), padding:"7px 10px"}} onClick={() => setAnulacionModal(o)}>🚫</button>
+    )}
+    </div>
+   </div>
+   );
+  })}
  </div>
  )}
  </div>
@@ -3148,17 +3244,22 @@ function PedidosComponent({ orders, toggleItemCheck, setTab, finishPaidOrder, se
 
  {esperandoCobro.length > 0 && (
   <div style={{marginBottom:18}}>
-   <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:10}}>
+   <div style={{display:"flex", alignItems:"center", gap:10, marginBottom:10}}>
+    <style>{`@keyframes llevar-pulse{0%,100%{filter:drop-shadow(0 0 4px #3498db99)}50%{filter:drop-shadow(0 0 14px #3498dbcc)}}`}</style>
+    <IconoLlevar color="#3498db" size={22} style={{marginBottom:0, animation:"llevar-pulse 2s ease-in-out infinite"}}/>
     <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:isMobile?16:18, color:"#3498db", letterSpacing:1}}>
-     🥡 PARA LLEVAR — ESPERANDO COBRO ({esperandoCobro.length})
+     PARA LLEVAR — ESPERANDO COBRO ({esperandoCobro.length})
     </div>
    </div>
    {esperandoCobro.map(o => (
     <div key={o.id} style={{...s.card, borderLeft:"4px solid #3498db", marginBottom:8, padding:isMobile?"12px 10px":"14px 16px"}}>
      <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6}}>
       <div>
-       <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:isMobile?20:22, color:"#3498db", letterSpacing:1}}>
-        🥡 {o.table||"Sin nombre"}
+       <div style={{display:"flex", alignItems:"center", gap:8}}>
+        <IconoLlevar color="#3498db" size={22} style={{marginBottom:0}}/>
+        <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:isMobile?20:22, color:"#3498db", letterSpacing:1}}>
+         {o.table||"Sin nombre"}
+        </div>
        </div>
        {o._mesero && <div style={{fontSize:11, color:"#666", marginTop:2}}>Tomado por: {o._mesero}</div>}
       </div>
@@ -3228,9 +3329,12 @@ function PedidosComponent({ orders, toggleItemCheck, setTab, finishPaidOrder, se
  {/* Cabecera */}
  <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6}}>
  <div style={{display:"flex", alignItems:"center", gap:8, flexWrap:"wrap"}}>
- <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:isMobile?20:24, color: isReplacement?"#27ae60":urgentColor, letterSpacing:1}}>
- {o.orderType==="llevar" ? `🥡 ${o.table||"Sin nombre"}` : `Mesa ${o.table}`}
- </span>
+ <div style={{display:"flex", alignItems:"center", gap:7}}>
+  <OrdenIcon orderType={o.orderType} color={isReplacement?"#27ae60":urgentColor} size={isMobile?20:23}/>
+  <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:isMobile?20:24, color: isReplacement?"#27ae60":urgentColor, letterSpacing:1}}>
+   {o.orderType==="llevar" ? o.table||"Sin nombre" : `Mesa ${o.table}`}
+  </span>
+ </div>
  {o.orderType==="llevar" && (o.phone||o.deliveryAddress) && (
  <span style={{fontSize:11, color:"#888"}}>{[o.phone, o.deliveryAddress].filter(Boolean).join(" · ")}</span>
  )}
@@ -3590,9 +3694,12 @@ function CocinaComponent({ orders, markKitchenListo, toggleItemCheck, crearSolic
 
         {/* Cabecera: mesa + mesero */}
         <div style={{...s.row, marginBottom:6, marginTop:6}}>
-         <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:22, color:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y}}>
-          {order.orderType==="llevar"?`🥡 ${order.table||"Sin nombre"}`:`Mesa ${order.table}`}
-         </span>
+         <div style={{display:"flex", alignItems:"center", gap:8}}>
+          <OrdenIcon orderType={order.orderType} color={mins>=15?"#e74c3c":mins>=8?"#e67e22":Y} size={20}/>
+          <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:22, color:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y}}>
+           {order.orderType==="llevar" ? order.table||"Sin nombre" : `Mesa ${order.table}`}
+          </span>
+         </div>
          {order._mesero && (
           <span style={{fontSize:11, color:"#888", fontWeight:700, background:"#1a1a1a", borderRadius:6, padding:"2px 8px", border:"1px solid #2a2a2a"}}>
            👤 {order._mesero}
@@ -4037,7 +4144,10 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", borderBottom:"1px solid #2a2a2a", paddingBottom:10, marginBottom:10, flexWrap:"wrap", gap:8}}>
       <div style={{display:"flex", alignItems:"center", gap:8, flexWrap:"wrap"}}>
        <span style={{fontWeight:900, fontSize:15, color:isCanceled?"#e74c3c":"#eee"}}>
-        {o.orderType==="llevar" ? `🥡 ${o.table||"Sin nombre"}` : `🍽 Mesa ${o.table}`}
+        <span style={{display:"inline-flex", alignItems:"center", gap:6, verticalAlign:"middle"}}>
+         <OrdenIcon orderType={o.orderType} color={isCanceled?"#e74c3c":o.orderType==="llevar"?"#3498db":Y} size={16}/>
+         {o.orderType==="llevar" ? o.table||"Sin nombre" : `Mesa ${o.table}`}
+        </span>
        </span>
        <span style={{...s.tag(isCanceled?"#c0392b":"#1e5c2e"), fontSize:10}}>
         {isCanceled ? (o._refunded ? "↩️ Reembolsado" : "🚫 Anulado") : o.splitPayments?.length>0?"✂️ Dividido":"✅ Pagado"}
@@ -5992,7 +6102,7 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
       const { existingOrder, newItems, newTotal } = addToLlevarModal;
       setAddToLlevarModal(null);
       setDraft(newDraft());
-      setCobrarTarget({ type:'llevar_addition', data:{ existingOrder, newItems, total: newTotal } });
+      setCobrarTarget({ type:'llevar_addition', data:{ existingOrder, newItems, items: newItems, total: newTotal } });
      }}>
      💰 Cobrar {fmt(addToLlevarModal.newTotal)} y agregar al mismo pedido
      <div style={{fontSize:11, fontWeight:400, marginTop:2, opacity:0.8}}>
