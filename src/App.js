@@ -2979,12 +2979,9 @@ function LlevarModalComponent({
    </div>
   </div>
  );
+}
 
-
-
-
- 
-}({ order, onProceed, onClose, s, Y, fmt }) {
+function InlineSplit({ order, onProceed, onClose, s, Y, fmt }) {
  const [splitItems, setSplitItems] = useState(
   (order.items||[]).map(i => ({ ...i, splitQty: 0 }))
  );
