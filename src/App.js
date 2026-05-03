@@ -2649,8 +2649,6 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, setL
  );
  })}
  </div>
- 
- </div>
 
  {/* ── Strip resumen de llevar (toca para abrir el panel) ── */}
  {llevarActivos > 0 && (
@@ -2981,6 +2979,11 @@ function LlevarModalComponent({
    </div>
   </div>
  );
+
+
+
+
+ 
 }({ order, onProceed, onClose, s, Y, fmt }) {
  const [splitItems, setSplitItems] = useState(
   (order.items||[]).map(i => ({ ...i, splitQty: 0 }))
