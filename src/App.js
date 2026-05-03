@@ -2598,17 +2598,17 @@ function MeseroDashboardComponent({ orders, currentUser, setTab, toggleItemCheck
  );
 }
 
-function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, finishPaidOrder, setCobrarTarget, setSplitTarget, setEditingOrder, printOrder, cancelOrder, setAnulacionModal, isMobile, isTablet, s, Y, fmt, mesasArr, addMesa, removeMesa, currentUser }) {
+function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, setLlevarModal, finishPaidOrder, setCobrarTarget, setSplitTarget, setEditingOrder, printOrder, cancelOrder, setAnulacionModal, isMobile, isTablet, s, Y, fmt, mesasArr, addMesa, removeMesa, currentUser }) {
  const llevarOrders = orders.filter(o => o.orderType==="llevar" && !o.anulado);
- // Solo admin y cajero pueden cobrar pedidos para llevar
  const canCobrarLlevar = currentUser?.id === 'admin' || currentUser?.id === 'cajero';
- 
+ const llevarActivos = llevarOrders.length;
+ const llevarListos  = llevarOrders.filter(o => o.kitchenStatus === "listo" && o.isPaid).length;
+
  return (
  <div>
  <div style={{...s.row, marginBottom:14}}>
  <div style={{display:"flex", alignItems:"center", gap:12}}>
  <div style={s.title}> MESAS ({mesasArr.length})</div>
- {/* Solo el Admin puede agregar o quitar mesas */}
  {currentUser?.id === 'admin' && (
  <div style={{display:"flex", gap:4, marginBottom:10}}>
  <button style={{...s.btn("danger"), padding:"4px 12px", fontSize:18}} onClick={removeMesa}>-</button>
@@ -2616,7 +2616,20 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
  </div>
  )}
  </div>
- <button style={s.btn()} onClick={() => { setDraft({...newDraft(), orderType:"llevar", payTiming:"ahora"}); setTab("nuevo"); }}>Para llevar</button>
+
+ {/* ── Botón Para Llevar — con badge de activos ── */}
+ <button
+  style={{...s.btn(), display:"flex", alignItems:"center", gap:8, position:"relative", paddingRight: llevarActivos > 0 ? 28 : undefined}}
+  onClick={() => setLlevarModal(true)}
+ >
+  <IconoLlevar color={llevarListos > 0 ? "#f1c40f" : Y} size={18} style={{marginBottom:0}}/>
+  Para llevar
+  {llevarActivos > 0 && (
+   <span style={{position:"absolute", top:-5, right:-5, background: llevarListos > 0 ? "#f1c40f" : "#3498db", color: llevarListos > 0 ? "#111" : "#fff", borderRadius:"50%", width:18, height:18, display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:900, boxShadow: llevarListos > 0 ? "0 0 8px #f1c40f99" : "0 0 6px #3498db88"}}>
+    {llevarActivos}
+   </span>
+  )}
+ </button>
  </div>
 
  <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(3, 1fr)", gridAutoRows: isTablet ? "minmax(25vh, auto)" : "auto", gap: isMobile ? 12 : 20, marginBottom:20 }}>
@@ -2637,86 +2650,25 @@ function MesasComponent({ orders, setDraft, newDraft, setTab, setMesaModal, fini
  })}
  </div>
  
- {llevarOrders.length > 0 && (
- <div>
-  {/* ── Título de sección con ícono ── */}
-  <div style={{display:"flex", alignItems:"center", gap:10, marginBottom:12}}>
-   <IconoLlevar color={Y} size={26} style={{marginBottom:0}}/>
-   <div style={{...s.title, marginBottom:0, fontSize:16}}>PARA LLEVAR ({llevarOrders.length})</div>
-  </div>
-
-  {llevarOrders.map(o => {
-   const isEsperando = o.status === 'esperando_cobro';
-   const llevarColor = isEsperando ? "#3498db" : o.isPaid ? "#27ae60" : "#e67e22";
-   const bgColor     = isEsperando ? "#060f18"  : o.isPaid ? "#061209"  : "#111";
-   const previewItems = (o.items||[]).slice(0,2).map(i=>`${i.qty}× ${i.name}`).join(' · ');
-   const extraCount   = (o.items||[]).length - 2;
-
-   return (
-   <div key={o.id} style={{
-    background: bgColor,
-    border: `2px solid ${llevarColor}44`,
-    borderRadius: 14,
-    padding: isMobile ? "12px 12px" : "14px 16px",
-    marginBottom: 12,
-    position: "relative",
-    overflow: "hidden",
-   }}>
-    {/* Barra de acento izquierda */}
-    <div style={{position:"absolute", left:0, top:0, bottom:0, width:4, background:llevarColor, borderRadius:"4px 0 0 4px"}}/>
-
-    {/* Fila superior: ícono + info + total */}
-    <div style={{display:"flex", alignItems:"center", gap:12, marginBottom:10}}>
-     {/* Ícono con glow */}
-     <div style={{flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", width:isMobile?44:52, height:isMobile?52:62, background:`${llevarColor}12`, borderRadius:10, border:`1px solid ${llevarColor}33`}}>
-      <IconoLlevar color={llevarColor} size={isMobile?30:36} style={{marginBottom:0}}/>
-     </div>
-
-     {/* Nombre + preview ítems */}
-     <div style={{flex:1, minWidth:0}}>
-      <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:isMobile?18:20, color:llevarColor, letterSpacing:1, lineHeight:1.1}}>
-       {o.table || "Sin nombre"}
-      </div>
-      {o._mesero && <div style={{fontSize:10, color:"#555", marginTop:1}}>por {o._mesero}</div>}
-      {previewItems && (
-       <div style={{fontSize:11, color:"#666", marginTop:3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>
-        {previewItems}{extraCount > 0 && <span style={{color:"#444"}}> +{extraCount} más</span>}
-       </div>
-      )}
-     </div>
-
-     {/* Total + estado */}
-     <div style={{textAlign:"right", flexShrink:0}}>
-      <div style={{fontWeight:900, fontSize:isMobile?18:20, color:Y}}>{fmt(o.total)}</div>
-      <div style={{marginTop:4}}>
-       {isEsperando && <span style={{...s.tag("#051020","#3498db"), fontSize:9, border:`1px solid #3498db44`}}>⏳ Cobro pendiente</span>}
-       {o.isPaid && !isEsperando && <span style={{...s.tag("#051505","#27ae60"), fontSize:9, border:`1px solid #27ae6044`}}>✅ En cocina</span>}
-      </div>
-     </div>
-    </div>
-
-    {/* Fila de botones */}
-    <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
-    {o.isPaid && !isEsperando ? (
-     <button style={{...s.btn("blue"), flex:1}} onClick={() => finishPaidOrder(o.id)}>✅ Entregado</button>
-    ) : isEsperando ? (
-     canCobrarLlevar
-      ? <button style={{...s.btn("success"), flex:2}} onClick={() => setCobrarTarget({type:'existing', data:o})}>💰 Cobrar y enviar a cocina</button>
-      : <div style={{flex:2, background:"#0a1520", border:"1px solid #3498db33", borderRadius:8, padding:"8px 12px", fontSize:12, color:"#3498db", textAlign:"center", fontWeight:700}}>⏳ Esperando al cajero</div>
-    ) : (
-     canCobrarLlevar && <button style={{...s.btn("success"), flex:1}} onClick={() => setCobrarTarget({type:'existing', data:o})}>💰 Cobrar</button>
-    )}
-    {currentUser?.id === 'admin' && <button style={{...s.btn("warn"), padding:"7px 10px"}} onClick={() => setEditingOrder(o)}>✏️</button>}
-    <button style={s.btn("secondary")} onClick={() => printOrder(o)}>🖨</button>
-    {currentUser?.id === 'admin' && (
-     <button style={{...s.btn("danger"), padding:"7px 10px"}} onClick={() => setAnulacionModal(o)}>🚫</button>
-    )}
-    </div>
-   </div>
-   );
-  })}
  </div>
+
+ {/* ── Strip resumen de llevar (toca para abrir el panel) ── */}
+ {llevarActivos > 0 && (
+  <button
+   onClick={() => setLlevarModal(true)}
+   style={{width:"100%", background:"#0a0a0a", border:`1px solid ${llevarListos > 0 ? "#f1c40f44" : "#1e1e1e"}`, borderRadius:10, padding:"10px 14px", cursor:"pointer", display:"flex", alignItems:"center", gap:10, marginBottom:16, textAlign:"left"}}
+  >
+   <IconoLlevar color={llevarListos > 0 ? "#f1c40f" : "#3498db"} size={22} style={{marginBottom:0, flexShrink:0}}/>
+   <div style={{flex:1}}>
+    <div style={{fontSize:12, fontWeight:800, color: llevarListos > 0 ? "#f1c40f" : "#3498db"}}>
+     {llevarListos > 0 ? `🟡 ${llevarListos} listo${llevarListos!==1?"s":""} para entregar` : `${llevarActivos} pedido${llevarActivos!==1?"s":""} para llevar activos`}
+    </div>
+    <div style={{fontSize:10, color:"#444", marginTop:1}}>Toca para gestionar</div>
+   </div>
+   <span style={{color:"#333", fontSize:16}}>›</span>
+  </button>
  )}
+
  </div>
  );
 }
@@ -2781,7 +2733,255 @@ function MesaModalComponent({ num, orders, setDraft, newDraft, onClose, setTab, 
  );
 }
 
-function InlineSplit({ order, onProceed, onClose, s, Y, fmt }) {
+// ═══════════════════════════════════════════════════════════════════
+// PANEL DE GESTIÓN PARA LLEVAR
+// Equivalente al MesaModal pero dedicado a todos los pedidos para llevar.
+// ═══════════════════════════════════════════════════════════════════
+function LlevarModalComponent({
+ orders, onClose, setDraft, newDraft, setTab,
+ setCobrarTarget, setEditingOrder, setAnulacionModal,
+ setReembolsoConfirm, finishPaidOrder, printOrder,
+ currentUser, isMobile, s, Y, fmt,
+}) {
+ const llevarOrders = orders
+  .filter(o => o.orderType === "llevar" && !o.anulado)
+  .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+ const isAdmin   = currentUser?.id === "admin";
+ const canCobrar = isAdmin || currentUser?.id === "cajero";
+
+ // Estado visual de cada pedido
+ const getEstado = (o) => {
+  if (o.status === "esperando_cobro") return { key:"esperando", label:"⏳ Cobro pendiente", color:"#3498db", bg:"#06111e" };
+  if (o.kitchenStatus === "listo")    return { key:"listo",     label:"✅ Listo para llevar", color:"#f1c40f", bg:"#1a1800" };
+  if (o.isPaid)                       return { key:"cocina",    label:"🍳 En cocina",          color:"#27ae60", bg:"#061209" };
+  return                                     { key:"otro",      label:"📋 Activo",             color:"#e67e22", bg:"#111"   };
+ };
+
+ const totalEnCaja = llevarOrders.reduce((s, o) => s + (o.isPaid ? o.total : 0), 0);
+
+ return (
+  <div style={{...s.modal, maxWidth: isMobile ? "100%" : 560, width:"100%", padding:0, overflow:"hidden", display:"flex", flexDirection:"column", maxHeight:"92vh"}} onClick={e => e.stopPropagation()}>
+
+   {/* ══ CABECERA ══ */}
+   <div style={{background:"linear-gradient(135deg,#0d0d0d 0%,#111 100%)", borderBottom:"1px solid #1e1e1e", padding:"18px 20px 14px", flexShrink:0}}>
+    <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12}}>
+     <div style={{display:"flex", alignItems:"center", gap:12}}>
+      <div style={{position:"relative"}}>
+       <IconoLlevar color={Y} size={isMobile?36:44} style={{marginBottom:0}}/>
+       {llevarOrders.length > 0 && (
+        <div style={{position:"absolute", top:-4, right:-4, background:Y, color:"#111", borderRadius:"50%", width:18, height:18, display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:900, boxShadow:`0 0 8px ${Y}99`}}>
+         {llevarOrders.length}
+        </div>
+       )}
+      </div>
+      <div>
+       <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:isMobile?22:26, color:Y, letterSpacing:2, lineHeight:1}}>
+        PARA LLEVAR
+       </div>
+       {llevarOrders.length > 0 && (
+        <div style={{fontSize:11, color:"#666", marginTop:2}}>
+         {llevarOrders.length} pedido{llevarOrders.length!==1?"s":""} activos
+         {totalEnCaja > 0 && <span style={{color:"#27ae60", marginLeft:8}}>· {fmt(totalEnCaja)} cobrado</span>}
+        </div>
+       )}
+      </div>
+     </div>
+     <CloseBtn onClose={onClose}/>
+    </div>
+
+    {/* Botón nuevo pedido — prominente */}
+    <button
+     style={{width:"100%", background:`${Y}18`, border:`1.5px dashed ${Y}66`, borderRadius:10, padding:"11px 0", color:Y, fontFamily:"'Bebas Neue',cursive", fontSize:16, letterSpacing:1.5, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8, transition:"all .15s"}}
+     onMouseEnter={e=>{e.currentTarget.style.background=`${Y}28`;e.currentTarget.style.borderColor=Y;}}
+     onMouseLeave={e=>{e.currentTarget.style.background=`${Y}18`;e.currentTarget.style.borderColor=`${Y}66`;}}
+     onClick={() => { setDraft({...newDraft(), orderType:"llevar", payTiming:"ahora"}); onClose(); setTab("nuevo"); }}
+    >
+     <span style={{fontSize:18, lineHeight:1}}>+</span>
+     NUEVO PEDIDO PARA LLEVAR
+    </button>
+   </div>
+
+   {/* ══ LISTA DE PEDIDOS ══ */}
+   <div style={{flex:1, overflowY:"auto", padding:"14px 16px", display:"flex", flexDirection:"column", gap:12}}>
+
+    {llevarOrders.length === 0 && (
+     <div style={{textAlign:"center", padding:"50px 20px", color:"#444"}}>
+      <IconoLlevar color="#333" size={64} style={{marginBottom:0, marginLeft:"auto", marginRight:"auto", display:"block"}}/>
+      <div style={{marginTop:16, fontSize:15, color:"#555"}}>Sin pedidos para llevar activos</div>
+      <div style={{fontSize:12, color:"#333", marginTop:4}}>Presiona el botón de arriba para crear uno</div>
+     </div>
+    )}
+
+    {llevarOrders.map((o, idx) => {
+     const estado = getEstado(o);
+     const mins = Math.floor((Date.now() - new Date(o.createdAt)) / 60000);
+     const timeColor = mins >= 25 ? "#e74c3c" : mins >= 12 ? "#e67e22" : "#555";
+     const canDeliver = o.kitchenStatus === "listo" && o.isPaid;
+     const hasAdiciones = (o._additions||[]).length > 0;
+
+     return (
+      <div key={o.id} style={{background: estado.bg, border:`1.5px solid ${estado.color}33`, borderRadius:14, overflow:"hidden", position:"relative"}}>
+
+       {/* Barra lateral de color */}
+       <div style={{position:"absolute", left:0, top:0, bottom:0, width:4, background:estado.color, boxShadow:`0 0 8px ${estado.color}88`}}/>
+
+       <div style={{padding:"12px 14px 12px 18px"}}>
+
+        {/* Fila 1: ícono + nombre + tiempo + total */}
+        <div style={{display:"flex", alignItems:"flex-start", gap:10, marginBottom:10}}>
+         {/* Número de orden */}
+         <div style={{flexShrink:0, width:28, height:28, borderRadius:"50%", background:`${estado.color}22`, border:`1px solid ${estado.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:900, color:estado.color}}>
+          {idx+1}
+         </div>
+
+         {/* Info */}
+         <div style={{flex:1, minWidth:0}}>
+          <div style={{display:"flex", alignItems:"center", gap:8, flexWrap:"wrap"}}>
+           <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:isMobile?18:20, color:"#eee", letterSpacing:1, lineHeight:1}}>
+            {o.table || "Sin nombre"}
+           </span>
+           {/* Badge de estado */}
+           <span style={{background:`${estado.color}18`, color:estado.color, border:`1px solid ${estado.color}44`, borderRadius:20, padding:"2px 8px", fontSize:10, fontWeight:800, letterSpacing:0.5, whiteSpace:"nowrap"}}>
+            {estado.label}
+           </span>
+           {hasAdiciones && (
+            <span style={{background:"#1a1200", color:"#f39c12", border:"1px solid #f39c1233", borderRadius:20, padding:"2px 8px", fontSize:10, fontWeight:800}}>
+             +{o._additions.length} adición{o._additions.length!==1?"es":""}
+            </span>
+           )}
+          </div>
+          <div style={{display:"flex", gap:10, marginTop:3, flexWrap:"wrap"}}>
+           {o._mesero && <span style={{fontSize:10, color:"#555"}}>👤 {o._mesero}</span>}
+           {o.phone    && <span style={{fontSize:10, color:"#555"}}>📞 {o.phone}</span>}
+           {o.deliveryAddress && <span style={{fontSize:10, color:"#555", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:140}}>📍 {o.deliveryAddress}</span>}
+          </div>
+         </div>
+
+         {/* Total + tiempo */}
+         <div style={{textAlign:"right", flexShrink:0}}>
+          <div style={{fontWeight:900, fontSize:isMobile?17:19, color:Y}}>{fmt(o.total)}</div>
+          <div style={{fontSize:10, color:timeColor, marginTop:2}}>{minutesAgo(o.createdAt)}</div>
+         </div>
+        </div>
+
+        {/* Separador */}
+        <div style={{height:1, background:"#1c1c1c", marginBottom:10}}/>
+
+        {/* Ítems del pedido */}
+        <div style={{marginBottom:10}}>
+         {(o.items||[]).map((item, i) => {
+          const isNew = item._isAdicion;
+          const validNotes = (item.individualNotes||[]).filter(n=>n.trim());
+          return (
+           <div key={i} style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", padding:"4px 0", borderBottom:"1px solid #151515"}}>
+            <div style={{flex:1, minWidth:0}}>
+             <span style={{fontSize:13, color: isNew ? "#f39c12" : "#ccc", fontWeight: isNew ? 700 : 400}}>
+              {isNew && <span style={{fontSize:10, marginRight:4, color:"#f39c12"}}>+</span>}
+              {item.qty}× {item.name}
+             </span>
+             {item.salsas?.length > 0 && (
+              <div style={{fontSize:10, color:Y, paddingLeft:8, marginTop:1}}>{item.salsas.map(ss=>`${ss.name} (${ss.style})`).join(', ')}</div>
+             )}
+             {validNotes.map((n,ni)=>(
+              <div key={ni} style={{fontSize:10, color:"#666", fontStyle:"italic", paddingLeft:8, marginTop:1}}>└ {n}</div>
+             ))}
+            </div>
+            <span style={{fontSize:12, color:"#555", flexShrink:0, marginLeft:8}}>{fmt(item.price*item.qty)}</span>
+           </div>
+          );
+         })}
+        </div>
+
+        {/* Notas generales */}
+        {o.notes && (
+         <div style={{background:"#0d0d0d", border:"1px solid #1e1e1e", borderRadius:6, padding:"6px 10px", marginBottom:10, fontSize:11, color:"#888", fontStyle:"italic"}}>
+          📝 {o.notes}
+         </div>
+        )}
+
+        {/* Info de pago si ya está pagado */}
+        {o.isPaid && (
+         <div style={{background:"#0a0a0a", borderRadius:6, padding:"6px 10px", marginBottom:10, fontSize:11, color:"#555", display:"flex", gap:10, flexWrap:"wrap"}}>
+          <span style={{fontWeight:700, color:"#333", textTransform:"uppercase", letterSpacing:0.5, fontSize:10}}>Pagado:</span>
+          {getPay(o,"efectivo")>0 && <span>💵 {fmt(getPay(o,"efectivo"))}</span>}
+          {getPay(o,"yape")>0    && <span>📱 {fmt(getPay(o,"yape"))}</span>}
+          {getPay(o,"tarjeta")>0 && <span>💳 {fmt(getPay(o,"tarjeta"))}</span>}
+          <span style={{marginLeft:"auto", color:"#444", fontSize:10}}>{timeStr(o.paidAt)}</span>
+         </div>
+        )}
+
+        {/* ══ BOTONES DE ACCIÓN ══ */}
+        <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
+
+         {/* ENTREGAR — solo si cocina marcó listo */}
+         {canDeliver && (
+          <button
+           style={{...s.btn("primary"), flex:2, fontWeight:900, fontSize:13, boxShadow:`0 0 12px ${Y}44`, animation:"llevar-pulse 2s ease-in-out infinite"}}
+           onClick={() => { finishPaidOrder(o.id); onClose(); }}
+          >
+           <style>{`@keyframes llevar-pulse{0%,100%{box-shadow:0 0 8px ${Y}33}50%{box-shadow:0 0 18px ${Y}88}}`}</style>
+           🛵 Entregar
+          </button>
+         )}
+
+         {/* COBRAR — si está esperando cobro o no pagado */}
+         {canCobrar && !o.isPaid && (
+          <button
+           style={{...s.btn("success"), flex:2, fontWeight:900}}
+           onClick={() => { setCobrarTarget({type:'existing', data:o}); onClose(); }}
+          >
+           💰 Cobrar {fmt(o.total)}
+          </button>
+         )}
+
+         {/* AGREGAR ÍTEM — siempre disponible (lógica de adición ya maneja el caso pagado) */}
+         <button
+          style={{...s.btn("secondary"), flex:1, fontSize:12}}
+          title="Agregar más ítems"
+          onClick={() => {
+           setDraft({...newDraft(), table: o.table, orderType:"llevar", phone: o.phone||"", deliveryAddress: o.deliveryAddress||""});
+           onClose(); setTab("nuevo");
+          }}
+         >
+          ➕ Ítem
+         </button>
+
+         {/* IMPRIMIR */}
+         <button style={{...s.btn("secondary"), padding:"7px 10px"}} title="Imprimir ticket" onClick={() => printOrder(o)}>
+          🖨
+         </button>
+
+         {/* REEMBOLSAR — si ya está pagado (admin/cajero) */}
+         {canCobrar && o.isPaid && (
+          <button style={{...s.btn("warn"), padding:"7px 10px", fontSize:12}} title="Reembolsar — cliente desistió" onClick={() => { setReembolsoConfirm(o); onClose(); }}>
+           ↩️
+          </button>
+         )}
+
+         {/* EDITAR */}
+         {isAdmin && (
+          <button style={{...s.btn("warn"), padding:"7px 10px"}} title="Editar pedido" onClick={() => { setEditingOrder(o); onClose(); }}>
+           ✏️
+          </button>
+         )}
+
+         {/* ANULAR */}
+         {isAdmin && (
+          <button style={{...s.btn("danger"), padding:"7px 10px", fontSize:11}} title="Anular pedido" onClick={() => { setAnulacionModal(o); onClose(); }}>
+           🚫
+          </button>
+         )}
+
+        </div>
+       </div>
+      </div>
+     );
+    })}
+   </div>
+  </div>
+ );
+}({ order, onProceed, onClose, s, Y, fmt }) {
  const [splitItems, setSplitItems] = useState(
   (order.items||[]).map(i => ({ ...i, splitQty: 0 }))
  );
@@ -4857,8 +5057,9 @@ export default function App() {
  const [splitTarget, setSplitTarget] = useState(null); 
  const [mergeModal, setMergeModal] = useState(null);
  const [mergeName, setMergeName] = useState("");
- const [addToLlevarModal, setAddToLlevarModal] = useState(null); // { existingOrder, newItems, newTotal }
- const [reembolsoConfirm, setReembolsoConfirm] = useState(null); // order to refund
+ const [addToLlevarModal, setAddToLlevarModal] = useState(null);
+ const [reembolsoConfirm, setReembolsoConfirm] = useState(null);
+ const [llevarModal, setLlevarModal] = useState(false);
  const [mesasArr, setMesasArr] = useState([]);
  const [soundConfig, setSoundConfig] = useState({ volume:0.75, freq:880, beeps:3, type:"square" });
  const waiterDrinkRef = useRef({});
@@ -6029,6 +6230,7 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
   {splitTarget && <SplitBillModal order={splitTarget} onProceed={(items, total) => { setCobrarTarget({ type: 'split', data: { originalOrder: splitTarget, splitItems: items, total }}); setSplitTarget(null); }} onClose={() => setSplitTarget(null)} s={s} Y={Y} fmt={fmt} />}
   {editingOrder&&<div style={s.overlay} onClick={()=>setEditingOrder(null)}><EditOrderModal order={editingOrder} onSave={saveEditedOrder} onClose={()=>setEditingOrder(null)} menu={menu} isMobile={isMobile} s={s} Y={Y} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} onRequestPrecio={crearSolicitud}/></div>}
   {mesaModal&&<div style={s.overlay} onClick={()=>setMesaModal(null)}><MesaModalComponent num={mesaModal} orders={orders} setDraft={setDraft} newDraft={newDraft} onClose={()=>setMesaModal(null)} setTab={setTab} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} setAnulacionModal={setAnulacionModal} printOrder={printOrder} isMobile={isMobile} s={s} Y={Y} fmt={fmt} currentUser={currentUser} crearSolicitud={crearSolicitud} isAdmin={currentUser?.id==="admin"} /></div>}
+  {llevarModal&&<div style={s.overlay} onClick={()=>setLlevarModal(false)}><LlevarModalComponent orders={orders} onClose={()=>setLlevarModal(false)} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setCobrarTarget={setCobrarTarget} setEditingOrder={setEditingOrder} setAnulacionModal={setAnulacionModal} setReembolsoConfirm={setReembolsoConfirm} finishPaidOrder={finishPaidOrder} printOrder={printOrder} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/></div>}
   
   {mergeModal && (
   <div style={s.overlay} onClick={() => setMergeModal(null)}>
@@ -6178,7 +6380,7 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
   {tab==="dashboard" && (currentUser?.id === "mesero"
    ? <MeseroDashboardComponent orders={orders} currentUser={currentUser} setTab={setTab} toggleItemCheck={toggleItemCheck} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />
    : <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} caja={caja} abrirCaja={abrirCaja} cerrarCaja={cerrarCaja} currentUser={currentUser} getPay={getPay} soundConfig={soundConfig} setSoundConfig={setSoundConfig} />)}
-  {tab==="mesas" && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setAnulacionModal={setAnulacionModal} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} mesasArr={mesasArr} addMesa={addMesa} removeMesa={removeMesa} currentUser={currentUser} />}
+  {tab==="mesas" && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} setLlevarModal={setLlevarModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setAnulacionModal={setAnulacionModal} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} mesasArr={mesasArr} addMesa={addMesa} removeMesa={removeMesa} currentUser={currentUser} />}
   {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} isTablet={isTablet} mesasArr={mesasArr} cajaAbierta={cajaAbierta} currentUser={currentUser} />}
   {tab==="pedidos" && <PedidosComponent orders={orders} toggleItemCheck={toggleItemCheck} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} setReembolsoConfirm={setReembolsoConfirm} setDraft={setDraft} newDraft={newDraft} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
 {tab==="cocina" && <CocinaComponent orders={orders} markKitchenListo={markKitchenListo} toggleItemCheck={toggleItemCheck} crearSolicitud={crearSolicitud} currentUser={currentUser} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} soundConfig={soundConfig} />}
