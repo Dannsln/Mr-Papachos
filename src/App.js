@@ -3014,7 +3014,7 @@ function AnulacionModal({ order, onConfirm, onRequest, onClose, menu, s, Y, fmt,
  );
 }
 
-function PedidosComponent({ orders, toggleItemCheck, setTab, finishPaidOrder, setCobrarTarget, setSplitTarget, setEditingOrder, printOrder, cancelOrder, setConfirmDelete, setAnulacionModal, currentUser, isMobile, s, Y, fmt }) {
+function PedidosComponent({ orders, toggleItemCheck, setTab, finishPaidOrder, setCobrarTarget, setSplitTarget, setEditingOrder, printOrder, cancelOrder, setConfirmDelete, setAnulacionModal, setReembolsoConfirm, setDraft, newDraft, currentUser, isMobile, s, Y, fmt }) {
  const [splitOpenId, setSplitOpenId] = useState(null);
  const isAdmin = currentUser?.id === 'admin';
  const isCajero = currentUser?.id === 'cajero';
@@ -3303,7 +3303,27 @@ function PedidosComponent({ orders, toggleItemCheck, setTab, finishPaidOrder, se
  <div style={{display:"flex", gap:5, flexWrap:"wrap", marginTop:4}}>
  {/* Cobrar: SOLO admin y cajero. Meseros nunca. */}
  {canCobrar && (o.isPaid
- ? <button style={{...s.btn("blue"),flex:1}} onClick={()=>finishPaidOrder(o.id)}>Entregado</button>
+ ? <>
+   <button style={{...s.btn("blue"),flex:1}} onClick={()=>finishPaidOrder(o.id)}>✅ Entregado</button>
+   {/* ── Botones extra para pedidos para llevar ya pagados ── */}
+   {o.orderType === "llevar" && (
+    <>
+     <button style={{...s.btn("success"), padding:"7px 10px", fontSize:11}}
+      title="Agregar más ítems a este pedido ya pagado"
+      onClick={() => {
+       setDraft({...newDraft(), table: o.table, orderType:"llevar"});
+       setTab("nuevo");
+      }}>
+      ➕ Ítem
+     </button>
+     <button style={{...s.btn("warn"), padding:"7px 10px", fontSize:11}}
+      title="Reembolsar — el cliente desistió"
+      onClick={() => setReembolsoConfirm(o)}>
+      ↩️
+     </button>
+    </>
+   )}
+  </>
  : <>
  <button style={{...s.btn("success"),flex:2,fontWeight:900}} onClick={()=>setCobrarTarget({type:'existing',data:o})}>💰 Cobrar</button>
  <button style={{...s.btn(splitOpen?"primary":"secondary"), flex:1}} onClick={()=>setSplitOpenId(splitOpen?null:o.id)}>
@@ -4020,7 +4040,7 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
         {o.orderType==="llevar" ? `🥡 ${o.table||"Sin nombre"}` : `🍽 Mesa ${o.table}`}
        </span>
        <span style={{...s.tag(isCanceled?"#c0392b":"#1e5c2e"), fontSize:10}}>
-        {isCanceled?"🚫 Anulado":o.splitPayments?.length>0?"✂️ Dividido":"✅ Pagado"}
+        {isCanceled ? (o._refunded ? "↩️ Reembolsado" : "🚫 Anulado") : o.splitPayments?.length>0?"✂️ Dividido":"✅ Pagado"}
        </span>
        {o._correctedAt && <span style={{...s.tag("#7d3c00","#e67e22"), fontSize:10}}>✏️ Corregido</span>}
        <span style={{color:"#666", fontSize:11}}>{timeStr(o.paidAt||o.cancelledAt||o.createdAt)}</span>
@@ -4049,6 +4069,20 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
        </div>
        {o.descuentoPct>0&&<div style={{marginTop:4,color:"#27ae60",fontWeight:700}}>🏷 −{o.descuentoPct}% {o.descuentoMotivo?`· ${o.descuentoMotivo}`:""}<span style={{color:"#555",marginLeft:6}}>| Original: {fmt(o.totalOriginal)}</span></div>}
        {o._correctedAt&&<div style={{marginTop:4,color:"#e67e22",fontWeight:700}}>✏️ Corregido por {o._correctedBy}{o._correctedMotivo&&` · "${o._correctedMotivo}"`}</div>}
+       {o._additions?.length>0&&(
+        <div style={{marginTop:6,paddingTop:6,borderTop:"1px solid #1a1a1a"}}>
+         <div style={{fontSize:10,color:"#555",marginBottom:4}}>➕ ADICIONES ({o._additions.length})</div>
+         {o._additions.map((add,i)=>{
+          const aef=add.payments?.efectivo||0,aya=add.payments?.yape||0,ata=add.payments?.tarjeta||0;
+          return(
+           <div key={i} style={{fontSize:10,color:"#666",marginBottom:2}}>
+            Adición {i+1}: {add.items?.map(it=>`${it.qty}x ${it.name}`).join(', ')} · {fmt(add.total)}
+            {(aef>0||aya>0||ata>0)&&` · `}{[aef>0&&`💵${fmt(aef)}`,aya>0&&`📱${fmt(aya)}`,ata>0&&`💳${fmt(ata)}`].filter(Boolean).join(" ")}
+           </div>
+          );
+         })}
+        </div>
+       )}
       </div>
      )}
      {/* Pago dividido */}
@@ -4713,6 +4747,8 @@ export default function App() {
  const [splitTarget, setSplitTarget] = useState(null); 
  const [mergeModal, setMergeModal] = useState(null);
  const [mergeName, setMergeName] = useState("");
+ const [addToLlevarModal, setAddToLlevarModal] = useState(null); // { existingOrder, newItems, newTotal }
+ const [reembolsoConfirm, setReembolsoConfirm] = useState(null); // order to refund
  const [mesasArr, setMesasArr] = useState([]);
  const [soundConfig, setSoundConfig] = useState({ volume:0.75, freq:880, beeps:3, type:"square" });
  const waiterDrinkRef = useRef({});
@@ -5313,6 +5349,20 @@ const saveCaja = async (data) => {
  const finalDraft = { ...draft, items: finalItems, taperCost: 0 }; 
 
  if (draft.orderType === "llevar") {
+  // ── Detectar si hay un pedido para llevar ya PAGADO con el mismo nombre ──
+  // Esto evita crear dos registros separados cuando se adiciona un ítem a un pedido ya cobrado.
+  const existingPaidLlevar = ordersRef.current.find(o =>
+   o.orderType === "llevar" &&
+   o.isPaid &&
+   !o.anulado &&
+   o.table?.trim().toLowerCase() === (finalDraft.table || "").trim().toLowerCase()
+  );
+  if (existingPaidLlevar && forceMerge !== "llevar_new") {
+   // Mostrar modal para agregar ítems al pedido pagado existente
+   setAddToLlevarModal({ existingOrder: existingPaidLlevar, newItems: finalItems, newTotal: total });
+   return;
+  }
+
   // Para llevar: siempre espera cobro antes de ir a cocina
   const order = {
    id: Date.now().toString(), ...finalDraft, total,
@@ -5354,6 +5404,69 @@ const saveCaja = async (data) => {
  descuentoMotivo: paymentData.descuentoMotivo || "",
  totalOriginal: paymentData.totalOriginal,
  } : {};
+
+ if (target.type === 'llevar_addition') {
+ // ── Adición cobrada a un pedido para llevar ya pagado ──────────────
+ const { existingOrder, newItems } = target.data;
+ const adicionAt = new Date().toISOString();
+ const batchId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+ const taggedNewItems = newItems.map((item, idx) => ({
+  ...item,
+  cartId: `${item.cartId || item.id}-ADD-${batchId}-${idx}`,
+  _isAdicion: true,
+  _addedBy: currentUser?.name || null,
+  _addedAt: adicionAt,
+  _additionBatchId: batchId,
+ }));
+ const mergedItems = [...(existingOrder.items || []), ...taggedNewItems];
+ const addedTotal = newItems.reduce((s, i) => s + i.price * i.qty, 0);
+ const newTotalFinal = (paymentData.descuentoPct > 0 ? paymentData.totalFinal : existingOrder.total + addedTotal);
+
+ // Acumular pagos (el pedido original ya tenía pagos)
+ const accPayments = {
+  efectivo: getPay(existingOrder, "efectivo") + (paymentData.efectivo || 0),
+  yape:     getPay(existingOrder, "yape")     + (paymentData.yape     || 0),
+  tarjeta:  getPay(existingOrder, "tarjeta")  + (paymentData.tarjeta  || 0),
+ };
+
+ // Registrar la adición para tener historial interno
+ const additions = [...(existingOrder._additions || []), {
+  items: taggedNewItems,
+  total: addedTotal,
+  payments: { efectivo: paymentData.efectivo, yape: paymentData.yape, tarjeta: paymentData.tarjeta },
+  paidAt: adicionAt,
+  addedBy: currentUser?.name || null,
+ }];
+
+ const updated = {
+  ...existingOrder,
+  items: mergedItems,
+  total: newTotalFinal,
+  payments: accPayments,
+  kitchenStatus: 'pendiente', // cocina debe ver los nuevos ítems
+  _foodReadyBeforeLastAddition: existingOrder.kitchenStatus === 'listo',
+  _additions: additions,
+  _lastAddedAt: adicionAt,
+  _adicionPor: currentUser?.name || null,
+  _lastAdditionItems: taggedNewItems,
+ };
+
+ // Verificar que el pedido original todavía existe (no fue entregado en paralelo)
+ if (!cur.find(x => x.id === existingOrder.id)) {
+  showToast("⚠️ El pedido ya fue entregado o eliminado en otra sesión", "#e74c3c");
+  cobrarProcessingRef.current = false;
+  return;
+ }
+
+ const newOrders = cur.map(x => x.id === existingOrder.id ? updated : x);
+ setOrders(newOrders);
+ await saveOrders(newOrders);
+ cobrarProcessingRef.current = false;
+ setDraft(newDraft());
+ showToast("✅ 🥡 Ítems agregados y cobrados · Cocina notificada");
+ setTab("pedidos");
+ return;
+ }
 
  if (target.type === 'split') {
  const originalOrder = target.data.originalOrder;
@@ -5502,6 +5615,29 @@ const saveCaja = async (data) => {
  const finished = { ...o, status:"pagado" };
  await Promise.all([addHistory(finished), saveOrders(newOrders)]);
  showToast("✅ Pedido entregado y archivado");
+ };
+
+ // Reembolso de pedido para llevar ya pagado (cliente se desanimó antes de recibirlo)
+ const reembolsarLlevar = async (order) => {
+ const cur = ordersRef.current;
+ const now = new Date().toISOString();
+ // Archivar como cancelado/reembolsado — se marca anulado para que no sume en estadísticas
+ const reembolsado = {
+  ...order,
+  status: "cancelado",
+  anulado: true,
+  anuladoAt: now,
+  cancelledAt: now,
+  motivoAnulacion: "Reembolso — cliente desistió",
+  _refunded: true,
+  _refundedAt: now,
+  _refundedBy: currentUser?.name || null,
+ };
+ const newOrders = cur.filter(x => x.id !== order.id);
+ setOrders(newOrders);
+ await Promise.all([addHistory(reembolsado), saveOrders(newOrders)]);
+ setReembolsoConfirm(null);
+ showToast("↩️ Pedido reembolsado y archivado", "#e67e22");
  };
 
  const cancelOrder = async (id) => {
@@ -5809,6 +5945,124 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
   </div>
   )}
 
+  {/* ── MODAL: Agregar ítems a pedido para llevar ya pagado ── */}
+  {addToLlevarModal && (
+  <div style={s.overlay} onClick={() => setAddToLlevarModal(null)}>
+  <div style={{...s.modal, maxWidth:400}} onClick={e => e.stopPropagation()}>
+   <div style={{fontSize:36, textAlign:"center", marginBottom:8}}>🥡</div>
+   <div style={{fontWeight:900, fontSize:18, marginBottom:6, color:Y, textAlign:"center", fontFamily:"'Bebas Neue',cursive", letterSpacing:1}}>
+    PEDIDO YA COBRADO
+   </div>
+   <div style={{color:"#aaa", fontSize:13, textAlign:"center", marginBottom:14}}>
+    <b style={{color:"#27ae60"}}>{addToLlevarModal.existingOrder.table}</b> ya tiene un pedido pagado.<br/>
+    ¿Qué deseas hacer con los nuevos ítems?
+   </div>
+
+   {/* Pedido existente */}
+   <div style={{background:"#111", borderRadius:8, padding:"10px 12px", marginBottom:10, border:"1px solid #2a2a2a"}}>
+    <div style={{fontSize:11, color:"#666", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>✅ Pedido ya pagado</div>
+    {(addToLlevarModal.existingOrder.items||[]).map((item,i) => (
+     <div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:12, color:"#888", padding:"2px 0"}}>
+      <span>{item.qty}x {item.name}</span><span>{fmt(item.price * item.qty)}</span>
+     </div>
+    ))}
+    <div style={{borderTop:"1px solid #2a2a2a", marginTop:6, paddingTop:6, display:"flex", justifyContent:"space-between", fontWeight:900, fontSize:13}}>
+     <span>Total pagado</span><span style={{color:Y}}>{fmt(addToLlevarModal.existingOrder.total)}</span>
+    </div>
+   </div>
+
+   {/* Ítems nuevos */}
+   <div style={{background:"#0a1f0a", borderRadius:8, padding:"10px 12px", marginBottom:16, border:"1px solid #27ae6044"}}>
+    <div style={{fontSize:11, color:"#27ae60", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>➕ Nuevos ítems a agregar</div>
+    {(addToLlevarModal.newItems||[]).map((item,i) => (
+     <div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:12, color:"#aaa", padding:"2px 0"}}>
+      <span>{item.qty}x {item.name}</span><span>{fmt(item.price * item.qty)}</span>
+     </div>
+    ))}
+    <div style={{borderTop:"1px solid #27ae6033", marginTop:6, paddingTop:6, display:"flex", justifyContent:"space-between", fontWeight:900, fontSize:13}}>
+     <span style={{color:"#27ae60"}}>A cobrar ahora</span>
+     <span style={{color:Y}}>{fmt(addToLlevarModal.newTotal)}</span>
+    </div>
+   </div>
+
+   <div style={{display:"flex", flexDirection:"column", gap:8}}>
+    {/* Opción 1: Agregar al pedido existente y cobrar diferencia */}
+    <button style={{...s.btn("success"), padding:14, fontSize:14, width:"100%"}}
+     onClick={() => {
+      const { existingOrder, newItems, newTotal } = addToLlevarModal;
+      setAddToLlevarModal(null);
+      setDraft(newDraft());
+      setCobrarTarget({ type:'llevar_addition', data:{ existingOrder, newItems, total: newTotal } });
+     }}>
+     💰 Cobrar {fmt(addToLlevarModal.newTotal)} y agregar al mismo pedido
+     <div style={{fontSize:11, fontWeight:400, marginTop:2, opacity:0.8}}>
+      Total unificado: {fmt((addToLlevarModal.existingOrder.total||0) + (addToLlevarModal.newTotal||0))}
+     </div>
+    </button>
+    {/* Opción 2: Crear pedido separado */}
+    <button style={{...s.btn("blue"), padding:12, fontSize:13, width:"100%"}}
+     onClick={() => {
+      const { newItems, newTotal } = addToLlevarModal;
+      setAddToLlevarModal(null);
+      // Crear nuevo pedido llevar independiente (forzar nuevo)
+      const order = {
+       id: Date.now().toString(),
+       table: draft.table || addToLlevarModal.existingOrder.table,
+       orderType: "llevar", phone: draft.phone||"", deliveryAddress: draft.deliveryAddress||"",
+       notes: draft.notes||"", items: newItems, total: newTotal,
+       isPaid: false, status: "esperando_cobro", kitchenStatus: "esperando_cobro",
+       createdAt: new Date().toISOString(),
+       _cajaSessionId: cajaRef2.current?.sessionId || null,
+       _mesero: currentUser?.name || null,
+      };
+      const newOrders = [...ordersRef.current, order];
+      setOrders(newOrders); saveOrders(newOrders);
+      setDraft(newDraft());
+      showToast("🥡 Nuevo pedido para llevar creado por separado", "#3498db");
+      setTab("pedidos");
+     }}>
+     📋 Crear como pedido separado
+    </button>
+    <button style={{...s.btn("secondary"), padding:10, fontSize:12, width:"100%"}}
+     onClick={() => setAddToLlevarModal(null)}>
+     Cancelar
+    </button>
+   </div>
+  </div>
+  </div>
+  )}
+
+  {/* ── MODAL: Confirmar reembolso de pedido para llevar ── */}
+  {reembolsoConfirm && (
+  <div style={s.overlay} onClick={() => setReembolsoConfirm(null)}>
+  <div style={{...s.modal, maxWidth:340, textAlign:"center"}} onClick={e => e.stopPropagation()}>
+   <div style={{fontSize:42, marginBottom:12}}>↩️</div>
+   <div style={{fontWeight:900, fontSize:17, marginBottom:8, color:"#e67e22"}}>¿Reembolsar pedido?</div>
+   <div style={{color:"#888", fontSize:13, marginBottom:8}}>
+    <b style={{color:"#eee"}}>{reembolsoConfirm.table}</b>
+   </div>
+   <div style={{background:"#111", borderRadius:8, padding:"10px 12px", marginBottom:14, textAlign:"left"}}>
+    {(reembolsoConfirm.items||[]).map((item,i) => (
+     <div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:12, color:"#888", padding:"2px 0"}}>
+      <span>{item.qty}x {item.name}</span><span>{fmt(item.price * item.qty)}</span>
+     </div>
+    ))}
+    <div style={{borderTop:"1px solid #2a2a2a", marginTop:6, paddingTop:6, display:"flex", justifyContent:"space-between", fontWeight:900, fontSize:14}}>
+     <span style={{color:"#e67e22"}}>A reembolsar</span>
+     <span style={{color:Y}}>{fmt(reembolsoConfirm.total)}</span>
+    </div>
+   </div>
+   <div style={{color:"#666", fontSize:12, marginBottom:18}}>
+    El pedido se archivará como cancelado y <b style={{color:"#e67e22"}}>no sumará a la recaudación del día</b>.
+   </div>
+   <div style={{display:"flex", gap:10}}>
+    <button style={{...s.btn("secondary"), flex:1}} onClick={() => setReembolsoConfirm(null)}>Cancelar</button>
+    <button style={{...s.btn("warn"), flex:1}} onClick={() => reembolsarLlevar(reembolsoConfirm)}>↩️ Reembolsar</button>
+   </div>
+  </div>
+  </div>
+  )}
+
   {confirmDelete&&<div style={s.overlay} onClick={()=>setConfirmDelete(null)}><div style={{...s.modal,maxWidth:340,textAlign:"center"}} onClick={e=>e.stopPropagation()}><div style={{fontSize:42,marginBottom:12}}></div><div style={{fontWeight:900,fontSize:17,marginBottom:8,color:"#eee"}}>¿Eliminar pedido?</div><div style={{color:"#888",fontSize:13,marginBottom:20}}>Esta acción no se puede deshacer.</div><div style={{display:"flex",gap:10}}><button style={{...s.btn("secondary"),flex:1}} onClick={()=>setConfirmDelete(null)}>Cancelar</button><button style={{...s.btn("danger"),flex:1}} onClick={()=>deleteOrderPermanent(confirmDelete)}> Eliminar</button></div></div></div>}
 
   {tab==="dashboard" && (currentUser?.id === "mesero"
@@ -5816,7 +6070,7 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
    : <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} caja={caja} abrirCaja={abrirCaja} cerrarCaja={cerrarCaja} currentUser={currentUser} getPay={getPay} soundConfig={soundConfig} setSoundConfig={setSoundConfig} />)}
   {tab==="mesas" && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setAnulacionModal={setAnulacionModal} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} mesasArr={mesasArr} addMesa={addMesa} removeMesa={removeMesa} currentUser={currentUser} />}
   {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} isTablet={isTablet} mesasArr={mesasArr} cajaAbierta={cajaAbierta} currentUser={currentUser} />}
-  {tab==="pedidos" && <PedidosComponent orders={orders} toggleItemCheck={toggleItemCheck} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
+  {tab==="pedidos" && <PedidosComponent orders={orders} toggleItemCheck={toggleItemCheck} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} setReembolsoConfirm={setReembolsoConfirm} setDraft={setDraft} newDraft={newDraft} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
 {tab==="cocina" && <CocinaComponent orders={orders} markKitchenListo={markKitchenListo} toggleItemCheck={toggleItemCheck} crearSolicitud={crearSolicitud} currentUser={currentUser} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} soundConfig={soundConfig} />}
   {tab==="historial"    && <HistorialComponent history={history} activeOrders={orders} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} />}
   {tab==="inventario"   && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/>}
