@@ -3881,8 +3881,8 @@ function CocinaComponent({ orders, markKitchenListo, toggleItemCheck, crearSolic
       const hasAdicion = (order.items||[]).some(i=>i._isAdicion);
 
       return (
-       <div key={order.id} style={{background:mins>=15?"#1f0d0d":mins>=8?"#1f180d":"#1c1c1c", borderRadius:14, border:`2px solid ${mins>=15?"#e74c3c":mins>=8?"#e67e22":order.replacesId?"#27ae60":Y}`, padding:14, position:"relative", transition:"all .3s"}}>
-        <div style={{position:"absolute", top:-10, left:14, background:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y, color:mins>=8?"#fff":"#111", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:900}}>
+       <div key={order.id} style={{background:mins>=20?"#1f0d0d":mins>=15?"#1f180d":"#0d1a0d", borderRadius:14, border:`2px solid ${mins>=20?"#e74c3c":mins>=15?"#e67e22":order.replacesId?"#27ae60":"#27ae60"}`, padding:14, position:"relative", transition:"all .3s"}}>
+        <div style={{position:"absolute", top:-10, left:14, background:mins>=20?"#e74c3c":mins>=15?"#e67e22":"#27ae60", color:mins>=15?"#fff":"#fff", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:900}}>
          {`#${priority+1} · ${mins<1?"ahora":`${mins}m`}`}
         </div>
 
@@ -3895,11 +3895,11 @@ function CocinaComponent({ orders, markKitchenListo, toggleItemCheck, crearSolic
         {/* Cabecera: mesa + mesero */}
         <div style={{...s.row, marginBottom:6, marginTop:6}}>
          <div style={{display:"flex", alignItems:"center", gap:8}}>
-          <OrdenIcon orderType={order.orderType} color={mins>=15?"#e74c3c":mins>=8?"#e67e22":Y} size={order.orderType==="llevar"?26:20}/>
+          <OrdenIcon orderType={order.orderType} color={mins>=20?"#e74c3c":mins>=15?"#e67e22":"#27ae60"} size={order.orderType==="llevar"?26:20}/>
           <div>
            {order.orderType === "llevar" ? (
             <>
-             <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:26, color:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y, lineHeight:1, letterSpacing:1}}>
+             <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:26, color:mins>=20?"#e74c3c":mins>=15?"#e67e22":"#27ae60", lineHeight:1, letterSpacing:1}}>
               PARA LLEVAR
              </div>
              <div style={{fontSize:13, color:"#ccc", fontWeight:700, marginTop:1}}>
@@ -3907,7 +3907,7 @@ function CocinaComponent({ orders, markKitchenListo, toggleItemCheck, crearSolic
              </div>
             </>
            ) : (
-            <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:22, color:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y}}>
+            <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:22, color:mins>=20?"#e74c3c":mins>=15?"#e67e22":"#27ae60"}}>
              Mesa {order.table}
             </span>
            )}
@@ -4168,13 +4168,13 @@ function SolicitarCorreccionModal({ order, onSubmit, onClose, s, Y, fmt, getPay 
 }
 
 function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay, printOrder, isAdmin, currentUser, crearSolicitud, updateHistoryDoc }) {
- const [expandedDays, setExpandedDays] = useState([new Date().toLocaleDateString("es-PE")]);
+ const [expandedDays,   setExpandedDays]   = useState([new Date().toLocaleDateString("es-PE")]);
+ const [expandedMonths, setExpandedMonths] = useState([`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}`]);
  const [histDate, setHistDate] = useState("");
  const [editCobroModal, setEditCobroModal] = useState(null);
  const [correccionModal, setCorreccionModal] = useState(null);
 
- // ── Group orders by DATE (top level), then by session inside ──────
- // Exclude anulled orders from revenue totals
+ // ── Group orders by DATE ───────────────────────────────────────────
  const dayMap = {};
  history.forEach(o => {
   const dateObj = new Date(o.createdAt);
@@ -4189,8 +4189,6 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
    dayMap[sortKey].ef += getPay(o,"efectivo");
    dayMap[sortKey].ya += getPay(o,"yape");
    dayMap[sortKey].ta += getPay(o,"tarjeta");
-
-   // Also track by session for the sub-breakdown
    const sid = o._cajaSessionId || "sin_sesion";
    if (!dayMap[sortKey].sessions[sid]) dayMap[sortKey].sessions[sid] = { sid, openedAt: o._cajaOpenedAt || o.createdAt, total:0, ef:0, ya:0, ta:0, count:0 };
    dayMap[sortKey].sessions[sid].total += o.total;
@@ -4203,7 +4201,6 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
   }
  });
 
- // Sort orders within each day: most recent first
  Object.values(dayMap).forEach(d => {
   d.orders.sort((a,b) => new Date(b.paidAt||b.cancelledAt||b.createdAt) - new Date(a.paidAt||a.cancelledAt||a.createdAt));
  });
@@ -4211,7 +4208,28 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
  let daysList = Object.values(dayMap).sort((a,b) => b.sortKey.localeCompare(a.sortKey));
  if (histDate) daysList = daysList.filter(d => d.sortKey === histDate);
 
- const toggleDay = (sortKey) => setExpandedDays(prev => prev.includes(sortKey) ? prev.filter(s => s !== sortKey) : [...prev, sortKey]);
+ // ── Group days by MONTH ───────────────────────────────────────────
+ const monthMap = {};
+ daysList.forEach(d => {
+  const [y, m] = d.sortKey.split("-");
+  const monthKey = `${y}-${m}`;
+  if (!monthMap[monthKey]) {
+   const label = new Date(+y, +m-1).toLocaleDateString("es-PE",{month:"long", year:"numeric"});
+   monthMap[monthKey] = { monthKey, label, days:[], total:0, ef:0, ya:0, ta:0, count:0, cancelados:0 };
+  }
+  monthMap[monthKey].days.push(d);
+  monthMap[monthKey].total     += d.total;
+  monthMap[monthKey].ef        += d.ef;
+  monthMap[monthKey].ya        += d.ya;
+  monthMap[monthKey].ta        += d.ta;
+  monthMap[monthKey].count     += d.orders.filter(o => o.status==="pagado"&&!o.anulado).length;
+  monthMap[monthKey].cancelados+= d.cancelados;
+ });
+
+ const monthsList = Object.values(monthMap).sort((a,b) => b.monthKey.localeCompare(a.monthKey));
+
+ const toggleDay   = (k) => setExpandedDays(prev   => prev.includes(k) ? prev.filter(x=>x!==k) : [...prev, k]);
+ const toggleMonth = (k) => setExpandedMonths(prev  => prev.includes(k) ? prev.filter(x=>x!==k) : [...prev, k]);
 
  return (
  <div>
@@ -4269,35 +4287,71 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
  </div>
  </div>
 
- {daysList.length === 0 ? (
+ {monthsList.length === 0 ? (
  <div style={{textAlign:"center", padding:60, color:"#444", background:"#1a1a1a", borderRadius:12}}>
  <div style={{fontSize:48, marginBottom:10}}></div>
  <div style={{fontSize:16, fontWeight:700}}>No hay registros para mostrar</div>
  </div>
  ) : (
- daysList.map(d => {
- const isExpanded = expandedDays.includes(d.sortKey);
- const sessionCount = Object.keys(d.sessions).length;
+ monthsList.map(mon => {
+ const isMonthOpen = expandedMonths.includes(mon.monthKey);
  return (
- <div key={d.sortKey} style={{background:"#1c1c1c", borderRadius:12, marginBottom:16, border:"1px solid #2a2a2a", overflow:"hidden", boxShadow:"0 4px 6px rgba(0,0,0,0.3)"}}>
- <div style={{padding:"16px 20px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", background: isExpanded ? `linear-gradient(90deg, #1f1a00 0%, #1c1c1c 100%)` : "#1c1c1c", borderBottom: isExpanded ? `2px solid ${Y}55` : "none", transition:"all 0.2s"}}
-  onClick={() => toggleDay(d.sortKey)}>
- <div style={{display:"flex", alignItems:"center", gap:12}}>
- <div style={{fontSize:24}}>📅</div>
- <div>
-  <div style={{fontWeight:900, fontSize:18, color: isExpanded ? Y : "#eee", letterSpacing:0.5}}>{d.date}</div>
-  <div style={{fontSize:12, color:"#888", marginTop:2}}>
-   {d.orders.filter(x => x.status==="pagado" && !x.anulado).length} pedidos cobrados
-   {d.cancelados > 0 && <span style={{color:"#e74c3c"}}> • {d.cancelados} anulados</span>}
-   {sessionCount > 1 && <span style={{color:"#555"}}> · {sessionCount} sesiones de caja</span>}
-  </div>
- </div>
- </div>
- <div style={{textAlign:"right", display:"flex", alignItems:"center", gap:16}}>
-  <div style={{fontWeight:900, fontSize:22, color:"#27ae60"}}>{fmt(d.total)}</div>
-  <div style={{background:"#2a2a2a", borderRadius:"50%", width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", color:Y, transition:"transform 0.3s", transform: isExpanded?"rotate(180deg)":"rotate(0deg)"}}>▼</div>
- </div>
- </div>
+  <div key={mon.monthKey} style={{marginBottom:20}}>
+   {/* ── MES header ── */}
+   <div
+    style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 18px", background: isMonthOpen?"linear-gradient(90deg,#1a1400,#111)":"#161616", borderRadius:isMonthOpen?"12px 12px 0 0":12, border:`1px solid ${isMonthOpen?Y+"44":"#2a2a2a"}`, cursor:"pointer", transition:"all .2s"}}
+    onClick={()=>toggleMonth(mon.monthKey)}
+   >
+    <div style={{display:"flex", alignItems:"center", gap:12}}>
+     <span style={{fontSize:22}}>📆</span>
+     <div>
+      <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:20, color:isMonthOpen?Y:"#ccc", letterSpacing:1, textTransform:"capitalize"}}>
+       {mon.label}
+      </div>
+      <div style={{fontSize:11, color:"#666", marginTop:2}}>
+       {mon.count} pedidos · {mon.days.length} días
+       {mon.cancelados>0 && <span style={{color:"#e74c3c"}}> · {mon.cancelados} anulados</span>}
+      </div>
+     </div>
+    </div>
+    <div style={{display:"flex", alignItems:"center", gap:14}}>
+     <div style={{textAlign:"right"}}>
+      <div style={{fontWeight:900, fontSize:20, color:"#27ae60"}}>{fmt(mon.total)}</div>
+      <div style={{fontSize:10, color:"#555", marginTop:1}}>
+       {mon.ef>0&&`💵${fmt(mon.ef)} `}{mon.ya>0&&`📱${fmt(mon.ya)} `}{mon.ta>0&&`💳${fmt(mon.ta)}`}
+      </div>
+     </div>
+     <div style={{background:"#2a2a2a", borderRadius:"50%", width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", color:Y, transition:"transform .3s", transform:isMonthOpen?"rotate(180deg)":"none", fontSize:12}}>▼</div>
+    </div>
+   </div>
+
+   {/* ── DÍAS dentro del mes ── */}
+   {isMonthOpen && (
+    <div style={{background:"#0d0d0d", border:`1px solid ${Y}22`, borderTop:"none", borderRadius:"0 0 12px 12px", padding:"12px 12px 4px"}}>
+     {mon.days.map(d => {
+      const isExpanded = expandedDays.includes(d.sortKey);
+      const sessionCount = Object.keys(d.sessions).length;
+      return (
+       <div key={d.sortKey} style={{background:"#1c1c1c", borderRadius:10, marginBottom:10, border:"1px solid #2a2a2a", overflow:"hidden"}}>
+        {/* Day header */}
+        <div style={{padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", background:isExpanded?"linear-gradient(90deg,#1f1a00,#1c1c1c)":"#1c1c1c", borderBottom:isExpanded?`2px solid ${Y}44`:"none", transition:"all .2s"}}
+         onClick={()=>toggleDay(d.sortKey)}>
+         <div style={{display:"flex", alignItems:"center", gap:10}}>
+          <span style={{fontSize:18}}>📅</span>
+          <div>
+           <div style={{fontWeight:900, fontSize:15, color:isExpanded?Y:"#eee"}}>{d.date}</div>
+           <div style={{fontSize:11, color:"#888", marginTop:1}}>
+            {d.orders.filter(x=>x.status==="pagado"&&!x.anulado).length} pedidos cobrados
+            {d.cancelados>0&&<span style={{color:"#e74c3c"}}> · {d.cancelados} anulados</span>}
+            {sessionCount>1&&<span style={{color:"#555"}}> · {sessionCount} sesiones</span>}
+           </div>
+          </div>
+         </div>
+         <div style={{display:"flex", alignItems:"center", gap:12}}>
+          <div style={{fontWeight:900, fontSize:17, color:"#27ae60"}}>{fmt(d.total)}</div>
+          <div style={{background:"#2a2a2a", borderRadius:"50%", width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", color:Y, transition:"transform .3s", transform:isExpanded?"rotate(180deg)":"none", fontSize:11}}>▼</div>
+         </div>
+        </div>
 
  {/* CUERPO DEL ACORDEÓN (Detalles de los pedidos) */}
  {isExpanded && (
@@ -4535,11 +4589,301 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
  })()}
  </div>
  )}
- </div>
+       </div>
+      );
+     })}
+    </div>
+   )}
+  </div>
  );
  })
  )}
  </div>
+ );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// AUDITORÍA — Registro inmutable de todas las movidas sensibles
+// Solo visible para admin. Nada puede borrarse individualmente.
+// ════════════════════════════════════════════════════════════════════
+const AUDIT_TYPE_META = {
+ anulacion:      { label:"🚫 Anulación",             color:"#e74c3c", bg:"#1f0505" },
+ anulacion_req:  { label:"📨 Solicitud de anulación", color:"#e67e22", bg:"#1a1000" },
+ descuento:      { label:"🏷 Descuento aplicado",     color:"#f39c12", bg:"#1a1500" },
+ correccion:     { label:"✏️ Corrección de cobro",    color:"#3498db", bg:"#05101f" },
+ cambio_precio:  { label:"💲 Cambio de precio",       color:"#9b59b6", bg:"#1a0a2a" },
+ reembolso:      { label:"↩️ Reembolso",              color:"#e67e22", bg:"#1a0e00" },
+ sol_aprobada:   { label:"✅ Solicitud aprobada",     color:"#27ae60", bg:"#051209" },
+ sol_rechazada:  { label:"❌ Solicitud rechazada",    color:"#e74c3c", bg:"#1f0505" },
+};
+
+function AuditoriaComponent({ history, solicitudes, isMobile, s, Y, fmt }) {
+ const [filterType, setFilterType] = useState("todos");
+ const [filterMonth, setFilterMonth] = useState("");
+ const [expanded, setExpanded]     = useState(null);
+
+ // ── Build audit events from history + solicitudes ────────────────
+ const events = React.useMemo(() => {
+  const ev = [];
+
+  // From history orders
+  history.forEach(o => {
+   const base = {
+    id: `h-${o._fid||o.id}`,
+    createdAt: o.createdAt,
+    orderRef: o.orderType==="llevar" ? `🥡 ${o.table||"?"}` : `🍽 Mesa ${o.table}`,
+    orderTotal: o.total,
+    items: o.items,
+   };
+
+   // Anulación directa (admin anuló sin solicitud)
+   if ((o.status==="cancelado"||o.anulado) && !o._refunded) {
+    ev.push({ ...base, id:`h-an-${o._fid||o.id}`, type:"anulacion",
+     who: o.anuladoPor || o._mesero || "—",
+     detail: o.motivoAnulacion ? `Motivo: "${o.motivoAnulacion}"` : "Sin motivo",
+     paidAt: o.cancelledAt || o.createdAt,
+    });
+   }
+
+   // Reembolso
+   if (o._refunded) {
+    ev.push({ ...base, id:`h-ref-${o._fid||o.id}`, type:"reembolso",
+     who: o._refundedBy || "—",
+     detail: `Reembolso — ${o.motivoAnulacion || "cliente desistió"}`,
+     paidAt: o._refundedAt || o.cancelledAt,
+    });
+   }
+
+   // Descuento aplicado en cobro
+   if (o.descuentoPct > 0 && o.status === "pagado") {
+    ev.push({ ...base, id:`h-desc-${o._fid||o.id}`, type:"descuento",
+     who: o._cobradoPor || "—",
+     detail: `${o.descuentoPct}% de descuento${o.descuentoMotivo ? ` — "${o.descuentoMotivo}"` : ""}`,
+     savedAmt: (o.totalOriginal||o.total) - o.total,
+     paidAt: o.paidAt,
+    });
+   }
+
+   // Corrección de cobro ya aplicada (admin editó directamente)
+   if (o._correctedAt) {
+    ev.push({ ...base, id:`h-cor-${o._fid||o.id}`, type:"correccion",
+     who: o._correctedBy || "—",
+     detail: o._correctedMotivo ? `"${o._correctedMotivo}"` : "Sin motivo",
+     paidAt: o._correctedAt,
+    });
+   }
+
+   // Descuentos por ítem
+   (o.items||[]).forEach((item, i) => {
+    if ((item.descuentoPct||0) > 0) {
+     ev.push({ ...base, id:`h-idesc-${o._fid||o.id}-${i}`, type:"descuento",
+      who: o._cobradoPor || o._mesero || "—",
+      detail: `Descuento en ítem: ${item.qty}× ${item.name} — ${item.descuentoPct}%`,
+      paidAt: o.paidAt,
+     });
+    }
+   });
+  });
+
+  // From solicitudes (all, not just pending)
+  solicitudes.forEach(sol => {
+   if (sol.type === "aviso_bebida") return; // skip bar notices
+   const base = {
+    id: `s-${sol.id}`,
+    createdAt: sol.createdAt,
+    orderRef: sol.orderType==="llevar" ? `🥡 ${sol.orderTable||"?"}` : `🍽 Mesa ${sol.orderTable}`,
+    orderTotal: sol.orderTotal,
+    items: sol.orderItems,
+   };
+
+   if (sol.type === "anulacion") {
+    ev.push({ ...base, type:"anulacion_req",
+     who: sol.requestedByName || "—",
+     detail: sol.motivo ? `"${sol.motivo}"` : "Sin motivo",
+     paidAt: sol.createdAt,
+     status: sol.status,
+     resolvedBy: sol.resolvedBy,
+     resolvedAt: sol.resolvedAt,
+     rejectReason: sol.rejectReason,
+    });
+    if (sol.status === "aprobada")  ev.push({ ...base, id:`s-ap-${sol.id}`, type:"sol_aprobada",  who: sol.resolvedBy||"—", detail:`Aprobó anulación de ${sol.requestedByName}`, paidAt:sol.resolvedAt });
+    if (sol.status === "rechazada") ev.push({ ...base, id:`s-rj-${sol.id}`, type:"sol_rechazada", who: sol.resolvedBy||"—", detail:`Rechazó solicitud de ${sol.requestedByName}${sol.rejectReason?` — "${sol.rejectReason}"`:""}`, paidAt:sol.resolvedAt });
+   }
+
+   if (sol.type === "precio") {
+    ev.push({ ...base, type:"cambio_precio",
+     who: sol.requestedByName || "—",
+     detail: `${sol.itemName}: ${fmt(sol.oldPrice)} → ${fmt(sol.newPrice)}${sol.priceMotivo?` — "${sol.priceMotivo}"`:""}`,
+     paidAt: sol.createdAt,
+     status: sol.status,
+     resolvedBy: sol.resolvedBy,
+    });
+   }
+
+   if (sol.type === "cobro") {
+    ev.push({ ...base, type:"correccion",
+     who: sol.requestedByName || "—",
+     detail: `Corrección de cobro solicitada${sol.motivo?` — "${sol.motivo}"`:""}`,
+     paidAt: sol.createdAt,
+     status: sol.status,
+     resolvedBy: sol.resolvedBy,
+    });
+   }
+  });
+
+  return ev.sort((a,b) => new Date(b.paidAt||b.createdAt) - new Date(a.paidAt||a.createdAt));
+ }, [history, solicitudes]);
+
+ // ── Filter ────────────────────────────────────────────────────────
+ const months = [...new Set(events.map(e => {
+  const d = new Date(e.paidAt||e.createdAt);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+ }))].sort().reverse();
+
+ const filtered = events.filter(e => {
+  if (filterType !== "todos" && e.type !== filterType) return false;
+  if (filterMonth) {
+   const d = new Date(e.paidAt||e.createdAt);
+   const m = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+   if (m !== filterMonth) return false;
+  }
+  return true;
+ });
+
+ const typeCounts = {};
+ events.forEach(e => { typeCounts[e.type] = (typeCounts[e.type]||0)+1; });
+
+ const fmtDT = (iso) => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleDateString("es-PE",{day:"2-digit",month:"short"}) + " " + d.toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"});
+ };
+
+ return (
+  <div>
+   {/* Header */}
+   <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, flexWrap:"wrap", gap:8}}>
+    <div style={s.title}>🔍 AUDITORÍA DEL SISTEMA</div>
+    <div style={{fontSize:11, color:"#555", fontStyle:"italic"}}>Solo lectura — ningún registro puede eliminarse</div>
+   </div>
+
+   {/* Filtros */}
+   <div style={{display:"flex", gap:8, flexWrap:"wrap", marginBottom:16}}>
+    {/* Tipo */}
+    <div style={{display:"flex", gap:4, flexWrap:"wrap"}}>
+     {[["todos","📋 Todos"], ...Object.entries(AUDIT_TYPE_META).map(([k,v])=>[k,v.label])].map(([k,lbl])=>(
+      <button key={k} style={{...s.btn(filterType===k?"primary":"secondary"), padding:"5px 10px", fontSize:11,
+       ...(filterType===k && AUDIT_TYPE_META[k] ? {background:AUDIT_TYPE_META[k].color+"33", borderColor:AUDIT_TYPE_META[k].color, color:AUDIT_TYPE_META[k].color} : {})}}
+       onClick={()=>setFilterType(k)}>
+       {lbl}{k!=="todos" && typeCounts[k] ? ` (${typeCounts[k]})` : ""}
+      </button>
+     ))}
+    </div>
+    {/* Mes */}
+    <select style={{...s.input, padding:"6px 10px", width:"auto", fontSize:12}} value={filterMonth} onChange={e=>setFilterMonth(e.target.value)}>
+     <option value="">Todos los meses</option>
+     {months.map(m => {
+      const [y,mo] = m.split("-");
+      const label = new Date(+y, +mo-1).toLocaleDateString("es-PE",{month:"long",year:"numeric"});
+      return <option key={m} value={m}>{label}</option>;
+     })}
+    </select>
+   </div>
+
+   {/* Contador */}
+   <div style={{fontSize:12, color:"#555", marginBottom:12}}>
+    {filtered.length} evento{filtered.length!==1?"s":""} encontrado{filtered.length!==1?"s":""}
+    {filtered.length !== events.length && ` de ${events.length} total`}
+   </div>
+
+   {/* Lista */}
+   {filtered.length === 0 ? (
+    <div style={{textAlign:"center", padding:60, color:"#444", background:"#1a1a1a", borderRadius:12}}>
+     <div style={{fontSize:40, marginBottom:8}}>🔍</div>
+     <div>No hay eventos de auditoría</div>
+    </div>
+   ) : filtered.map(e => {
+    const meta = AUDIT_TYPE_META[e.type] || { label:e.type, color:"#888", bg:"#111" };
+    const isOpen = expanded === e.id;
+    return (
+     <div key={e.id} style={{background:meta.bg, border:`1px solid ${meta.color}33`, borderRadius:10, marginBottom:8, overflow:"hidden"}}>
+      {/* Fila principal */}
+      <div style={{display:"flex", alignItems:"center", gap:10, padding:"10px 14px", cursor:"pointer"}}
+       onClick={()=>setExpanded(isOpen?null:e.id)}>
+       <div style={{flexShrink:0, width:10, height:10, borderRadius:"50%", background:meta.color, boxShadow:`0 0 6px ${meta.color}`}}/>
+       <div style={{flex:1, minWidth:0}}>
+        <div style={{display:"flex", alignItems:"center", gap:8, flexWrap:"wrap"}}>
+         <span style={{fontWeight:800, fontSize:12, color:meta.color}}>{meta.label}</span>
+         <span style={{fontSize:12, color:"#ccc"}}>{e.orderRef}</span>
+         {e.orderTotal != null && <span style={{fontSize:11, color:Y, fontWeight:700}}>{fmt(e.orderTotal)}</span>}
+         {e.status && e.status !== "pendiente" && (
+          <span style={{fontSize:10, color: e.status==="aprobada"?"#27ae60":"#e74c3c", fontWeight:800, textTransform:"uppercase"}}>
+           · {e.status}
+          </span>
+         )}
+        </div>
+        <div style={{fontSize:11, color:"#666", marginTop:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>
+         <span style={{color:"#888"}}>👤 {e.who}</span>
+         <span style={{marginLeft:8}}>{e.detail}</span>
+        </div>
+       </div>
+       <div style={{flexShrink:0, textAlign:"right"}}>
+        <div style={{fontSize:10, color:"#555"}}>{fmtDT(e.paidAt||e.createdAt)}</div>
+        <div style={{fontSize:10, color:"#333", marginTop:2}}>{isOpen?"▲":"▼"}</div>
+       </div>
+      </div>
+
+      {/* Detalle expandido */}
+      {isOpen && (
+       <div style={{borderTop:`1px solid ${meta.color}22`, background:"#0a0a0a", padding:"12px 14px"}}>
+        <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:10}}>
+         <div>
+          <div style={{fontSize:10, color:"#444", textTransform:"uppercase", letterSpacing:1, marginBottom:2}}>QUIÉN</div>
+          <div style={{fontSize:13, color:"#eee", fontWeight:700}}>{e.who}</div>
+         </div>
+         <div>
+          <div style={{fontSize:10, color:"#444", textTransform:"uppercase", letterSpacing:1, marginBottom:2}}>CUÁNDO</div>
+          <div style={{fontSize:12, color:"#eee"}}>{fmtDT(e.paidAt||e.createdAt)}</div>
+         </div>
+         <div>
+          <div style={{fontSize:10, color:"#444", textTransform:"uppercase", letterSpacing:1, marginBottom:2}}>PEDIDO</div>
+          <div style={{fontSize:12, color:"#eee"}}>{e.orderRef} · {e.orderTotal != null ? fmt(e.orderTotal) : "—"}</div>
+         </div>
+         {e.resolvedBy && (
+          <div>
+           <div style={{fontSize:10, color:"#444", textTransform:"uppercase", letterSpacing:1, marginBottom:2}}>RESOLVIÓ</div>
+           <div style={{fontSize:12, color:"#eee"}}>{e.resolvedBy} · {fmtDT(e.resolvedAt)}</div>
+          </div>
+         )}
+         {e.savedAmt > 0 && (
+          <div>
+           <div style={{fontSize:10, color:"#444", textTransform:"uppercase", letterSpacing:1, marginBottom:2}}>MONTO DESCONTADO</div>
+           <div style={{fontSize:13, color:"#f39c12", fontWeight:700}}>−{fmt(e.savedAmt)}</div>
+          </div>
+         )}
+        </div>
+        <div style={{fontSize:12, color:"#aaa", fontStyle:"italic", background:"#111", borderRadius:6, padding:"6px 10px"}}>
+         {e.detail}
+        </div>
+        {e.items && e.items.length > 0 && (
+         <div style={{marginTop:8, display:"flex", flexWrap:"wrap", gap:4}}>
+          {e.items.slice(0,6).map((it,i)=>(
+           <span key={i} style={{background:"#1a1a1a", borderRadius:4, padding:"2px 7px", fontSize:10, color:"#888", border:"1px solid #2a2a2a"}}>
+            {it.qty}× {it.name}
+           </span>
+          ))}
+          {e.items.length > 6 && <span style={{color:"#444", fontSize:10}}>+{e.items.length-6} más</span>}
+         </div>
+        )}
+        <div style={{marginTop:10, fontSize:10, color:"#2a2a2a", fontFamily:"monospace"}}>
+         ID: {e.id}
+        </div>
+       </div>
+      )}
+     </div>
+    );
+   })}
+  </div>
  );
 }
 
@@ -6170,6 +6514,7 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
   ? `Solicitudes${pendingSols>0?" ("+pendingSols+")":""}` 
   : `Mis Solicitudes` },
  {id:"historial",    label:"Historial"},
+ {id:"auditoria",    label:"Auditoría"},
  {id:"inventario",   label:"Inventario"},
  {id:"carta",        label:"Carta"},
  {id:"personal",     label:"Personal"},
@@ -6182,7 +6527,6 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
  if (currentUser.id === 'cocinero') return ['cocina'].includes(t.id);
  return false;
  });
-
  // Badge en el tab solicitudes (llamar atención al admin)
  const myPendingSols = solicitudes.filter(x => x.status === "pendiente" && (x.requestedBy === currentUser.userId || x.requestedBy === currentUser.id)).length;
  const SolBadge = pendingSols > 0 && currentUser.id === 'admin'
@@ -6238,7 +6582,7 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
 
   <div style={{overflowY:"auto", flex:1, paddingTop:8, paddingBottom:isMobile?80:24}}>
   {tabs.map(t => {
-   const icons = {dashboard:"🏠",mesas:"🍽",nuevo:"➕",pedidos:"📋",cocina:"👨‍🍳",solicitudes:"📨",historial:"📅",inventario:"📦",carta:"📖",personal:"👥"};
+   const icons = {dashboard:"🏠",mesas:"🍽",nuevo:"➕",pedidos:"📋",cocina:"👨‍🍳",solicitudes:"📨",historial:"📅",auditoria:"🔍",inventario:"📦",carta:"📖",personal:"👥"};
    const hasCount = t.label.includes("(");
    const labelClean = t.label.replace(/\s*\(.*\)/, "");
    const count = hasCount ? t.label.match(/\((\d+)\)/)?.[1] : null;
@@ -6434,6 +6778,7 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
   {tab==="pedidos" && <PedidosComponent orders={orders} toggleItemCheck={toggleItemCheck} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} setReembolsoConfirm={setReembolsoConfirm} setDraft={setDraft} newDraft={newDraft} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
 {tab==="cocina" && <CocinaComponent orders={orders} markKitchenListo={markKitchenListo} toggleItemCheck={toggleItemCheck} crearSolicitud={crearSolicitud} currentUser={currentUser} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} soundConfig={soundConfig} />}
   {tab==="historial"    && <HistorialComponent history={history} activeOrders={orders} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} />}
+  {tab==="auditoria"    && <AuditoriaComponent history={history} solicitudes={solicitudes} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
   {tab==="inventario"   && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/>}
   {tab==="carta"        && <CartaComponent menu={menu} cartaCatFilter={cartaCatFilter} setCartaCatFilter={setCartaCatFilter} showAdd={showAdd} setShowAdd={setShowAdd} newItem={newItem} setNewItem={setNewItem} addMenuItem={addMenuItem} deleteMenuItem={deleteMenuItem} isMobile={isMobile} s={s} Y={Y} fmt={fmt} ALL_CATS={ALL_CATS} />}
   {tab==="solicitudes"  && <SolicitudesPanel solicitudes={solicitudes} onResolve={resolverSolicitud} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} updateHistoryDoc={updateHistoryDoc} />}
