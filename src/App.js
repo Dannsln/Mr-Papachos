@@ -3338,7 +3338,7 @@ function PedidosComponent({ orders, toggleItemCheck, setTab, finishPaidOrder, se
  <style>{`.pedido-card{transition:box-shadow .15s}.pedido-card:hover{box-shadow:0 4px 20px rgba(255,215,0,.08)}`}</style>
  <div style={{...s.row, marginBottom:14}}>
  <div style={s.title}>PEDIDOS ACTIVOS</div>
- {(isAdmin || isMesero) && <button style={s.btn()} onClick={() => setTab("nuevo")}>+ Nuevo</button>}
+ {(isAdmin || isMesero || isCajero) && <button style={s.btn()} onClick={() => setTab("nuevo")}>+ Nuevo</button>}
  </div>
 
  {/* ── SECCIÓN BARRA: Solo para meseros — sus bebidas pendientes ── */}
@@ -3509,7 +3509,7 @@ function PedidosComponent({ orders, toggleItemCheck, setTab, finishPaidOrder, se
  : activeOrders.map(o => {
  const splitOpen = splitOpenId === o.id;
  const mins = Math.floor((Date.now()-new Date(o.createdAt))/60000);
- const urgentColor = mins>=20?"#e74c3c":mins>=10?"#e67e22":Y;
+ const urgentColor = mins>=20?"#e74c3c":mins>=15?"#e67e22":"#27ae60";
  const isReplacement = !!o.replacesId;
  return (
  <div key={o.id}>
@@ -3895,10 +3895,23 @@ function CocinaComponent({ orders, markKitchenListo, toggleItemCheck, crearSolic
         {/* Cabecera: mesa + mesero */}
         <div style={{...s.row, marginBottom:6, marginTop:6}}>
          <div style={{display:"flex", alignItems:"center", gap:8}}>
-          <OrdenIcon orderType={order.orderType} color={mins>=15?"#e74c3c":mins>=8?"#e67e22":Y} size={20}/>
-          <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:22, color:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y}}>
-           {order.orderType==="llevar" ? order.table||"Sin nombre" : `Mesa ${order.table}`}
-          </span>
+          <OrdenIcon orderType={order.orderType} color={mins>=15?"#e74c3c":mins>=8?"#e67e22":Y} size={order.orderType==="llevar"?26:20}/>
+          <div>
+           {order.orderType === "llevar" ? (
+            <>
+             <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:26, color:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y, lineHeight:1, letterSpacing:1}}>
+              PARA LLEVAR
+             </div>
+             <div style={{fontSize:13, color:"#ccc", fontWeight:700, marginTop:1}}>
+              {order.table || "Sin nombre"}
+             </div>
+            </>
+           ) : (
+            <span style={{fontFamily:"'Bebas Neue',cursive", fontSize:22, color:mins>=15?"#e74c3c":mins>=8?"#e67e22":Y}}>
+             Mesa {order.table}
+            </span>
+           )}
+          </div>
          </div>
          {order._mesero && (
           <span style={{fontSize:11, color:"#888", fontWeight:700, background:"#1a1a1a", borderRadius:6, padding:"2px 8px", border:"1px solid #2a2a2a"}}>
@@ -4370,6 +4383,41 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
        </div>
       </div>
      </div>
+     {/* ── Staff + timestamps ── */}
+     {(() => {
+      // Recolectar todos los participantes únicos
+      const participants = [];
+      if (o._mesero) participants.push({ name: o._mesero, role: "Mesero", icon: "🧑‍🍳" });
+      // Meseros adicionales de adiciones
+      (o._additions||[]).forEach(add => {
+       if (add.addedBy && !participants.some(p => p.name === add.addedBy))
+        participants.push({ name: add.addedBy, role: "Adición", icon: "➕" });
+      });
+      // Ítems con _addedBy distintos al mesero original
+      (o.items||[]).filter(i => i._addedBy && i._addedBy !== o._mesero).forEach(item => {
+       if (!participants.some(p => p.name === item._addedBy))
+        participants.push({ name: item._addedBy, role: "Ítem adicional", icon: "➕" });
+      });
+      if (o._cobradoPor) participants.push({ name: o._cobradoPor, role: "Cobró", icon: "💰" });
+
+      return (
+       <div style={{display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", marginBottom:10, padding:"6px 10px", background:"#0a0a0a", borderRadius:6, border:"1px solid #1a1a1a"}}>
+        {/* Participantes */}
+        {participants.map((p, i) => (
+         <span key={i} style={{display:"inline-flex", alignItems:"center", gap:4, fontSize:10, color:"#666", background:"#151515", borderRadius:20, padding:"2px 8px", border:"1px solid #222"}}>
+          <span>{p.icon}</span>
+          <span style={{color:"#888", fontWeight:700}}>{p.name}</span>
+          <span style={{color:"#444"}}>· {p.role}</span>
+         </span>
+        ))}
+        {/* Timestamps */}
+        <span style={{marginLeft:"auto", display:"flex", gap:8, fontSize:10, color:"#444", flexWrap:"wrap", justifyContent:"flex-end"}}>
+         {o.createdAt && <span title="Hora de creación">🕐 {timeStr(o.createdAt)}</span>}
+         {(o.paidAt||o.cancelledAt) && <span title="Hora de pago/cierre" style={{color:"#27ae60"}}>✅ {timeStr(o.paidAt||o.cancelledAt)}</span>}
+        </span>
+       </div>
+      );
+     })()}
      {/* Pago normal */}
      {!isCanceled&&!o.splitPayments?.length&&(
       <div style={{fontSize:11,color:"#aaa",marginBottom:10,background:"#0a0a0a",padding:"8px 12px",borderRadius:6}}>
@@ -5881,6 +5929,7 @@ const saveCaja = async (data) => {
  const hasSplits = o.splitPayments && o.splitPayments.length > 0;
  let finished;
  const sessionStamp = { _cajaSessionId: o._cajaSessionId || cajaRef2.current?.sessionId || null, _cajaOpenedAt: o._cajaOpenedAt || cajaRef2.current?.openedAt || null };
+ const cobradoPorStamp = { _cobradoPor: currentUser?.name || null, _cobradoPorId: currentUser?.id || null };
  if (hasSplits) {
  const thisFinalRecord = { items: o.items, total: paymentData.totalFinal, payments, paidAt: new Date().toISOString() };
  const allSplits = [...o.splitPayments, thisFinalRecord];
@@ -5889,9 +5938,9 @@ const saveCaja = async (data) => {
  const totalTa = allSplits.reduce((s, sp) => s + (sp.payments?.tarjeta || 0), 0);
  const totalCobrado = allSplits.reduce((s, sp) => s + (sp.total || 0), 0);
  const allItems = o.originalItems || o.items;
- finished = { ...o, isPaid: true, status: "pagado", payments: { efectivo: totalEf, yape: totalYa, tarjeta: totalTa }, splitPayments: allSplits, paidAt: new Date().toISOString(), total: totalCobrado, items: allItems, ...descuentoData, ...sessionStamp };
+ finished = { ...o, isPaid: true, status: "pagado", payments: { efectivo: totalEf, yape: totalYa, tarjeta: totalTa }, splitPayments: allSplits, paidAt: new Date().toISOString(), total: totalCobrado, items: allItems, ...descuentoData, ...sessionStamp, ...cobradoPorStamp };
  } else {
- finished = { ...o, isPaid:true, status:"pagado", payments, paidAt:new Date().toISOString(), ...descuentoData, ...(paymentData.totalFinal !== undefined ? { total: paymentData.totalFinal } : {}), ...sessionStamp };
+ finished = { ...o, isPaid:true, status:"pagado", payments, paidAt:new Date().toISOString(), ...descuentoData, ...(paymentData.totalFinal !== undefined ? { total: paymentData.totalFinal } : {}), ...sessionStamp, ...cobradoPorStamp };
  }
  // Guard: verificar que el pedido aún existe (no fue cobrado en otra sesión)
  if (!cur.find(x => x.id === o.id)) {
@@ -6128,7 +6177,7 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
 
  const tabs = allTabs.filter(t => {
  if (currentUser.id === 'admin') return true;
- if (currentUser.id === 'cajero') return ['dashboard','pedidos','historial','solicitudes'].includes(t.id);
+ if (currentUser.id === 'cajero') return ['dashboard','mesas','nuevo','pedidos','cocina','historial','solicitudes'].includes(t.id);
  if (currentUser.id === 'mesero') return ['dashboard','mesas','nuevo','pedidos','solicitudes'].includes(t.id);
  if (currentUser.id === 'cocinero') return ['cocina'].includes(t.id);
  return false;
