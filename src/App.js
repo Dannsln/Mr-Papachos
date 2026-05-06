@@ -1,5 +1,5 @@
 /* eslint-disable */
-import { useState, useEffect, useRef, Component } from "react";
+import { useState, useEffect, useRef, useMemo, Component } from "react";
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, signInAnonymously } from "firebase/auth";
 import {
@@ -4623,7 +4623,7 @@ function AuditoriaComponent({ history, solicitudes, isMobile, s, Y, fmt }) {
  const [expanded, setExpanded]     = useState(null);
 
  // ── Build audit events from history + solicitudes ────────────────
- const events = React.useMemo(() => {
+ const events = useMemo(() => {
   const ev = [];
 
   // From history orders
