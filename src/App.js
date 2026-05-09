@@ -2233,36 +2233,41 @@ function printSplitTicket(order, selectedItems, splitIdx, splitTotal) {
 // ═══════════════════════════════════════════════════════════════════
 // COMPONENTES SECUNDARIOS
 // ═══════════════════════════════════════════════════════════════════
-function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, setCobrarTarget, isMobile, s, Y, caja, abrirCaja, cerrarCaja, currentUser, getPay, soundConfig, setSoundConfig }) {
+function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, setCobrarTarget, isMobile, s, Y, caja, abrirCaja, cerrarCaja, agregarGastoCaja, currentUser, getPay, soundConfig, setSoundConfig }) {
  const isAdmin = currentUser?.id === "admin";
- const [fondoInput, setFondoInput] = useState("");
+ const [fondoInput, setFondoInput]         = useState("");
  const [showCierreModal, setShowCierreModal] = useState(false);
- const [cierreData, setCierreData] = useState(null);
+ const [cierreData, setCierreData]         = useState(null);
  const [showSoundPanel, setShowSoundPanel] = useState(false);
+ const [showAbrirModal, setShowAbrirModal] = useState(false);  // modal obligatorio de apertura
+
+ // ── Estado modal apertura de caja ─────────────────────────────────
+ const [fondoApertura, setFondoApertura]     = useState("");
+ const [gastoDesc, setGastoDesc]             = useState("");
+ const [gastoMonto, setGastoMonto]           = useState("");
+ const [gastosApertura, setGastosApertura]   = useState([]);  // gastos antes de abrir
+ const [showGastoPanel, setShowGastoPanel]   = useState(false); // gastos con caja abierta
+ const [gastoDescOpen, setGastoDescOpen]     = useState("");
+ const [gastoMontoOpen, setGastoMontoOpen]   = useState("");
 
  const testSound = () => { playBeeps(soundConfig); speak("Prueba de sonido"); };
 
- // Midnight warning
  const [showMidnightWarning, setShowMidnightWarning] = useState(false);
  useEffect(() => {
   const checkMidnight = () => {
    const now = new Date();
-   const h = now.getHours(), m = now.getMinutes();
-   if (h === 0 && m === 0) setShowMidnightWarning(true);
+   if (now.getHours() === 0 && now.getMinutes() === 0) setShowMidnightWarning(true);
   };
   const t = setInterval(checkMidnight, 30000);
   return () => clearInterval(t);
  }, []);
 
- // Usar paidAt para agrupar el día (si pagó hoy, cuenta hoy aunque creado ayer)
  const today = new Date().toDateString();
- // Caja session: show totals from current session open time, never include anulled
  const cajaOpenedAt = caja?.openedAt ? new Date(caja.openedAt) : null;
- const cajaDay = cajaOpenedAt ? cajaOpenedAt.toDateString() : null;
+ const cajaDay      = cajaOpenedAt ? cajaOpenedAt.toDateString() : null;
  const inCurrentSession = (o) => {
   if (!cajaOpenedAt) return false;
   if (o.anulado || o.status === "anulado") return false;
-  // Same day boundary as cerrarCaja: use createdAt for the day, never cross midnight
   const orderDay = new Date(o.createdAt).toDateString();
   if (cajaDay && orderDay !== cajaDay) return false;
   const t = new Date(o.paidAt || o.createdAt).getTime();
@@ -2270,29 +2275,135 @@ function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, set
  };
  const paidArchivedSession = history.filter(o => o.status==="pagado" && !o.anulado && inCurrentSession(o));
  const paidActiveSession   = orders.filter(o => o.isPaid && !o.anulado && inCurrentSession(o));
- // allPaidSession: todos los pedidos de la sesión de caja (para totales de efectivo/Yape/tarjeta)
- const allPaidSession = [...paidArchivedSession, ...paidActiveSession];
- // allPaidToday: solo pedidos pagados HOY (para los stats "Recaudado hoy" / "Pagados hoy")
- const isToday = (o) => new Date(o.paidAt || o.createdAt).toDateString() === today;
- const allPaidToday = allPaidSession.filter(isToday);
- // Total en caja efectivo = fondo inicial + efectivo cobrado (toda la sesión)
- 
- // 1. Primero declara e inicializa las bases
-const cashRev = allPaidSession.reduce((s,o) => s + getPay(o,"efectivo"), 0);
-const todayRev = allPaidToday.reduce((s,o) => s + o.total, 0);
-const yapeRev = allPaidSession.reduce((s,o) => s + getPay(o,"yape"), 0);
-const cardRev = allPaidSession.reduce((s,o) => s + getPay(o,"tarjeta"), 0);
-const totalRev = history.filter(o => o.status==="pagado" && !o.anulado).reduce((s,o) => s + o.total, 0)
-               + paidActiveSession.reduce((s,o) => s + o.total, 0);
-const totalEnCaja = (caja?.fondoInicial||0) + cashRev;
+ const allPaidSession      = [...paidArchivedSession, ...paidActiveSession];
+ const isToday             = (o) => new Date(o.paidAt || o.createdAt).toDateString() === today;
+ const allPaidToday        = allPaidSession.filter(isToday);
+
+ // ── Separar fondo de ganancias ────────────────────────────────────
+ const cashRev       = allPaidSession.reduce((s,o) => s + getPay(o,"efectivo"), 0);
+ const todayRev      = allPaidToday.reduce((s,o) => s + o.total, 0);
+ const yapeRev       = allPaidSession.reduce((s,o) => s + getPay(o,"yape"), 0);
+ const cardRev       = allPaidSession.reduce((s,o) => s + getPay(o,"tarjeta"), 0);
+ const totalRev      = history.filter(o => o.status==="pagado" && !o.anulado).reduce((s,o) => s + o.total, 0)
+                     + paidActiveSession.reduce((s,o) => s + o.total, 0);
+
+ // Gastos de la sesión actual (almacenados en caja.gastos)
+ const gastosSesion  = caja?.gastos || [];
+ const totalGastos   = gastosSesion.reduce((s,g) => s + (g.monto||0), 0);
+ const fondoNeto     = (caja?.fondoInicial||0) - totalGastos;   // caja chica restante
+ const totalEnCaja   = fondoNeto + cashRev;                      // físico total
 
  const handleCerrar = async () => {
   const corte = await cerrarCaja();
   if (corte) { setCierreData(corte); setShowCierreModal(true); }
  };
 
+ // ── Agregar gasto con caja abierta ───────────────────────────────
+ const handleAgregarGasto = async () => {
+  const monto = parseFloat(gastoMontoOpen);
+  if (!monto || monto <= 0 || !gastoDescOpen.trim()) return;
+  const gasto = { id: Date.now().toString(), desc: gastoDescOpen.trim(), monto, at: new Date().toISOString(), by: currentUser?.name || "—" };
+  await agregarGastoCaja(gasto);
+  setGastoDescOpen(""); setGastoMontoOpen("");
+  setShowGastoPanel(false);
+ };
+
+ // ── Abrir caja desde modal (con fondo obligatorio y gastos iniciales) ──
+ const handleAbrirDesdeModal = () => {
+  const fondo = parseFloat(fondoApertura);
+  if (!fondo || fondo <= 0) return;
+  abrirCaja(fondoApertura, gastosApertura);
+  setFondoApertura(""); setGastosApertura([]); setShowAbrirModal(false);
+ };
+
+ const addGastoApertura = () => {
+  const m = parseFloat(gastoMonto);
+  if (!m || m <= 0 || !gastoDesc.trim()) return;
+  setGastosApertura(prev => [...prev, { id: Date.now().toString(), desc: gastoDesc.trim(), monto: m, at: new Date().toISOString(), by: currentUser?.name || "—" }]);
+  setGastoDesc(""); setGastoMonto("");
+ };
+
  return (
  <div>
+  {/* ── MODAL DE APERTURA DE CAJA ── */}
+  {showAbrirModal && (
+   <div style={s.overlay} onClick={() => setShowAbrirModal(false)}>
+    <div style={{...s.modal, maxWidth:420, width:"100%"}} onClick={e=>e.stopPropagation()}>
+     <div style={{fontFamily:"'Bebas Neue',cursive", fontSize:24, color:"#27ae60", letterSpacing:1, marginBottom:4}}>🟢 ABRIR CAJA</div>
+     <div style={{fontSize:12, color:"#666", marginBottom:16}}>Registra el dinero con el que inicias el día antes de abrir.</div>
+
+     {/* Fondo inicial — OBLIGATORIO */}
+     <div style={{background:"#0a1f0a", border:`1.5px solid #27ae6055`, borderRadius:10, padding:"14px 16px", marginBottom:14}}>
+      <div style={{fontSize:11, color:"#27ae60", textTransform:"uppercase", letterSpacing:1, marginBottom:8, fontWeight:800}}>💵 Fondo de caja chica (obligatorio)</div>
+      <input
+       type="number" min="0" step="0.5" autoFocus
+       style={{...s.input, width:"100%", fontSize:18, fontWeight:900, textAlign:"center", padding:"10px 0", color:"#27ae60"}}
+       placeholder="S/. 0.00"
+       value={fondoApertura}
+       onChange={e => setFondoApertura(e.target.value)}
+      />
+      <div style={{fontSize:10, color:"#555", marginTop:6, textAlign:"center"}}>Este monto se separará de las ganancias del día</div>
+     </div>
+
+     {/* Gastos previos a la apertura */}
+     <div style={{background:"#1a0e00", border:"1px solid #e67e2233", borderRadius:10, padding:"12px 14px", marginBottom:14}}>
+      <div style={{fontSize:11, color:"#e67e22", textTransform:"uppercase", letterSpacing:1, marginBottom:10, fontWeight:800}}>📤 Gastos a descontar (opcional)</div>
+      <div style={{display:"flex", gap:6, marginBottom:10}}>
+       <input
+        type="text" placeholder="¿En qué se gastó?"
+        style={{...s.input, flex:2, fontSize:12}}
+        value={gastoDesc} onChange={e=>setGastoDesc(e.target.value)}
+        onKeyDown={e => e.key==="Enter" && addGastoApertura()}
+       />
+       <input
+        type="number" placeholder="S/." min="0" step="0.5"
+        style={{...s.input, flex:1, fontSize:12}}
+        value={gastoMonto} onChange={e=>setGastoMonto(e.target.value)}
+        onKeyDown={e => e.key==="Enter" && addGastoApertura()}
+       />
+       <button style={{...s.btn("warn"), padding:"0 12px", flexShrink:0}} onClick={addGastoApertura}>+</button>
+      </div>
+      {gastosApertura.length > 0 ? (
+       <div style={{display:"flex", flexDirection:"column", gap:4}}>
+        {gastosApertura.map((g,i) => (
+         <div key={i} style={{display:"flex", justifyContent:"space-between", alignItems:"center", background:"#111", borderRadius:6, padding:"6px 10px", fontSize:12}}>
+          <span style={{color:"#bbb"}}>{g.desc}</span>
+          <div style={{display:"flex", alignItems:"center", gap:8}}>
+           <span style={{color:"#e67e22", fontWeight:700}}>−{fmt(g.monto)}</span>
+           <button style={{background:"none", border:"none", color:"#e74c3c", cursor:"pointer", fontSize:14, lineHeight:1, padding:0}} onClick={()=>setGastosApertura(prev=>prev.filter((_,j)=>j!==i))}>×</button>
+          </div>
+         </div>
+        ))}
+        <div style={{display:"flex", justifyContent:"space-between", padding:"6px 10px", borderTop:"1px solid #2a2a2a", marginTop:4, fontSize:12}}>
+         <span style={{color:"#888"}}>Total gastos</span>
+         <span style={{color:"#e67e22", fontWeight:900}}>−{fmt(gastosApertura.reduce((s,g)=>s+g.monto,0))}</span>
+        </div>
+        {parseFloat(fondoApertura||0) > 0 && (
+         <div style={{display:"flex", justifyContent:"space-between", padding:"4px 10px", fontSize:12}}>
+          <span style={{color:"#555"}}>Fondo neto disponible</span>
+          <span style={{color:"#27ae60", fontWeight:900}}>{fmt(Math.max(0, parseFloat(fondoApertura||0) - gastosApertura.reduce((s,g)=>s+g.monto,0)))}</span>
+         </div>
+        )}
+       </div>
+      ) : (
+       <div style={{fontSize:11, color:"#444", textAlign:"center", padding:"8px 0"}}>Sin gastos registrados</div>
+      )}
+     </div>
+
+     <div style={{display:"flex", gap:8}}>
+      <button style={{...s.btn("secondary"), flex:1}} onClick={()=>setShowAbrirModal(false)}>Cancelar</button>
+      <button
+       style={{...s.btn("success"), flex:2, fontWeight:900, fontSize:15, opacity: parseFloat(fondoApertura||0)>0?1:0.4}}
+       disabled={!(parseFloat(fondoApertura||0)>0)}
+       onClick={handleAbrirDesdeModal}
+      >
+       🟢 Abrir Caja {parseFloat(fondoApertura||0)>0 ? `· S/.${parseFloat(fondoApertura).toFixed(2)}` : ""}
+      </button>
+     </div>
+    </div>
+   </div>
+  )}
+
   {/* ── Aviso medianoche ── */}
   {showMidnightWarning && (
    <div style={{background:"#1a0505", border:"2px solid #e74c3c", borderRadius:12, padding:"14px 18px", marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center"}}>
@@ -2317,7 +2428,8 @@ const totalEnCaja = (caja?.fondoInicial||0) + cashRev;
       </div>
       {caja?.isOpen && (
        <div style={{fontSize:10, color:"#555", marginTop:2}}>
-        Abierta por {caja.openedBy} · Fondo S/.{(caja.fondoInicial||0).toFixed(2)}
+        Abierta por {caja.openedBy} · Fondo inicial S/.{(caja.fondoInicial||0).toFixed(2)}
+        {totalGastos > 0 && <span style={{color:"#e67e22"}}> · Gastos −S/.{totalGastos.toFixed(2)}</span>}
         {" · "}{new Date(caja.openedAt).toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})}
        </div>
       )}
@@ -2333,38 +2445,90 @@ const totalEnCaja = (caja?.fondoInicial||0) + cashRev;
        🔒 Cerrar Caja
       </button>
      ) : (
-      <div style={{display:"flex", gap:6, alignItems:"center"}}>
-       <input
-        type="number" min="0" step="0.5"
-        style={{...s.input, width:110, padding:"6px 10px", fontSize:13}}
-        placeholder="Caja chica S/."
-        value={fondoInput}
-        onChange={e => setFondoInput(e.target.value)}
-       />
-       <button style={{...s.btn("success"), padding:"6px 14px", fontSize:12, fontWeight:900}}
-        onClick={() => { abrirCaja(fondoInput); setFondoInput(""); }}>
-        🟢 Abrir Caja
-       </button>
-      </div>
+      <button style={{...s.btn("success"), padding:"8px 20px", fontSize:13, fontWeight:900}}
+       onClick={() => { setFondoApertura(""); setGastosApertura([]); setShowAbrirModal(true); }}>
+       🟢 Abrir Caja
+      </button>
      )}
     </div>
 
-    {/* Resumen en caja abierta */}
-    {caja?.isOpen && allPaidSession.length > 0 && (
-     <div style={{display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8}}>
-      <div style={{background:"#0f2a0f", borderRadius:8, padding:"8px 10px", textAlign:"center"}}>
-       <div style={{color:"#27ae60", fontWeight:900, fontSize:16}}>S/.{totalEnCaja.toFixed(2)}</div>
-       <div style={{fontSize:9, color:"#555", marginTop:2}}>💵 Total en caja</div>
-       <div style={{fontSize:10, color:"#444", marginTop:1}}>Fondo {fmt(caja.fondoInicial)} + {fmt(cashRev)} cobrado</div>
+    {/* Resumen separado: fondo chica vs ganancias */}
+    {caja?.isOpen && (
+     <div style={{display:"flex", flexDirection:"column", gap:8}}>
+      {/* Fila 1: Desglose caja chica */}
+      <div style={{background:"#0a0a0a", borderRadius:8, padding:"10px 12px", border:"1px solid #1e1e1e"}}>
+       <div style={{fontSize:10, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>💼 Caja Chica</div>
+       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6}}>
+        <div style={{textAlign:"center"}}>
+         <div style={{color:"#27ae60", fontWeight:900, fontSize:15}}>S/.{(caja.fondoInicial||0).toFixed(2)}</div>
+         <div style={{fontSize:9, color:"#555", marginTop:1}}>Fondo inicial</div>
+        </div>
+        <div style={{textAlign:"center"}}>
+         <div style={{color:totalGastos>0?"#e67e22":"#444", fontWeight:900, fontSize:15}}>−S/.{totalGastos.toFixed(2)}</div>
+         <div style={{fontSize:9, color:"#555", marginTop:1}}>Gastos</div>
+        </div>
+        <div style={{textAlign:"center", background:"#111", borderRadius:6, padding:"2px 0"}}>
+         <div style={{color:fondoNeto<0?"#e74c3c":"#27ae60", fontWeight:900, fontSize:15}}>S/.{fondoNeto.toFixed(2)}</div>
+         <div style={{fontSize:9, color:"#555", marginTop:1}}>Fondo neto</div>
+        </div>
+       </div>
+       {/* Lista gastos expandible */}
+       {gastosSesion.length > 0 && (
+        <div style={{marginTop:8, borderTop:"1px solid #1a1a1a", paddingTop:6, display:"flex", flexDirection:"column", gap:3}}>
+         {gastosSesion.map((g,i)=>(
+          <div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:11, color:"#666", padding:"2px 0"}}>
+           <span>📤 {g.desc} <span style={{color:"#444", fontSize:9}}>· {new Date(g.at).toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})} · {g.by}</span></span>
+           <span style={{color:"#e67e22", fontWeight:700}}>−{fmt(g.monto)}</span>
+          </div>
+         ))}
+        </div>
+       )}
+       {/* Botón agregar gasto */}
+       {!showGastoPanel ? (
+        <button style={{...s.btn("warn"), width:"100%", marginTop:8, fontSize:11, padding:"6px 0"}} onClick={()=>setShowGastoPanel(true)}>
+         + Registrar gasto de caja chica
+        </button>
+       ) : (
+        <div style={{marginTop:8, display:"flex", gap:6, flexWrap:"wrap"}}>
+         <input type="text" placeholder="¿En qué se gastó?" style={{...s.input, flex:2, fontSize:12, minWidth:100}} value={gastoDescOpen} onChange={e=>setGastoDescOpen(e.target.value)} autoFocus/>
+         <input type="number" placeholder="S/." min="0" step="0.5" style={{...s.input, flex:1, fontSize:12, minWidth:70}} value={gastoMontoOpen} onChange={e=>setGastoMontoOpen(e.target.value)}/>
+         <button style={{...s.btn("warn"), padding:"0 12px", flexShrink:0}} onClick={handleAgregarGasto}>✓</button>
+         <button style={{...s.btn("secondary"), padding:"0 10px", flexShrink:0}} onClick={()=>{setShowGastoPanel(false);setGastoDescOpen("");setGastoMontoOpen("");}}>✕</button>
+        </div>
+       )}
       </div>
-      <div style={{background:"#1a0f2a", borderRadius:8, padding:"8px 10px", textAlign:"center"}}>
-       <div style={{color:"#8e44ad", fontWeight:900, fontSize:16}}>S/.{yapeRev.toFixed(2)}</div>
-       <div style={{fontSize:9, color:"#555", marginTop:2}}>Yape</div>
-      </div>
-      <div style={{background:"#0f1a2a", borderRadius:8, padding:"8px 10px", textAlign:"center"}}>
-       <div style={{color:"#2980b9", fontWeight:900, fontSize:16}}>S/.{cardRev.toFixed(2)}</div>
-       <div style={{fontSize:9, color:"#555", marginTop:2}}>Tarjeta</div>
-      </div>
+
+      {/* Fila 2: Ganancias (solo si hay pedidos) */}
+      {allPaidSession.length > 0 && (
+       <div style={{background:"#0a0a0a", borderRadius:8, padding:"10px 12px", border:"1px solid #1e1e1e"}}>
+        <div style={{fontSize:10, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:6}}>💰 Ganancias de la sesión</div>
+        <div style={{display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:6}}>
+         <div style={{background:"#0f2a0f", borderRadius:6, padding:"6px 8px", textAlign:"center"}}>
+          <div style={{color:"#27ae60", fontWeight:900, fontSize:14}}>S/.{cashRev.toFixed(2)}</div>
+          <div style={{fontSize:9, color:"#555", marginTop:1}}>💵 Efectivo cobrado</div>
+         </div>
+         <div style={{background:"#1a0f2a", borderRadius:6, padding:"6px 8px", textAlign:"center"}}>
+          <div style={{color:"#8e44ad", fontWeight:900, fontSize:14}}>S/.{yapeRev.toFixed(2)}</div>
+          <div style={{fontSize:9, color:"#555", marginTop:1}}>📱 Yape</div>
+         </div>
+         <div style={{background:"#0f1a2a", borderRadius:6, padding:"6px 8px", textAlign:"center"}}>
+          <div style={{color:"#2980b9", fontWeight:900, fontSize:14}}>S/.{cardRev.toFixed(2)}</div>
+          <div style={{fontSize:9, color:"#555", marginTop:1}}>💳 Tarjeta</div>
+         </div>
+        </div>
+       </div>
+      )}
+
+      {/* Fila 3: Total físico en caja */}
+      {allPaidSession.length > 0 && (
+       <div style={{background:"linear-gradient(135deg,#0f2a0f,#0a1f0a)", borderRadius:8, padding:"10px 14px", border:`1px solid #27ae6044`, display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+        <div style={{fontSize:11, color:"#27ae60", fontWeight:700}}>💵 Total físico en caja</div>
+        <div>
+         <div style={{fontWeight:900, fontSize:20, color:"#27ae60", textAlign:"right"}}>{fmt(totalEnCaja)}</div>
+         <div style={{fontSize:9, color:"#555", textAlign:"right", marginTop:1}}>Fondo neto {fmt(fondoNeto)} + efectivo {fmt(cashRev)}</div>
+        </div>
+       </div>
+      )}
      </div>
     )}
 
@@ -5686,7 +5850,7 @@ const saveCaja = async (data) => {
   }
 };
 
- const abrirCaja = async (fondoInicial) => {
+ const abrirCaja = async (fondoInicial, gastosIniciales = []) => {
   const sessionId = `caja_${Date.now()}`;
   const openedAt = new Date().toISOString();
   const fecha = new Date().toLocaleDateString("es-PE",{weekday:"long", day:"numeric", month:"long", year:"numeric"});
@@ -5704,18 +5868,29 @@ const saveCaja = async (data) => {
     openedAt,
     openedBy: currentUser.name,
     fondoInicial: parseFloat(fondoInicial) || 0,
-    cortes: cortesHoy,           // ← solo los de hoy
+    gastos: gastosIniciales,          // ← gastos registrados antes de abrir
+    cortes: cortesHoy,
     _savedAt: new Date().toISOString(),
   };
-  // ... resto igual
-  // Guardar primero en Firestore; actualizar estado local solo si tuvo éxito
   const ok = await saveCaja(data);
   if (!ok) {
    showToast("⚠️ Error al abrir la caja. Verifica tu conexión e intenta de nuevo.", "#e74c3c");
    return;
   }
   setCaja(data);
-  showToast(`🟢 Caja abierta — ${fecha} · ${hora} | Todos los pedidos de ahora en adelante se registrarán en esta sesión`, "#27ae60");
+  const resumen = gastosIniciales.length > 0
+   ? ` | Gastos iniciales: −S/.${gastosIniciales.reduce((s,g)=>s+g.monto,0).toFixed(2)}`
+   : "";
+  showToast(`🟢 Caja abierta — ${fecha} · ${hora}${resumen}`, "#27ae60");
+ };
+
+ const agregarGastoCaja = async (gasto) => {
+  if (!cajaRef2.current?.isOpen) return;
+  const newGastos = [...(cajaRef2.current.gastos || []), gasto];
+  const updatedCaja = { ...cajaRef2.current, gastos: newGastos, _savedAt: new Date().toISOString() };
+  const ok = await saveCaja(updatedCaja);
+  if (ok) setCaja(updatedCaja);
+  else showToast("⚠️ Error al guardar el gasto", "#e74c3c");
  };
 
  const cerrarCaja = async () => {
@@ -6772,7 +6947,7 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
 
   {tab==="dashboard" && (currentUser?.id === "mesero"
    ? <MeseroDashboardComponent orders={orders} currentUser={currentUser} setTab={setTab} toggleItemCheck={toggleItemCheck} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />
-   : <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} caja={caja} abrirCaja={abrirCaja} cerrarCaja={cerrarCaja} currentUser={currentUser} getPay={getPay} soundConfig={soundConfig} setSoundConfig={setSoundConfig} />)}
+   : <DashboardComponent orders={orders} history={history} fmt={fmt} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} isMobile={isMobile} s={s} Y={Y} caja={caja} abrirCaja={abrirCaja} cerrarCaja={cerrarCaja} agregarGastoCaja={agregarGastoCaja} currentUser={currentUser} getPay={getPay} soundConfig={soundConfig} setSoundConfig={setSoundConfig} />)}
   {tab==="mesas" && <MesasComponent orders={orders} setDraft={setDraft} newDraft={newDraft} setTab={setTab} setMesaModal={setMesaModal} setLlevarModal={setLlevarModal} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setAnulacionModal={setAnulacionModal} isMobile={isMobile} isTablet={isTablet} s={s} Y={Y} fmt={fmt} mesasArr={mesasArr} addMesa={addMesa} removeMesa={removeMesa} currentUser={currentUser} />}
   {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} isTablet={isTablet} mesasArr={mesasArr} cajaAbierta={cajaAbierta} currentUser={currentUser} />}
   {tab==="pedidos" && <PedidosComponent orders={orders} toggleItemCheck={toggleItemCheck} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} setReembolsoConfirm={setReembolsoConfirm} setDraft={setDraft} newDraft={newDraft} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
