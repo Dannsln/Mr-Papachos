@@ -5740,26 +5740,10 @@ export default function App() {
  let unsubOrders, unsubSolicitudes, unsubCaja;
 
  const setupListeners = async () => {
-  // ── 1. ORDERS — single-doc listener (1 read per change, not N per doc) ──
-  // Orders stored as { list:[...] } in one doc. Startup cost: 1 read always.
-  // Per-change cost: 1 read regardless of how many orders are active.
-  const ordersDocRef = doc(db, `mrpapachos_${currentUser.localId}`, "activos");
+  // ── 1. ORDERS — single-doc listener via FS helper (mrpapachos_{id}/orders) ──
   unsubOrders = onSnapshot(
-   ordersDocRef,
-   (snap) => {
-    if (snap.exists()) {
-     setOrders(snap.data().list ?? []);
-    } else {
-     // First run: migrate existing per-doc collection (one-time)
-     getDocs(collection(db, `mrpapachos_${currentUser.localId}_activos`))
-      .then(colSnap => {
-       const migrated = colSnap.docs.map(d => d.data());
-       setOrders(migrated);
-       if (migrated.length > 0)
-        setDoc(ordersDocRef, { list: migrated, ts: new Date().toISOString() });
-      }).catch(() => setOrders([]));
-    }
-   },
+   localFS.ordersRef(),
+   (snap) => { setOrders(snap.exists() ? (snap.data().list ?? []) : []); },
    (err) => console.error("orders listener:", err.message)
   );
 
@@ -5903,14 +5887,9 @@ export default function App() {
   } catch(e) { console.warn("reloadStaff:", e.message); }
  };
  
- // ── saveOrders: single-doc write — always 1 Firestore write, 1 read on listeners ──
  const saveOrders = async (newOrdersArray) => {
-  try {
-   const ordersDocRef = doc(db, `mrpapachos_${currentUser.localId}`, "activos");
-   await setDoc(ordersDocRef, { list: newOrdersArray, ts: new Date().toISOString() });
-  } catch (e) {
-   console.error("Error guardando pedidos:", e);
-  }
+  try { await FS(currentUser.localId).saveOrders(newOrdersArray); }
+  catch (e) { console.error("Error guardando pedidos:", e); }
  };
  const toggleItemCheck = async (order, itemIdx, isFood) => {
 
@@ -5956,12 +5935,9 @@ export default function App() {
    }
   }
 
-  // Write updated order into the single aggregated doc (same as saveOrders)
   try {
    const newOrders = ordersRef.current.map(o => o.id === order.id ? updatedOrder : o);
-   const ordersDocRef = doc(db, `mrpapachos_${currentUser.localId}`, "activos");
-   await setDoc(ordersDocRef, { list: newOrders, ts: new Date().toISOString() });
-   // Also update local ref immediately so fast subsequent taps don't overwrite
+   await FS(currentUser.localId).saveOrders(newOrders);
    ordersRef.current = newOrders;
   } catch(e) { console.error("Error al marcar item:", e); }
  };
