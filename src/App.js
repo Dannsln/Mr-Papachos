@@ -4347,6 +4347,23 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
  const [editCobroModal, setEditCobroModal] = useState(null);
  const [correccionModal, setCorreccionModal] = useState(null);
 
+ // Auto-expand any month that appears in history but isn't in expandedMonths yet
+ // This fires every time history grows (e.g. after "Cargar más")
+ const prevHistoryLen = useRef(history.length);
+ useEffect(() => {
+  if (history.length <= prevHistoryLen.current) { prevHistoryLen.current = history.length; return; }
+  prevHistoryLen.current = history.length;
+  const allMonthKeys = [...new Set(history.map(o => {
+   const d = o._cajaOpenedAt ? new Date(o._cajaOpenedAt) : new Date(o.createdAt);
+   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+  }))];
+  setExpandedMonths(prev => {
+   const next = new Set(prev);
+   allMonthKeys.forEach(k => next.add(k));
+   return [...next];
+  });
+ }, [history.length]);
+
  // ── Group orders by DATE ───────────────────────────────────────────
  const dayMap = {};
  history.forEach(o => {
@@ -4447,7 +4464,20 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
  )}
  <div style={{...s.row, marginBottom:16}}>
  <div style={{...s.title, marginBottom:0}}> HISTORIAL DE VENTAS</div>
- <div style={{display:"flex", gap:8}}>
+ <div style={{display:"flex", gap:8, flexWrap:"wrap", alignItems:"center"}}>
+ {monthsList.length > 1 && (
+  <button style={{...s.btn("secondary"), padding:"6px 12px", fontSize:11}}
+   onClick={() => {
+    if (expandedMonths.length >= monthsList.length) {
+     setExpandedMonths([]); setExpandedDays([]);
+    } else {
+     setExpandedMonths(monthsList.map(m => m.monthKey));
+     setExpandedDays(daysList.map(d => d.sortKey));
+    }
+   }}>
+   {expandedMonths.length >= monthsList.length ? "↑ Colapsar todo" : "↓ Ver todo"}
+  </button>
+ )}
  <input 
  type="date" 
  style={{...s.input, padding:"8px 12px", width:"auto", cursor:"pointer"}} 
@@ -4783,7 +4813,15 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
  )}
  {!historyLoading && !historyExhausted && history.length > 0 && (
   <div style={{textAlign:"center", padding:"16px 0 24px"}}>
-   <button style={{...s.btn("secondary"), padding:"10px 28px", fontSize:13}} onClick={onLoadMore}>
+   <button style={{...s.btn("secondary"), padding:"10px 28px", fontSize:13}} onClick={() => {
+    // Expand all months already loaded so the user sees them immediately
+    const allMonthKeys = [...new Set(history.map(o => {
+     const d = o._cajaOpenedAt ? new Date(o._cajaOpenedAt) : new Date(o.createdAt);
+     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+    }))];
+    setExpandedMonths(allMonthKeys);
+    onLoadMore();
+   }}>
     Cargar más registros
    </button>
   </div>
