@@ -3,7 +3,8 @@ import { useState, useEffect, useRef, useMemo, Component } from "react";
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, signInAnonymously } from "firebase/auth";
 import {
- getFirestore, doc, setDoc, getDoc, collection, addDoc, query, orderBy, limit, onSnapshot, deleteDoc
+ getFirestore, doc, setDoc, getDoc, collection, query,
+ orderBy, limit, where, onSnapshot, Timestamp
 } from "firebase/firestore";
 
 const FIREBASE_CONFIG = {
@@ -2268,18 +2269,26 @@ function DashboardComponent({ orders, history, fmt, setTab, finishPaidOrder, set
  const inCurrentSession = (o) => {
   if (!cajaOpenedAt) return false;
   if (o.anulado || o.status === "anulado") return false;
-  const orderDay = new Date(o.createdAt).toDateString();
-  if (cajaDay && orderDay !== cajaDay) return false;
+  // ── Comprobación por sesión: si el pedido tiene el mismo sessionId que la caja actual,
+  //    pertenece a esta sesión sin importar si se creó o pagó después de la medianoche.
+  if (caja?.sessionId && o._cajaSessionId) return o._cajaSessionId === caja.sessionId;
+  // ── Fallback (pedidos sin sessionId): comparar por timestamp de apertura de caja
   const t = new Date(o.paidAt || o.createdAt).getTime();
   return t >= cajaOpenedAt.getTime();
  };
+ // "isToday" también debe respetar el día de caja, no el día del reloj
+ const isToday = (o) => {
+  // Si hay caja abierta: "hoy" = el día en que se abrió la caja
+  if (cajaDay) return (o._cajaOpenedAt
+   ? new Date(o._cajaOpenedAt).toDateString()
+   : new Date(o.paidAt || o.createdAt).toDateString()) === cajaDay;
+  return new Date(o.paidAt || o.createdAt).toDateString() === today;
+ };
+
  const paidArchivedSession = history.filter(o => o.status==="pagado" && !o.anulado && inCurrentSession(o));
  const paidActiveSession   = orders.filter(o => o.isPaid && !o.anulado && inCurrentSession(o));
  const allPaidSession      = [...paidArchivedSession, ...paidActiveSession];
- const isToday             = (o) => new Date(o.paidAt || o.createdAt).toDateString() === today;
  const allPaidToday        = allPaidSession.filter(isToday);
-
- // ── Separar fondo de ganancias ────────────────────────────────────
  const cashRev       = allPaidSession.reduce((s,o) => s + getPay(o,"efectivo"), 0);
  const todayRev      = allPaidToday.reduce((s,o) => s + o.total, 0);
  const yapeRev       = allPaidSession.reduce((s,o) => s + getPay(o,"yape"), 0);
@@ -4331,7 +4340,7 @@ function SolicitarCorreccionModal({ order, onSubmit, onClose, s, Y, fmt, getPay 
  );
 }
 
-function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay, printOrder, isAdmin, currentUser, crearSolicitud, updateHistoryDoc }) {
+function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay, printOrder, isAdmin, currentUser, crearSolicitud, updateHistoryDoc, historyLoading, historyExhausted, onLoadMore }) {
  const [expandedDays,   setExpandedDays]   = useState([new Date().toLocaleDateString("es-PE")]);
  const [expandedMonths, setExpandedMonths] = useState([`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}`]);
  const [histDate, setHistDate] = useState("");
@@ -4341,9 +4350,12 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
  // ── Group orders by DATE ───────────────────────────────────────────
  const dayMap = {};
  history.forEach(o => {
-  const dateObj = new Date(o.createdAt);
-  const dateStr = dateObj.toLocaleDateString("es-PE");
-  const sortKey = dateObj.getFullYear() + "-" + String(dateObj.getMonth()+1).padStart(2,'0') + "-" + String(dateObj.getDate()).padStart(2,'0');
+  // Agrupar por el día en que se ABRIÓ la caja de esa sesión,
+  // no por el día del reloj cuando se creó/pagó el pedido.
+  // Esto hace que los pedidos de madrugada queden en el día correcto.
+  const refDate = o._cajaOpenedAt ? new Date(o._cajaOpenedAt) : new Date(o.createdAt);
+  const dateStr = refDate.toLocaleDateString("es-PE");
+  const sortKey = refDate.getFullYear() + "-" + String(refDate.getMonth()+1).padStart(2,'0') + "-" + String(refDate.getDate()).padStart(2,'0');
   if (!dayMap[sortKey]) dayMap[sortKey] = { date:dateStr, sortKey, sessions:{}, orders:[], total:0, ef:0, ya:0, ta:0, cancelados:0 };
 
   dayMap[sortKey].orders.push(o);
@@ -4762,6 +4774,26 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
  );
  })
  )}
+
+ {/* ── Cargar más / estado de carga ── */}
+ {historyLoading && (
+  <div style={{textAlign:"center", padding:"20px", color:"#555", fontSize:13}}>
+   Cargando historial…
+  </div>
+ )}
+ {!historyLoading && !historyExhausted && history.length > 0 && (
+  <div style={{textAlign:"center", padding:"16px 0 24px"}}>
+   <button style={{...s.btn("secondary"), padding:"10px 28px", fontSize:13}} onClick={onLoadMore}>
+    Cargar más registros
+   </button>
+  </div>
+ )}
+ {!historyLoading && historyExhausted && history.length > 0 && (
+  <div style={{textAlign:"center", padding:"12px 0 24px", color:"#333", fontSize:12}}>
+   — Fin del historial —
+  </div>
+ )}
+
  </div>
  );
 }
@@ -5680,92 +5712,210 @@ export default function App() {
  if (!currentUser) return;
  setLoaded(false);
  const localFS = FS(currentUser.localId);
- 
- // All unsub vars declared in outer scope so cleanup can reference them
- let unsubOrders, unsubHistory, unsubMenu, unsubConfig, unsubSolicitudes, unsubStaff, unsubCaja;
 
- const setupListeners = () => {
-  unsubOrders = onSnapshot(collection(db, `mrpapachos_${currentUser.localId}_activos`), (snapshot) => {
-   setOrders(snapshot.docs.map(d => d.data()));
-  });
-  unsubMenu = onSnapshot(localFS.menuRef(), (docSnap) => {
-   if (docSnap.exists()) setMenu([...MENU_BASE, ...(docSnap.data().list || [])]); else setMenu(MENU_BASE);
-  });
-  unsubHistory = onSnapshot(query(localFS.historyCol(), orderBy("createdAt", "desc"), limit(1000)), (snapshot) => {
-   setHistory(snapshot.docs.map(d => ({ _fid: d.id, ...d.data() })));
-  });
-  unsubConfig = onSnapshot(localFS.configRef(), (docSnap) => {
-   if (docSnap.exists() && docSnap.data().mesas) setMesasArr(docSnap.data().mesas);
-   else setMesasArr([1, 2, 3, 4, 5, 6]);
-  });
-  unsubSolicitudes = onSnapshot(localFS.solicitudesRef(), (docSnap) => {
-   if (docSnap.exists()) setSolicitudes(docSnap.data().list || []);
-   else setSolicitudes([]);
-  });
-  unsubStaff = onSnapshot(localFS.staffRef(), (docSnap) => {
-   if (docSnap.exists()) {
-    const incoming = docSnap.data().users;
-    if (Array.isArray(incoming) && incoming.length > 0) {
-     setStaff(incoming);
-     // Keep localStorage backup fresh
-     try { localStorage.setItem(`staff_backup_${currentUser.localId}`, JSON.stringify({ users: incoming, ts: new Date().toISOString() })); } catch(_) {}
-    }
-    // If incoming is empty, keep current state (don't overwrite with [])
+ // ── Helper: getDoc once with localStorage fallback ────────────────
+ const getOnce = async (ref, lsKey, setState, transform) => {
+  try {
+   const snap = await getDoc(ref);
+   const val = snap.exists() ? transform(snap.data()) : null;
+   if (val !== null) {
+    setState(val);
+    try { localStorage.setItem(lsKey, JSON.stringify({ v: val, ts: Date.now() })); } catch(_) {}
+   } else {
+    // Try localStorage fallback
+    try {
+     const fb = JSON.parse(localStorage.getItem(lsKey) || "null");
+     if (fb?.v) setState(fb.v);
+    } catch(_) {}
    }
-   // If doc doesn't exist, also keep current state (may be mid-write)
-  });
+  } catch(e) {
+   console.warn(`getOnce(${lsKey}) failed:`, e.message);
+   try {
+    const fb = JSON.parse(localStorage.getItem(lsKey) || "null");
+    if (fb?.v) setState(fb.v);
+   } catch(_) {}
+  }
+ };
+
+ let unsubOrders, unsubSolicitudes, unsubCaja;
+
+ const setupListeners = async () => {
+  // ── 1. ORDERS — single-doc listener (1 read per change, not N per doc) ──
+  // Orders stored as { list:[...] } in one doc. Startup cost: 1 read always.
+  // Per-change cost: 1 read regardless of how many orders are active.
+  const ordersDocRef = doc(db, `mrpapachos_${currentUser.localId}`, "activos");
+  unsubOrders = onSnapshot(
+   ordersDocRef,
+   (snap) => {
+    if (snap.exists()) {
+     setOrders(snap.data().list ?? []);
+    } else {
+     // First run: migrate existing per-doc collection (one-time)
+     getDocs(collection(db, `mrpapachos_${currentUser.localId}_activos`))
+      .then(colSnap => {
+       const migrated = colSnap.docs.map(d => d.data());
+       setOrders(migrated);
+       if (migrated.length > 0)
+        setDoc(ordersDocRef, { list: migrated, ts: new Date().toISOString() });
+      }).catch(() => setOrders([]));
+    }
+   },
+   (err) => console.error("orders listener:", err.message)
+  );
+
+  // ── 2. CAJA — onSnapshot (estado compartido cajero↔mesero) ───────
   unsubCaja = onSnapshot(localFS.cajaRef(), async (docSnap) => {
    if (!docSnap.exists()) { setCaja(null); return; }
    const data = docSnap.data();
-   // Corrección defensiva: si Firestore dice isOpen pero closedAt ya existe, algo falló antes
-   // al guardar el cierre. Lo marcamos como cerrado automáticamente.
    if (data.isOpen && data.closedAt) {
-    console.warn("Caja en estado inconsistente (isOpen+closedAt). Corrigiendo...");
     const fixed = { ...data, isOpen: false, _autoFixedAt: new Date().toISOString() };
-    try { await setDoc(localFS.cajaRef(), fixed); } catch(e) { console.error("autofix caja error:", e); }
-    setCaja(fixed);
-    return;
+    try { await setDoc(localFS.cajaRef(), fixed); } catch(e) { console.error("autofix caja:", e); }
+    setCaja(fixed); return;
    }
    setCaja(data);
-  });
+  }, (err) => console.error("caja listener:", err.message));
+
+  // ── 3. SOLICITUDES — onSnapshot (notificaciones en vivo) ─────────
+  unsubSolicitudes = onSnapshot(localFS.solicitudesRef(), (docSnap) => {
+   setSolicitudes(docSnap.exists() ? (docSnap.data().list || []) : []);
+  }, (err) => console.error("solicitudes listener:", err.message));
+
+  // ── 4. MENU — getDoc una vez (cambia rarísimo, re-fetch tras editar) ──
+  await getOnce(
+   localFS.menuRef(),
+   `menu_cache_${currentUser.localId}`,
+   (val) => setMenu([...MENU_BASE, ...(val || [])]),
+   (data) => data.list || []
+  );
+  if (menu.length === 0) setMenu(MENU_BASE);
+
+  // ── 5. STAFF — getDoc una vez + localStorage de respaldo ─────────
+  try {
+   const snap = await getDoc(localFS.staffRef());
+   if (snap.exists()) {
+    const users = snap.data().users;
+    if (Array.isArray(users) && users.length > 0) {
+     setStaff(users);
+     try { localStorage.setItem(`staff_backup_${currentUser.localId}`, JSON.stringify({ users, ts: new Date().toISOString() })); } catch(_) {}
+    }
+   } else {
+    // Fallback localStorage
+    const fb = JSON.parse(localStorage.getItem(`staff_backup_${currentUser.localId}`) || "null");
+    if (fb?.users?.length) setStaff(fb.users);
+   }
+  } catch(e) {
+   console.warn("staff getDoc:", e.message);
+   const fb = JSON.parse(localStorage.getItem(`staff_backup_${currentUser.localId}`) || "null");
+   if (fb?.users?.length) setStaff(fb.users);
+  }
+
+  // ── 6. CONFIG (mesas) — getDoc una vez ───────────────────────────
+  await getOnce(
+   localFS.configRef(),
+   `config_cache_${currentUser.localId}`,
+   (val) => setMesasArr(val || [1,2,3,4,5,6]),
+   (data) => data.mesas || null
+  );
+
+  // ── 7. HISTORY — NO se carga aquí. Se carga lazy al abrir el tab ─
+  //    Ver loadHistory() abajo. El estado `history` empieza vacío.
+
   setLoaded(true);
  };
 
  setupListeners();
+
  return () => {
-  [unsubOrders, unsubHistory, unsubMenu, unsubConfig, unsubSolicitudes, unsubStaff, unsubCaja]
+  [unsubOrders, unsubSolicitudes, unsubCaja]
    .forEach(fn => { try { if (fn) fn(); } catch(e) {} });
  };
- }, [currentUser]);
+ }, [currentUser?.id, currentUser?.localId]);
 
  const showToast = (msg,color="#27ae60") => { setToast({msg,color}); setTimeout(()=>setToast(null),2800); };
- 
- // Queued saveOrders: each write waits for the previous one to finish,
- // preventing the classic read-modify-overwrite race that deletes active orders.
- const saveOrders = async (newOrdersArray) => {
-  const oldOrders = ordersRef.current;
-  const colRef = collection(db, `mrpapachos_${currentUser.localId}_activos`);
-  const promises = [];
 
-  // 1. Guardar pedidos nuevos o actualizados (sin pisar los de otros)
-  newOrdersArray.forEach(newObj => {
-    const oldObj = oldOrders.find(o => o.id === newObj.id);
-    if (!oldObj || JSON.stringify(oldObj) !== JSON.stringify(newObj)) {
-      promises.push(setDoc(doc(colRef, newObj.id), newObj));
-    }
-  });
+ // ── Lazy history loader — solo se llama cuando el usuario abre el tab ──
+ const [historyLoaded, setHistoryLoaded] = useState(false);
+ const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
+ const [historyExhausted, setHistoryExhausted] = useState(false);
+ const historyPageRef = useRef(null); // last doc cursor for pagination
 
-  // 2. Borrar pedidos que ya se cobraron o anularon y salen de la lista activa
-  oldOrders.forEach(oldObj => {
-    if (!newOrdersArray.some(newObj => newObj.id === oldObj.id)) {
-      promises.push(deleteDoc(doc(colRef, oldObj.id)));
-    }
-  });
-
+ const loadHistory = async (reset = false) => {
+  if (!currentUser) return;
+  if (historyLoadingMore) return;
+  setHistoryLoadingMore(true);
   try {
-    await Promise.all(promises);
+   const localFS = FS(currentUser.localId);
+   // 90 docs per page — covers ~3 months of decent volume
+   const PAGE = 90;
+   let q = reset
+    ? query(localFS.historyCol(), orderBy("createdAt","desc"), limit(PAGE))
+    : query(localFS.historyCol(), orderBy("createdAt","desc"), limit(PAGE),
+       ...(historyPageRef.current ? [require("firebase/firestore").startAfter(historyPageRef.current)] : []));
+
+   // Fallback: use simple query without startAfter on first load
+   if (reset || !historyPageRef.current) {
+    q = query(localFS.historyCol(), orderBy("createdAt","desc"), limit(PAGE));
+   }
+
+   const { getDocs: _getDocs } = await import("firebase/firestore");
+   const snap = await _getDocs(q);
+   const docs = snap.docs.map(d => ({ _fid: d.id, ...d.data() }));
+
+   if (reset) {
+    setHistory(docs);
+   } else {
+    setHistory(prev => {
+     const existing = new Set(prev.map(x => x._fid));
+     return [...prev, ...docs.filter(d => !existing.has(d._fid))];
+    });
+   }
+
+   historyPageRef.current = snap.docs[snap.docs.length - 1] || null;
+   setHistoryExhausted(snap.docs.length < PAGE);
+   setHistoryLoaded(true);
+  } catch(e) {
+   console.error("loadHistory:", e.message);
+  } finally {
+   setHistoryLoadingMore(false);
+  }
+ };
+
+ // ── Re-fetch helpers tras escritura (invalida cache local) ─────────
+ // ── Lazy-load history when user opens the tab ──────────────────
+ useEffect(() => {
+  if (tab === "historial" && !historyLoaded && currentUser) loadHistory(true);
+  if (tab === "auditoria" && !historyLoaded && currentUser) loadHistory(true);
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [tab, currentUser]);
+
+ const reloadMenu = async () => {  try {
+   const snap = await getDoc(FS(currentUser.localId).menuRef());
+   const list = snap.exists() ? snap.data().list || [] : [];
+   setMenu([...MENU_BASE, ...list]);
+   try { localStorage.setItem(`menu_cache_${currentUser.localId}`, JSON.stringify({ v: list, ts: Date.now() })); } catch(_) {}
+  } catch(e) { console.warn("reloadMenu:", e.message); }
+ };
+
+ const reloadStaff = async () => {
+  try {
+   const snap = await getDoc(FS(currentUser.localId).staffRef());
+   if (snap.exists()) {
+    const users = snap.data().users;
+    if (Array.isArray(users) && users.length > 0) {
+     setStaff(users);
+     try { localStorage.setItem(`staff_backup_${currentUser.localId}`, JSON.stringify({ users, ts: new Date().toISOString() })); } catch(_) {}
+    }
+   }
+  } catch(e) { console.warn("reloadStaff:", e.message); }
+ };
+ 
+ // ── saveOrders: single-doc write — always 1 Firestore write, 1 read on listeners ──
+ const saveOrders = async (newOrdersArray) => {
+  try {
+   const ordersDocRef = doc(db, `mrpapachos_${currentUser.localId}`, "activos");
+   await setDoc(ordersDocRef, { list: newOrdersArray, ts: new Date().toISOString() });
   } catch (e) {
-    console.error("Error sincronizando en tiempo real:", e);
+   console.error("Error guardando pedidos:", e);
   }
  };
  const toggleItemCheck = async (order, itemIdx, isFood) => {
@@ -5812,14 +5962,29 @@ export default function App() {
    }
   }
 
-  // Guardamos el cambio en Firebase para que el otro local/dispositivo lo vea
+  // Write updated order into the single aggregated doc (same as saveOrders)
   try {
-   const colRef = collection(db, `mrpapachos_${currentUser.localId}_activos`);
-   await setDoc(doc(colRef, order.id), updatedOrder);
+   const newOrders = ordersRef.current.map(o => o.id === order.id ? updatedOrder : o);
+   const ordersDocRef = doc(db, `mrpapachos_${currentUser.localId}`, "activos");
+   await setDoc(ordersDocRef, { list: newOrders, ts: new Date().toISOString() });
+   // Also update local ref immediately so fast subsequent taps don't overwrite
+   ordersRef.current = newOrders;
   } catch(e) { console.error("Error al marcar item:", e); }
  };
- const saveMenu = async (v) => { setMenu(v); await FS(currentUser.localId).saveMenu(v.filter(i=>i.id.startsWith("CUSTOM_")||i.id.startsWith("TP")&&!["TP01","TP02","TP03","TP04","TP05"].includes(i.id))); };
- const addHistory = async (o) => { await FS(currentUser.localId).addHistory(o); };
+ const saveMenu = async (v) => {
+  setMenu(v);
+  await FS(currentUser.localId).saveMenu(v.filter(i=>i.id.startsWith("CUSTOM_")||i.id.startsWith("TP")&&!["TP01","TP02","TP03","TP04","TP05"].includes(i.id)));
+  await reloadMenu();
+ };
+ const addHistory = async (o) => {
+  // Optimistic local update — historial tab shows new entry immediately, no re-fetch needed
+  setHistory(prev => {
+   const exists = prev.some(h => h._fid === o.id || h.id === o.id);
+   if (exists) return prev.map(h => (h._fid === o.id || h.id === o.id) ? { _fid: o.id, ...o } : h);
+   return [{ _fid: o.id, ...o }, ...prev];
+  });
+  await FS(currentUser.localId).addHistory(o);
+ };
  const saveSolicitudes = async (list) => {
   const threshold = Date.now() - 48 * 60 * 60 * 1000;
   const cleaned = list.filter(s => s.status === "pendiente" || new Date(s.resolvedAt || s.createdAt).getTime() > threshold);
@@ -5972,9 +6137,12 @@ const saveCaja = async (data) => {
   const ok = await FS(currentUser.localId).saveStaff(users);
   if (!ok) {
    showToast("⚠️ Error al guardar personal — intenta de nuevo", "#e74c3c");
-   // Revert optimistic update by re-reading Firebase
+   // Revert by re-reading Firebase
    const fresh = await FS(currentUser.localId).getStaff();
    if (fresh && fresh.length > 0) setStaff(fresh);
+  } else {
+   // Update localStorage cache
+   try { localStorage.setItem(`staff_backup_${currentUser.localId}`, JSON.stringify({ users, ts: new Date().toISOString() })); } catch(_) {}
   }
  };
 
@@ -6255,9 +6423,9 @@ const saveCaja = async (data) => {
   showToast(`🥡 Para llevar registrado — esperando cobro del cajero`, "#3498db");
   setTab("pedidos");
  } else if (draft.payTiming === "ahora") {
-  setCobrarTarget({ type: 'new', data: { id:Date.now().toString(), ...finalDraft, total, createdAt:new Date().toISOString(), _cajaSessionId: cajaRef2.current?.sessionId || null, _mesero: currentUser?.name || null } });
+  setCobrarTarget({ type: 'new', data: { id:Date.now().toString(), ...finalDraft, total, createdAt:new Date().toISOString(), _cajaSessionId: cajaRef2.current?.sessionId || null, _cajaOpenedAt: cajaRef2.current?.openedAt || null, _mesero: currentUser?.name || null } });
  } else {
-  const order = { id:Date.now().toString(), ...finalDraft, total, isPaid: false, status:"pendiente", kitchenStatus:"pendiente", createdAt:new Date().toISOString(), _cajaSessionId: cajaRef2.current?.sessionId || null, _mesero: currentUser?.name || null };
+  const order = { id:Date.now().toString(), ...finalDraft, total, isPaid: false, status:"pendiente", kitchenStatus:"pendiente", createdAt:new Date().toISOString(), _cajaSessionId: cajaRef2.current?.sessionId || null, _cajaOpenedAt: cajaRef2.current?.openedAt || null, _mesero: currentUser?.name || null };
   const newOrders = [...ordersRef.current, order];
   setOrders(newOrders); await saveOrders(newOrders);
   setDraft(newDraft()); showToast(` Pedido enviado a cocina`); setTab("pedidos");
@@ -6952,7 +7120,7 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
   {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} isTablet={isTablet} mesasArr={mesasArr} cajaAbierta={cajaAbierta} currentUser={currentUser} />}
   {tab==="pedidos" && <PedidosComponent orders={orders} toggleItemCheck={toggleItemCheck} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} setReembolsoConfirm={setReembolsoConfirm} setDraft={setDraft} newDraft={newDraft} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
 {tab==="cocina" && <CocinaComponent orders={orders} markKitchenListo={markKitchenListo} toggleItemCheck={toggleItemCheck} crearSolicitud={crearSolicitud} currentUser={currentUser} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} soundConfig={soundConfig} />}
-  {tab==="historial"    && <HistorialComponent history={history} activeOrders={orders} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} />}
+  {tab==="historial"    && <HistorialComponent history={history} activeOrders={orders} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} historyLoading={historyLoadingMore} historyExhausted={historyExhausted} onLoadMore={()=>loadHistory(false)} />}
   {tab==="auditoria"    && <AuditoriaComponent history={history} solicitudes={solicitudes} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
   {tab==="inventario"   && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/>}
   {tab==="carta"        && <CartaComponent menu={menu} cartaCatFilter={cartaCatFilter} setCartaCatFilter={setCartaCatFilter} showAdd={showAdd} setShowAdd={setShowAdd} newItem={newItem} setNewItem={setNewItem} addMenuItem={addMenuItem} deleteMenuItem={deleteMenuItem} isMobile={isMobile} s={s} Y={Y} fmt={fmt} ALL_CATS={ALL_CATS} />}
