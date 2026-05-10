@@ -4,7 +4,7 @@ import { initializeApp, getApps } from "firebase/app";
 import { getAuth, signInAnonymously } from "firebase/auth";
 import {
  getFirestore, doc, setDoc, getDoc, collection, query,
- orderBy, limit, where, onSnapshot, Timestamp
+ orderBy, limit, where, onSnapshot, Timestamp, startAfter
 } from "firebase/firestore";
 
 const FIREBASE_CONFIG = {
@@ -5845,20 +5845,14 @@ export default function App() {
   setHistoryLoadingMore(true);
   try {
    const localFS = FS(currentUser.localId);
-   // 90 docs per page — covers ~3 months of decent volume
    const PAGE = 90;
-   let q = reset
-    ? query(localFS.historyCol(), orderBy("createdAt","desc"), limit(PAGE))
-    : query(localFS.historyCol(), orderBy("createdAt","desc"), limit(PAGE),
-       ...(historyPageRef.current ? [require("firebase/firestore").startAfter(historyPageRef.current)] : []));
 
-   // Fallback: use simple query without startAfter on first load
-   if (reset || !historyPageRef.current) {
-    q = query(localFS.historyCol(), orderBy("createdAt","desc"), limit(PAGE));
-   }
+   const cursor = reset ? null : historyPageRef.current;
+   const q = cursor
+    ? query(localFS.historyCol(), orderBy("createdAt","desc"), startAfter(cursor), limit(PAGE))
+    : query(localFS.historyCol(), orderBy("createdAt","desc"), limit(PAGE));
 
-   const { getDocs: _getDocs } = await import("firebase/firestore");
-   const snap = await _getDocs(q);
+   const snap = await getDocs(q);
    const docs = snap.docs.map(d => ({ _fid: d.id, ...d.data() }));
 
    if (reset) {
@@ -5870,7 +5864,7 @@ export default function App() {
     });
    }
 
-   historyPageRef.current = snap.docs[snap.docs.length - 1] || null;
+   historyPageRef.current = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : historyPageRef.current;
    setHistoryExhausted(snap.docs.length < PAGE);
    setHistoryLoaded(true);
   } catch(e) {
