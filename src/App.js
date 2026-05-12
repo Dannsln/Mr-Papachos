@@ -4,7 +4,7 @@ import { initializeApp, getApps } from "firebase/app";
 import { getAuth, signInAnonymously } from "firebase/auth";
 import {
  getFirestore, doc, setDoc, getDoc, collection, query,
- orderBy, limit, where, onSnapshot, Timestamp
+ orderBy, limit, where, onSnapshot, Timestamp, startAfter
 } from "firebase/firestore";
 
 const FIREBASE_CONFIG = {
@@ -4347,6 +4347,23 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
  const [editCobroModal, setEditCobroModal] = useState(null);
  const [correccionModal, setCorreccionModal] = useState(null);
 
+ // Auto-expand any month that appears in history but isn't in expandedMonths yet
+ // This fires every time history grows (e.g. after "Cargar más")
+ const prevHistoryLen = useRef(history.length);
+ useEffect(() => {
+  if (history.length <= prevHistoryLen.current) { prevHistoryLen.current = history.length; return; }
+  prevHistoryLen.current = history.length;
+  const allMonthKeys = [...new Set(history.map(o => {
+   const d = o._cajaOpenedAt ? new Date(o._cajaOpenedAt) : new Date(o.createdAt);
+   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+  }))];
+  setExpandedMonths(prev => {
+   const next = new Set(prev);
+   allMonthKeys.forEach(k => next.add(k));
+   return [...next];
+  });
+ }, [history.length]);
+
  // ── Group orders by DATE ───────────────────────────────────────────
  const dayMap = {};
  history.forEach(o => {
@@ -4447,7 +4464,20 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
  )}
  <div style={{...s.row, marginBottom:16}}>
  <div style={{...s.title, marginBottom:0}}> HISTORIAL DE VENTAS</div>
- <div style={{display:"flex", gap:8}}>
+ <div style={{display:"flex", gap:8, flexWrap:"wrap", alignItems:"center"}}>
+ {monthsList.length > 1 && (
+  <button style={{...s.btn("secondary"), padding:"6px 12px", fontSize:11}}
+   onClick={() => {
+    if (expandedMonths.length >= monthsList.length) {
+     setExpandedMonths([]); setExpandedDays([]);
+    } else {
+     setExpandedMonths(monthsList.map(m => m.monthKey));
+     setExpandedDays(daysList.map(d => d.sortKey));
+    }
+   }}>
+   {expandedMonths.length >= monthsList.length ? "↑ Colapsar todo" : "↓ Ver todo"}
+  </button>
+ )}
  <input 
  type="date" 
  style={{...s.input, padding:"8px 12px", width:"auto", cursor:"pointer"}} 
@@ -4783,7 +4813,15 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
  )}
  {!historyLoading && !historyExhausted && history.length > 0 && (
   <div style={{textAlign:"center", padding:"16px 0 24px"}}>
-   <button style={{...s.btn("secondary"), padding:"10px 28px", fontSize:13}} onClick={onLoadMore}>
+   <button style={{...s.btn("secondary"), padding:"10px 28px", fontSize:13}} onClick={() => {
+    // Expand all months already loaded so the user sees them immediately
+    const allMonthKeys = [...new Set(history.map(o => {
+     const d = o._cajaOpenedAt ? new Date(o._cajaOpenedAt) : new Date(o.createdAt);
+     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+    }))];
+    setExpandedMonths(allMonthKeys);
+    onLoadMore();
+   }}>
     Cargar más registros
    </button>
   </div>
@@ -5740,26 +5778,10 @@ export default function App() {
  let unsubOrders, unsubSolicitudes, unsubCaja;
 
  const setupListeners = async () => {
-  // ── 1. ORDERS — single-doc listener (1 read per change, not N per doc) ──
-  // Orders stored as { list:[...] } in one doc. Startup cost: 1 read always.
-  // Per-change cost: 1 read regardless of how many orders are active.
-  const ordersDocRef = doc(db, `mrpapachos_${currentUser.localId}`, "activos");
+  // ── 1. ORDERS — single-doc listener via FS helper (mrpapachos_{id}/orders) ──
   unsubOrders = onSnapshot(
-   ordersDocRef,
-   (snap) => {
-    if (snap.exists()) {
-     setOrders(snap.data().list ?? []);
-    } else {
-     // First run: migrate existing per-doc collection (one-time)
-     getDocs(collection(db, `mrpapachos_${currentUser.localId}_activos`))
-      .then(colSnap => {
-       const migrated = colSnap.docs.map(d => d.data());
-       setOrders(migrated);
-       if (migrated.length > 0)
-        setDoc(ordersDocRef, { list: migrated, ts: new Date().toISOString() });
-      }).catch(() => setOrders([]));
-    }
-   },
+   localFS.ordersRef(),
+   (snap) => { setOrders(snap.exists() ? (snap.data().list ?? []) : []); },
    (err) => console.error("orders listener:", err.message)
   );
 
@@ -5845,20 +5867,14 @@ export default function App() {
   setHistoryLoadingMore(true);
   try {
    const localFS = FS(currentUser.localId);
-   // 90 docs per page — covers ~3 months of decent volume
    const PAGE = 90;
-   let q = reset
-    ? query(localFS.historyCol(), orderBy("createdAt","desc"), limit(PAGE))
-    : query(localFS.historyCol(), orderBy("createdAt","desc"), limit(PAGE),
-       ...(historyPageRef.current ? [require("firebase/firestore").startAfter(historyPageRef.current)] : []));
 
-   // Fallback: use simple query without startAfter on first load
-   if (reset || !historyPageRef.current) {
-    q = query(localFS.historyCol(), orderBy("createdAt","desc"), limit(PAGE));
-   }
+   const cursor = reset ? null : historyPageRef.current;
+   const q = cursor
+    ? query(localFS.historyCol(), orderBy("createdAt","desc"), startAfter(cursor), limit(PAGE))
+    : query(localFS.historyCol(), orderBy("createdAt","desc"), limit(PAGE));
 
-   const { getDocs: _getDocs } = await import("firebase/firestore");
-   const snap = await _getDocs(q);
+   const snap = await getDocs(q);
    const docs = snap.docs.map(d => ({ _fid: d.id, ...d.data() }));
 
    if (reset) {
@@ -5870,7 +5886,7 @@ export default function App() {
     });
    }
 
-   historyPageRef.current = snap.docs[snap.docs.length - 1] || null;
+   historyPageRef.current = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : historyPageRef.current;
    setHistoryExhausted(snap.docs.length < PAGE);
    setHistoryLoaded(true);
   } catch(e) {
@@ -5909,14 +5925,9 @@ export default function App() {
   } catch(e) { console.warn("reloadStaff:", e.message); }
  };
  
- // ── saveOrders: single-doc write — always 1 Firestore write, 1 read on listeners ──
  const saveOrders = async (newOrdersArray) => {
-  try {
-   const ordersDocRef = doc(db, `mrpapachos_${currentUser.localId}`, "activos");
-   await setDoc(ordersDocRef, { list: newOrdersArray, ts: new Date().toISOString() });
-  } catch (e) {
-   console.error("Error guardando pedidos:", e);
-  }
+  try { await FS(currentUser.localId).saveOrders(newOrdersArray); }
+  catch (e) { console.error("Error guardando pedidos:", e); }
  };
  const toggleItemCheck = async (order, itemIdx, isFood) => {
 
@@ -5962,12 +5973,9 @@ export default function App() {
    }
   }
 
-  // Write updated order into the single aggregated doc (same as saveOrders)
   try {
    const newOrders = ordersRef.current.map(o => o.id === order.id ? updatedOrder : o);
-   const ordersDocRef = doc(db, `mrpapachos_${currentUser.localId}`, "activos");
-   await setDoc(ordersDocRef, { list: newOrders, ts: new Date().toISOString() });
-   // Also update local ref immediately so fast subsequent taps don't overwrite
+   await FS(currentUser.localId).saveOrders(newOrders);
    ordersRef.current = newOrders;
   } catch(e) { console.error("Error al marcar item:", e); }
  };
@@ -6317,6 +6325,7 @@ const saveCaja = async (data) => {
    isPaid: false, status: "pendiente", kitchenStatus: "pendiente",
    createdAt: new Date().toISOString(), taperCost: 0,
    _cajaSessionId: cajaRef2.current?.sessionId || null,
+   _cajaOpenedAt: cajaRef2.current?.openedAt || null,
    _mesero: currentUser?.name || null,
    payTiming: "despues",
   };
@@ -6330,6 +6339,7 @@ const saveCaja = async (data) => {
    isPaid: false, status: "esperando_cobro", kitchenStatus: "esperando_cobro",
    createdAt: new Date().toISOString(), taperCost: 0,
    _cajaSessionId: cajaRef2.current?.sessionId || null,
+   _cajaOpenedAt: cajaRef2.current?.openedAt || null,
    _mesero: currentUser?.name || null,
    _linkedMesaTable: draft.table,
   };
@@ -6380,6 +6390,7 @@ const saveCaja = async (data) => {
   taperCost: 0,
   kitchenStatus: wakesKitchenView ? 'pendiente' : existing.kitchenStatus,
   _cajaSessionId: existing._cajaSessionId || cajaRef2.current?.sessionId || null,
+  _cajaOpenedAt: existing._cajaOpenedAt || cajaRef2.current?.openedAt || null,
   _adicionPor: currentUser?.name || null,
   _adicionAt: adicionAt,
   _lastAdditionItems: newItems,
@@ -6415,6 +6426,7 @@ const saveCaja = async (data) => {
    isPaid: false, status: "esperando_cobro", kitchenStatus: "esperando_cobro",
    createdAt: new Date().toISOString(),
    _cajaSessionId: cajaRef2.current?.sessionId || null,
+   _cajaOpenedAt: cajaRef2.current?.openedAt || null,
    _mesero: currentUser?.name || null,
   };
   const newOrders = [...ordersRef.current, order];
@@ -6715,7 +6727,7 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
  let updatedOrders = cur.map(o => o.id === originalOrder.id ? anuladoOrder : o);
  if (hasReplacement) {
   const repTotal = replacementItems.reduce((s,i) => s+i.price*i.qty, 0);
-  const replacementOrder = { id:newId, table:originalOrder.table, orderType:originalOrder.orderType, phone:originalOrder.phone||"", deliveryAddress:originalOrder.deliveryAddress||"", notes:originalOrder.notes||"", items:replacementItems, total:repTotal, isPaid:false, status:"pendiente", kitchenStatus:"pendiente", createdAt:now, replacesId:originalOrder.id, taperCost:0, _cajaSessionId: originalOrder._cajaSessionId || cajaRef2.current?.sessionId || null, _mesero: currentUser?.name || null };
+  const replacementOrder = { id:newId, table:originalOrder.table, orderType:originalOrder.orderType, phone:originalOrder.phone||"", deliveryAddress:originalOrder.deliveryAddress||"", notes:originalOrder.notes||"", items:replacementItems, total:repTotal, isPaid:false, status:"pendiente", kitchenStatus:"pendiente", createdAt:now, replacesId:originalOrder.id, taperCost:0, _cajaSessionId: originalOrder._cajaSessionId || cajaRef2.current?.sessionId || null, _cajaOpenedAt: originalOrder._cajaOpenedAt || cajaRef2.current?.openedAt || null, _mesero: currentUser?.name || null };
   updatedOrders = [...updatedOrders, replacementOrder];
  }
  setOrders(updatedOrders);
@@ -7061,6 +7073,7 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
        isPaid: false, status: "esperando_cobro", kitchenStatus: "esperando_cobro",
        createdAt: new Date().toISOString(),
        _cajaSessionId: cajaRef2.current?.sessionId || null,
+       _cajaOpenedAt: cajaRef2.current?.openedAt || null,
        _mesero: currentUser?.name || null,
       };
       const newOrders = [...ordersRef.current, order];
