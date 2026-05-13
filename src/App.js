@@ -4,7 +4,7 @@ import { initializeApp, getApps } from "firebase/app";
 import { getAuth, signInAnonymously } from "firebase/auth";
 import {
  getFirestore, doc, setDoc, getDoc, collection, query,
- orderBy, limit, where, onSnapshot, Timestamp, startAfter, getDocs, runTransaction
+ orderBy, limit, where, onSnapshot, Timestamp, startAfter, getDocs, runTransaction, increment
 } from "firebase/firestore";
 
 const FIREBASE_CONFIG = {
@@ -85,6 +85,153 @@ const cleanForFirestore = (value) => {
   }, {});
  }
  return value;
+};
+
+const HISTORY_DAY_PAGE_SIZE = 18;
+const HISTORY_LEGACY_PAGE_SIZE = 60;
+
+const toDateSafe = (value) => {
+ if (!value) return null;
+ if (value?.toDate) return value.toDate();
+ const d = value instanceof Date ? value : new Date(value);
+ return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const dateToLocalDayKey = (value) => {
+ const d = toDateSafe(value) || new Date();
+ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+};
+
+const dayKeyToDate = (dayKey) => {
+ const [y, m, d] = String(dayKey || "").split("-").map(Number);
+ return y && m && d ? new Date(y, m - 1, d) : new Date();
+};
+
+const historyBaseDate = (order) =>
+ toDateSafe(order?._cajaOpenedAt) ||
+ toDateSafe(order?.createdAt) ||
+ toDateSafe(order?.paidAt) ||
+ toDateSafe(order?.cancelledAt) ||
+ new Date();
+
+const historySortAt = (order) =>
+ order?.paidAt || order?.cancelledAt || order?.createdAt || order?._cajaOpenedAt || new Date().toISOString();
+
+const historyPay = (order, type) =>
+ order?.payments ? (Number(order.payments[type]) || 0) : (order?.payment === type ? (Number(order.total) || 0) : 0);
+
+const withHistoryMeta = (order = {}) => {
+ const dayKey = order._historyDay || dateToLocalDayKey(historyBaseDate(order));
+ return {
+  ...order,
+  _historyDay: dayKey,
+  _historyMonth: order._historyMonth || dayKey.slice(0, 7),
+  _historySortAt: order._historySortAt || historySortAt(order),
+ };
+};
+
+const historySummaryNumbers = (order = {}) => {
+ const paid = order.status === "pagado" && !order.anulado;
+ const canceled = order.status === "cancelado" || order.status === "anulado" || order.anulado;
+ return {
+  total: paid ? (Number(order.total) || 0) : 0,
+  ef: paid ? historyPay(order, "efectivo") : 0,
+  ya: paid ? historyPay(order, "yape") : 0,
+  ta: paid ? historyPay(order, "tarjeta") : 0,
+  count: paid ? 1 : 0,
+  cancelados: canceled ? 1 : 0,
+ };
+};
+
+const historySummaryIncrementFor = (order, multiplier = 1) => {
+ const meta = withHistoryMeta(order);
+ const nums = historySummaryNumbers(meta);
+ return {
+  dayKey: meta._historyDay,
+  monthKey: meta._historyMonth,
+  lastActivityAt: meta._historySortAt,
+  updatedAt: new Date().toISOString(),
+  total: increment(nums.total * multiplier),
+  ef: increment(nums.ef * multiplier),
+  ya: increment(nums.ya * multiplier),
+  ta: increment(nums.ta * multiplier),
+  count: increment(nums.count * multiplier),
+  cancelados: increment(nums.cancelados * multiplier),
+ };
+};
+
+const historySummaryDelta = (before, after) => {
+ const b = historySummaryNumbers(withHistoryMeta(before || {}));
+ const a = historySummaryNumbers(withHistoryMeta(after || {}));
+ const meta = withHistoryMeta(after || before || {});
+ return {
+  dayKey: meta._historyDay,
+  monthKey: meta._historyMonth,
+  lastActivityAt: meta._historySortAt,
+  updatedAt: new Date().toISOString(),
+  total: increment(a.total - b.total),
+  ef: increment(a.ef - b.ef),
+  ya: increment(a.ya - b.ya),
+  ta: increment(a.ta - b.ta),
+  count: increment(a.count - b.count),
+  cancelados: increment(a.cancelados - b.cancelados),
+ };
+};
+
+const historySummaryFromOrders = (orders = []) => {
+ const byDay = new Map();
+ asArray(orders).forEach(raw => {
+  const order = withHistoryMeta(raw);
+  const dayKey = order._historyDay;
+  const nums = historySummaryNumbers(order);
+  const prev = byDay.get(dayKey) || {
+   dayKey,
+   monthKey: dayKey.slice(0, 7),
+   total: 0,
+   ef: 0,
+   ya: 0,
+   ta: 0,
+   count: 0,
+   cancelados: 0,
+   lastActivityAt: "",
+   _fromLoadedOrders: true,
+  };
+  prev.total += nums.total;
+  prev.ef += nums.ef;
+  prev.ya += nums.ya;
+  prev.ta += nums.ta;
+  prev.count += nums.count;
+  prev.cancelados += nums.cancelados;
+  if (String(order._historySortAt || "") > String(prev.lastActivityAt || "")) prev.lastActivityAt = order._historySortAt;
+  byDay.set(dayKey, prev);
+ });
+ return Array.from(byDay.values());
+};
+
+const normalizeHistoryDaySummary = (id, data = {}) => {
+ const dayKey = data.dayKey || id;
+ return {
+  dayKey,
+  monthKey: data.monthKey || dayKey.slice(0, 7),
+  total: Number(data.total) || 0,
+  ef: Number(data.ef) || 0,
+  ya: Number(data.ya) || 0,
+  ta: Number(data.ta) || 0,
+  count: Number(data.count) || 0,
+  cancelados: Number(data.cancelados) || 0,
+  lastActivityAt: data.lastActivityAt || "",
+  updatedAt: data.updatedAt || "",
+  _summaryOnly: true,
+ };
+};
+
+const mergeHistoryDaySummaries = (prev = [], incoming = []) => {
+ const map = new Map(asArray(prev).map(day => [day.dayKey, day]));
+ asArray(incoming).forEach(day => {
+  if (!day?.dayKey) return;
+  map.set(day.dayKey, { ...(map.get(day.dayKey) || {}), ...day });
+ });
+ return Array.from(map.values()).sort((a, b) => String(b.dayKey).localeCompare(String(a.dayKey)));
 };
 
 const mapById = (list, keyFn) => {
@@ -231,6 +378,14 @@ const FS = (localId) => ({
  solicitudesRef: () => doc(db, `mrpapachos_${localId}`, "solicitudes"),
  cajaRef:        () => doc(db, `mrpapachos_${localId}`, "caja"),
  historyCol:     () => collection(db, `mrpapachos_${localId}_historial`),
+ historyDaysCol: () => collection(db, `mrpapachos_${localId}_historial_dias`),
+ historyDayRef:  (dayKey) => doc(db, `mrpapachos_${localId}_historial_dias`, dayKey),
+ historyDayOrdersCol: (dayKey) => collection(db, `mrpapachos_${localId}_historial_${dayKey}`),
+ historyDayOrderRef: (orderOrId, dayKey) => {
+  const id = typeof orderOrId === "string" ? orderOrId : String(orderKey(orderOrId));
+  const resolvedDay = dayKey || (typeof orderOrId === "string" ? dateToLocalDayKey(new Date()) : withHistoryMeta(orderOrId)._historyDay);
+  return doc(db, `mrpapachos_${localId}_historial_${resolvedDay}`, id);
+ },
  
  async getOrders() {
  try { const s = await getDoc(this.ordersRef()); return s.exists() ? (s.data().list ?? []) : []; } catch { return []; }
@@ -254,7 +409,11 @@ const FS = (localId) => ({
     const merged = mergeOrdersByIntent(base, desiredList, serverList);
     tx.set(ordersRef, cleanForFirestore({ list: merged, ts: new Date().toISOString() }));
     historyList.forEach(order => {
-     tx.set(doc(this.historyCol(), String(orderKey(order))), cleanForFirestore(order));
+     const historyOrder = withHistoryMeta(order);
+     const id = String(orderKey(historyOrder));
+     tx.set(doc(this.historyCol(), id), cleanForFirestore(historyOrder));
+     tx.set(this.historyDayOrderRef(historyOrder, historyOrder._historyDay), cleanForFirestore(historyOrder));
+     tx.set(this.historyDayRef(historyOrder._historyDay), historySummaryIncrementFor(historyOrder), { merge: true });
     });
     return merged;
    });
@@ -289,7 +448,17 @@ const FS = (localId) => ({
  async addHistory(order) {
   try { 
    // Usamos order.id para que, si se envía 2 veces, simplemente se sobreescriba a sí mismo
-   await setDoc(doc(this.historyCol(), String(orderKey(order))), cleanForFirestore(order));
+   const historyOrder = withHistoryMeta(order);
+   const id = String(orderKey(historyOrder));
+   const dayOrderRef = this.historyDayOrderRef(historyOrder, historyOrder._historyDay);
+   await runTransaction(db, async (tx) => {
+    const existing = await tx.get(dayOrderRef);
+    tx.set(doc(this.historyCol(), id), cleanForFirestore(historyOrder));
+    tx.set(dayOrderRef, cleanForFirestore(historyOrder));
+    if (!existing.exists()) {
+     tx.set(this.historyDayRef(historyOrder._historyDay), historySummaryIncrementFor(historyOrder), { merge: true });
+    }
+   });
    return true;
   } catch (e) { console.error(e); return false; }
  },
@@ -339,7 +508,27 @@ const FS = (localId) => ({
  try { await setDoc(this.solicitudesRef(), { list, ts: new Date().toISOString() }); } catch(e) { console.error(e); }
  },
  async updateHistory(fid, data) {
- try { await setDoc(doc(db, `mrpapachos_${this._localId}_historial`, fid), data, { merge: true }); } catch(e) { console.error(e); }
+  try {
+   const legacyRef = doc(db, `mrpapachos_${this._localId}_historial`, fid);
+   await runTransaction(db, async (tx) => {
+    const snap = await tx.get(legacyRef);
+    const before = snap.exists() ? { _fid: snap.id, ...snap.data() } : { id: fid };
+    const after = withHistoryMeta({ ...before, ...data, id: before.id || fid });
+    const beforeMeta = withHistoryMeta(before);
+    const beforeDay = beforeMeta._historyDay;
+    const afterDay = after._historyDay;
+
+    tx.set(legacyRef, cleanForFirestore(after), { merge: true });
+    tx.set(this.historyDayOrderRef(after, afterDay), cleanForFirestore(after), { merge: true });
+    if (beforeDay !== afterDay) {
+     tx.delete(this.historyDayOrderRef(fid, beforeDay));
+     tx.set(this.historyDayRef(beforeDay), historySummaryIncrementFor(beforeMeta, -1), { merge: true });
+     tx.set(this.historyDayRef(afterDay), historySummaryIncrementFor(after, 1), { merge: true });
+    } else {
+     tx.set(this.historyDayRef(afterDay), historySummaryDelta(beforeMeta, after), { merge: true });
+    }
+   });
+  } catch(e) { console.error(e); }
  }
 });
 
@@ -4541,8 +4730,8 @@ function SolicitarCorreccionModal({ order, onSubmit, onClose, s, Y, fmt, getPay 
  );
 }
 
-function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay, printOrder, isAdmin, currentUser, crearSolicitud, updateHistoryDoc, historyLoading, historyExhausted, onLoadMore }) {
- const [expandedDays,   setExpandedDays]   = useState([new Date().toLocaleDateString("es-PE")]);
+function HistorialComponent({ history, historyDays, loadedHistoryDays, activeOrders, isMobile, s, Y, fmt, getPay, printOrder, isAdmin, currentUser, crearSolicitud, updateHistoryDoc, historyLoading, historyExhausted, onLoadMore, onLoadDay }) {
+ const [expandedDays,   setExpandedDays]   = useState([dateToLocalDayKey(new Date())]);
  const [expandedMonths, setExpandedMonths] = useState([`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}`]);
  const [histDate, setHistDate] = useState("");
  const [editCobroModal, setEditCobroModal] = useState(null);
@@ -4550,23 +4739,50 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
 
  // Auto-expand any month that appears in history but isn't in expandedMonths yet
  // This fires every time history grows (e.g. after "Cargar más")
- const prevHistoryLen = useRef(history.length);
+ const prevHistoryLen = useRef(history.length + asArray(historyDays).length);
  useEffect(() => {
-  if (history.length <= prevHistoryLen.current) { prevHistoryLen.current = history.length; return; }
-  prevHistoryLen.current = history.length;
-  const allMonthKeys = [...new Set(history.map(o => {
-   const d = o._cajaOpenedAt ? new Date(o._cajaOpenedAt) : new Date(o.createdAt);
-   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
-  }))];
+  const loadedCount = history.length + asArray(historyDays).length;
+  if (loadedCount <= prevHistoryLen.current) { prevHistoryLen.current = loadedCount; return; }
+  prevHistoryLen.current = loadedCount;
+  const allMonthKeys = [...new Set([
+   ...asArray(historyDays).map(d => d.monthKey || String(d.dayKey || "").slice(0, 7)),
+   ...history.map(o => withHistoryMeta(o)._historyMonth),
+  ].filter(Boolean))];
   setExpandedMonths(prev => {
    const next = new Set(prev);
    allMonthKeys.forEach(k => next.add(k));
    return [...next];
   });
- }, [history.length]);
+ }, [history.length, historyDays?.length]);
 
  // ── Group orders by DATE ───────────────────────────────────────────
+ useEffect(() => {
+  const available = new Set([
+   ...asArray(historyDays).map(d => d.dayKey),
+   ...history.map(o => withHistoryMeta(o)._historyDay),
+  ].filter(Boolean));
+  expandedDays.forEach(dayKey => {
+   if (available.has(dayKey) && !loadedHistoryDays?.has(dayKey)) onLoadDay?.(dayKey);
+  });
+ }, [expandedDays.join("|"), historyDays?.length, history.length, loadedHistoryDays, onLoadDay]);
+
  const dayMap = {};
+ asArray(historyDays).forEach(summary => {
+  if (!summary?.dayKey) return;
+  dayMap[summary.dayKey] = {
+   date: dayKeyToDate(summary.dayKey).toLocaleDateString("es-PE"),
+   sortKey: summary.dayKey,
+   sessions: {},
+   orders: [],
+   total: Number(summary.total) || 0,
+   ef: Number(summary.ef) || 0,
+   ya: Number(summary.ya) || 0,
+   ta: Number(summary.ta) || 0,
+   count: Number(summary.count) || 0,
+   cancelados: Number(summary.cancelados) || 0,
+   _hasSummary: true,
+  };
+ });
  history.forEach(o => {
   // Agrupar por el día en que se ABRIÓ la caja de esa sesión,
   // no por el día del reloj cuando se creó/pagó el pedido.
@@ -4578,7 +4794,8 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
 
   dayMap[sortKey].orders.push(o);
 
-  if (o.status === "pagado" && !o.anulado) {
+  const shouldAccumulateOrder = !dayMap[sortKey]._hasSummary || loadedHistoryDays?.has(sortKey);
+  if (shouldAccumulateOrder && o.status === "pagado" && !o.anulado) {
    dayMap[sortKey].total += o.total;
    dayMap[sortKey].ef += getPay(o,"efectivo");
    dayMap[sortKey].ya += getPay(o,"yape");
@@ -4590,12 +4807,35 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
    dayMap[sortKey].sessions[sid].ya += getPay(o,"yape");
    dayMap[sortKey].sessions[sid].ta += getPay(o,"tarjeta");
    dayMap[sortKey].sessions[sid].count++;
-  } else if (o.status === "cancelado" || o.anulado) {
+   if (!dayMap[sortKey]._hasSummary) dayMap[sortKey].count = (dayMap[sortKey].count || 0) + 1;
+  } else if (shouldAccumulateOrder && (o.status === "cancelado" || o.anulado)) {
    dayMap[sortKey].cancelados++;
   }
  });
 
  Object.values(dayMap).forEach(d => {
+  if (d._hasSummary && loadedHistoryDays?.has(d.sortKey)) {
+   d.total = 0; d.ef = 0; d.ya = 0; d.ta = 0; d.count = 0; d.cancelados = 0; d.sessions = {};
+   d.orders.forEach(o => {
+    if (o.status === "pagado" && !o.anulado) {
+     d.total += Number(o.total) || 0;
+     d.ef += getPay(o,"efectivo");
+     d.ya += getPay(o,"yape");
+     d.ta += getPay(o,"tarjeta");
+     d.count++;
+     const sid = o._cajaSessionId || "sin_sesion";
+     if (!d.sessions[sid]) d.sessions[sid] = { sid, openedAt: o._cajaOpenedAt || o.createdAt, total:0, ef:0, ya:0, ta:0, count:0 };
+     d.sessions[sid].total += Number(o.total) || 0;
+     d.sessions[sid].ef += getPay(o,"efectivo");
+     d.sessions[sid].ya += getPay(o,"yape");
+     d.sessions[sid].ta += getPay(o,"tarjeta");
+     d.sessions[sid].count++;
+    } else if (o.status === "cancelado" || o.status === "anulado" || o.anulado) {
+     d.cancelados++;
+    }
+   });
+  }
+  d.ordersLoaded = loadedHistoryDays?.has(d.sortKey) || !d._hasSummary;
   d.orders.sort((a,b) => new Date(b.paidAt||b.cancelledAt||b.createdAt) - new Date(a.paidAt||a.cancelledAt||a.createdAt));
  });
 
@@ -4616,13 +4856,17 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
   monthMap[monthKey].ef        += d.ef;
   monthMap[monthKey].ya        += d.ya;
   monthMap[monthKey].ta        += d.ta;
-  monthMap[monthKey].count     += d.orders.filter(o => o.status==="pagado"&&!o.anulado).length;
+  monthMap[monthKey].count     += d.count ?? d.orders.filter(o => o.status==="pagado"&&!o.anulado).length;
   monthMap[monthKey].cancelados+= d.cancelados;
  });
 
  const monthsList = Object.values(monthMap).sort((a,b) => b.monthKey.localeCompare(a.monthKey));
 
- const toggleDay   = (k) => setExpandedDays(prev   => prev.includes(k) ? prev.filter(x=>x!==k) : [...prev, k]);
+ const toggleDay   = (k) => setExpandedDays(prev => {
+  const opening = !prev.includes(k);
+  if (opening) onLoadDay?.(k);
+  return opening ? [...prev, k] : prev.filter(x=>x!==k);
+ });
  const toggleMonth = (k) => setExpandedMonths(prev  => prev.includes(k) ? prev.filter(x=>x!==k) : [...prev, k]);
 
  return (
@@ -4686,8 +4930,10 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
  onChange={e => { 
  const val = e.target.value; 
  setHistDate(val); 
- const match = Object.values(dayMap).find(x => x.sortKey === val); 
- if (match && !expandedDays.includes(match.date)) setExpandedDays(prev => [...prev, match.date]); 
+ if (val) {
+  onLoadDay?.(val);
+  if (!expandedDays.includes(val)) setExpandedDays(prev => [...prev, val]);
+ }
  }} 
  />
  {histDate && <button style={{...s.btn("secondary"), padding:"8px 12px"}} onClick={()=>{setHistDate("");}}>Ver Todos</button>}
@@ -4748,7 +4994,7 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
           <div>
            <div style={{fontWeight:900, fontSize:15, color:isExpanded?Y:"#eee"}}>{d.date}</div>
            <div style={{fontSize:11, color:"#888", marginTop:1}}>
-            {d.orders.filter(x=>x.status==="pagado"&&!x.anulado).length} pedidos cobrados
+             {d.count ?? d.orders.filter(x=>x.status==="pagado"&&!x.anulado).length} pedidos cobrados
             {d.cancelados>0&&<span style={{color:"#e74c3c"}}> · {d.cancelados} anulados</span>}
             {sessionCount>1&&<span style={{color:"#555"}}> · {sessionCount} sesiones</span>}
            </div>
@@ -5012,22 +5258,22 @@ function HistorialComponent({ history, activeOrders, isMobile, s, Y, fmt, getPay
    Cargando historial…
   </div>
  )}
- {!historyLoading && !historyExhausted && history.length > 0 && (
+ {!historyLoading && !historyExhausted && (history.length > 0 || historyDays?.length > 0) && (
   <div style={{textAlign:"center", padding:"16px 0 24px"}}>
    <button style={{...s.btn("secondary"), padding:"10px 28px", fontSize:13}} onClick={() => {
     // Expand all months already loaded so the user sees them immediately
-    const allMonthKeys = [...new Set(history.map(o => {
-     const d = o._cajaOpenedAt ? new Date(o._cajaOpenedAt) : new Date(o.createdAt);
-     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
-    }))];
+    const allMonthKeys = [...new Set([
+     ...asArray(historyDays).map(d => d.monthKey || String(d.dayKey || "").slice(0, 7)),
+     ...history.map(o => withHistoryMeta(o)._historyMonth),
+    ].filter(Boolean))];
     setExpandedMonths(allMonthKeys);
     onLoadMore();
    }}>
-    Cargar más registros
+    Cargar mas dias
    </button>
   </div>
  )}
- {!historyLoading && historyExhausted && history.length > 0 && (
+ {!historyLoading && historyExhausted && (history.length > 0 || historyDays?.length > 0) && (
   <div style={{textAlign:"center", padding:"12px 0 24px", color:"#333", fontSize:12}}>
    — Fin del historial —
   </div>
@@ -5864,6 +6110,8 @@ export default function App() {
  const ordersRef = useRef([]); // always current, avoids stale closures in async functions
  useEffect(() => { ordersRef.current = orders; }, [orders]);
  const [history, setHistory] = useState([]);
+ const [historyDays, setHistoryDays] = useState([]);
+ const [loadedHistoryDays, setLoadedHistoryDays] = useState(() => new Set());
  const [menu, setMenu] = useState(MENU_BASE);
  const [draft, setDraft] = useState(newDraft());
  const [cartaCatFilter, setCartaCatFilter] = useState("Todos");
@@ -5964,6 +6212,8 @@ export default function App() {
   if (waiterDrinkTimerRef.current) clearTimeout(waiterDrinkTimerRef.current);
   setOrders([]);
   setHistory([]);
+  setHistoryDays([]);
+  setLoadedHistoryDays(new Set());
   setMenu(MENU_BASE);
   setDraft(newDraft());
   setCartaCatFilter("Todos");
@@ -5987,7 +6237,9 @@ export default function App() {
   setHistoryLoaded(false);
   setHistoryLoadingMore(false);
   setHistoryExhausted(false);
-  historyPageRef.current = null;
+  historyDayPageRef.current = null;
+  historyLegacyPageRef.current = null;
+  historyDayLoadingRef.current = new Set();
   setLoaded(false);
   setTab(getStartTabFor(currentUser));
  };
@@ -6125,37 +6377,59 @@ export default function App() {
  const [historyLoaded, setHistoryLoaded] = useState(false);
  const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
  const [historyExhausted, setHistoryExhausted] = useState(false);
- const historyPageRef = useRef(null); // last doc cursor for pagination
+ const historyDayPageRef = useRef(null);
+ const historyLegacyPageRef = useRef(null);
+ const historyDayLoadingRef = useRef(new Set());
 
  const loadHistory = async (reset = false) => {
- if (!currentUser) return;
- if (historyLoadingMore) return;
- const sessionAtCall = activeSessionRef.current;
- setHistoryLoadingMore(true);
+  if (!currentUser) return;
+  if (historyLoadingMore) return;
+  const sessionAtCall = activeSessionRef.current;
+  setHistoryLoadingMore(true);
   try {
    const localFS = FS(currentUser.localId);
-   const PAGE = 90;
-
-   const cursor = reset ? null : historyPageRef.current;
-   const q = cursor
-    ? query(localFS.historyCol(), orderBy("createdAt","desc"), startAfter(cursor), limit(PAGE))
-    : query(localFS.historyCol(), orderBy("createdAt","desc"), limit(PAGE));
-
-   const snap = await getDocs(q);
-   if (activeSessionRef.current !== sessionAtCall) return;
-   const docs = snap.docs.map(d => ({ _fid: d.id, ...d.data() }));
-
    if (reset) {
-    setHistory(docs);
-   } else {
-    setHistory(prev => {
-     const existing = new Set(prev.map(x => x._fid));
-     return [...prev, ...docs.filter(d => !existing.has(d._fid))];
-    });
+    historyDayPageRef.current = null;
+    historyLegacyPageRef.current = null;
+    setHistory([]);
+    setHistoryDays([]);
+    setLoadedHistoryDays(new Set());
+    setHistoryExhausted(false);
    }
 
-   historyPageRef.current = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : historyPageRef.current;
-   setHistoryExhausted(snap.docs.length < PAGE);
+   const dayCursor = reset ? null : historyDayPageRef.current;
+   const dayQuery = dayCursor
+    ? query(localFS.historyDaysCol(), orderBy("dayKey","desc"), startAfter(dayCursor), limit(HISTORY_DAY_PAGE_SIZE))
+    : query(localFS.historyDaysCol(), orderBy("dayKey","desc"), limit(HISTORY_DAY_PAGE_SIZE));
+
+   const daySnap = await getDocs(dayQuery);
+   if (activeSessionRef.current !== sessionAtCall) return;
+
+   if (daySnap.docs.length > 0) {
+    const days = daySnap.docs.map(d => normalizeHistoryDaySummary(d.id, d.data()));
+    setHistoryDays(prev => reset ? days : mergeHistoryDaySummaries(prev, days));
+    historyDayPageRef.current = daySnap.docs[daySnap.docs.length - 1];
+    setHistoryExhausted(daySnap.docs.length < HISTORY_DAY_PAGE_SIZE);
+    setHistoryLoaded(true);
+    return;
+   }
+
+   const legacyCursor = reset ? null : historyLegacyPageRef.current;
+   const legacyQuery = legacyCursor
+    ? query(localFS.historyCol(), orderBy("createdAt","desc"), startAfter(legacyCursor), limit(HISTORY_LEGACY_PAGE_SIZE))
+    : query(localFS.historyCol(), orderBy("createdAt","desc"), limit(HISTORY_LEGACY_PAGE_SIZE));
+   const legacySnap = await getDocs(legacyQuery);
+   if (activeSessionRef.current !== sessionAtCall) return;
+   const docs = legacySnap.docs.map(d => withHistoryMeta({ _fid: d.id, ...d.data() }));
+
+   setHistory(prev => {
+    const base = reset ? [] : prev;
+    const existing = new Set(base.map(x => String(x._fid || orderKey(x))));
+    return [...base, ...docs.filter(d => !existing.has(String(d._fid || orderKey(d))))];
+   });
+   setHistoryDays(prev => mergeHistoryDaySummaries(reset ? [] : prev, historySummaryFromOrders(docs)));
+   historyLegacyPageRef.current = legacySnap.docs.length > 0 ? legacySnap.docs[legacySnap.docs.length - 1] : historyLegacyPageRef.current;
+   setHistoryExhausted(legacySnap.docs.length < HISTORY_LEGACY_PAGE_SIZE);
    setHistoryLoaded(true);
   } catch(e) {
    console.error("loadHistory:", e.message);
@@ -6166,11 +6440,54 @@ export default function App() {
 
  // ── Re-fetch helpers tras escritura (invalida cache local) ─────────
  // ── Lazy-load history when user opens the tab ──────────────────
- useEffect(() => {
+ const loadHistoryDay = async (dayKey) => {
+  if (!currentUser || !dayKey) return;
+  if (loadedHistoryDays.has(dayKey) || historyDayLoadingRef.current.has(dayKey)) return;
+  const sessionAtCall = activeSessionRef.current;
+  historyDayLoadingRef.current.add(dayKey);
+  try {
+   const localFS = FS(currentUser.localId);
+   let snap = await getDocs(query(localFS.historyDayOrdersCol(dayKey), orderBy("createdAt","desc")));
+   if (activeSessionRef.current !== sessionAtCall) return;
+   if (snap.empty) {
+    snap = await getDocs(query(localFS.historyCol(), where("_historyDay","==",dayKey)));
+    if (activeSessionRef.current !== sessionAtCall) return;
+   }
+   const docs = snap.docs
+    .map(d => withHistoryMeta({ _fid: d.id, ...d.data() }))
+    .sort((a, b) => String(b.paidAt || b.cancelledAt || b.createdAt || "").localeCompare(String(a.paidAt || a.cancelledAt || a.createdAt || "")));
+
+   setHistory(prev => {
+    const byId = new Map(prev.map(h => [String(h._fid || orderKey(h)), h]));
+    docs.forEach(order => byId.set(String(order._fid || orderKey(order)), order));
+    return Array.from(byId.values()).sort((a, b) => String(b.createdAt || b.paidAt || "").localeCompare(String(a.createdAt || a.paidAt || "")));
+   });
+   if (docs.length) setHistoryDays(prev => mergeHistoryDaySummaries(prev, historySummaryFromOrders(docs)));
+   setLoadedHistoryDays(prev => {
+    const next = new Set(prev);
+    next.add(dayKey);
+    return next;
+   });
+  } catch(e) {
+   console.error("loadHistoryDay:", e.message);
+  } finally {
+   historyDayLoadingRef.current.delete(dayKey);
+  }
+ };
+
+  useEffect(() => {
   if (tab === "historial" && !historyLoaded && currentUser) loadHistory(true);
   if (tab === "auditoria" && !historyLoaded && currentUser) loadHistory(true);
  // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [tab, currentUser]);
+
+ useEffect(() => {
+  if (tab !== "auditoria" || !historyDays.length) return;
+  historyDays.forEach(day => {
+   if (day?.dayKey) loadHistoryDay(day.dayKey);
+  });
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [tab, historyDays.length]);
 
  const reloadMenu = async () => {  try {
    const snap = await getDoc(FS(currentUser.localId).menuRef());
@@ -6193,12 +6510,43 @@ export default function App() {
   } catch(e) { console.warn("reloadStaff:", e.message); }
  };
  
+ const bumpHistoryDaysLocal = (ordersToAdd) => {
+  const entries = asArray(ordersToAdd).filter(o => orderKey(o));
+  if (!entries.length) return;
+  setHistoryDays(prev => {
+   const map = new Map(prev.map(day => [day.dayKey, { ...day }]));
+   entries.forEach(raw => {
+    const order = withHistoryMeta(raw);
+    const nums = historySummaryNumbers(order);
+    const day = map.get(order._historyDay) || {
+     dayKey: order._historyDay,
+     monthKey: order._historyMonth,
+     total: 0, ef: 0, ya: 0, ta: 0, count: 0, cancelados: 0,
+     lastActivityAt: "",
+    };
+    day.total += nums.total;
+    day.ef += nums.ef;
+    day.ya += nums.ya;
+    day.ta += nums.ta;
+    day.count += nums.count;
+    day.cancelados += nums.cancelados;
+    if (String(order._historySortAt || "") > String(day.lastActivityAt || "")) day.lastActivityAt = order._historySortAt;
+    map.set(order._historyDay, day);
+   });
+   return Array.from(map.values()).sort((a, b) => String(b.dayKey).localeCompare(String(a.dayKey)));
+  });
+ };
+
  const upsertHistoryLocal = (ordersToAdd) => {
   const entries = asArray(ordersToAdd).filter(o => orderKey(o));
   if (!entries.length) return;
+  bumpHistoryDaysLocal(entries);
   setHistory(prev => {
    const byId = new Map(prev.map(h => [String(h._fid || orderKey(h)), h]));
-   entries.forEach(order => byId.set(String(orderKey(order)), { _fid: String(orderKey(order)), ...order }));
+   entries.forEach(order => {
+    const historyOrder = withHistoryMeta(order);
+    byId.set(String(orderKey(historyOrder)), { _fid: String(orderKey(historyOrder)), ...historyOrder });
+   });
    return Array.from(byId.values()).sort((a, b) => String(b.createdAt || b.paidAt || "").localeCompare(String(a.createdAt || a.paidAt || "")));
   });
  };
@@ -6319,7 +6667,11 @@ export default function App() {
 
  const updateHistoryDoc = async (fid, data) => {
   try {
-   await setDoc(doc(db, `mrpapachos_${currentUser.localId}_historial`, fid), data, { merge: true });
+   await FS(currentUser.localId).updateHistory(fid, data);
+   setHistory(prev => prev.map(order => {
+    const id = String(order._fid || orderKey(order));
+    return id === String(fid) ? withHistoryMeta({ ...order, ...data }) : order;
+   }));
   } catch(e) { console.error("updateHistoryDoc error:", e); }
  };
 
@@ -7469,7 +7821,7 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
   {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} isTablet={isTablet} mesasArr={mesasArr} cajaAbierta={cajaAbierta} currentUser={currentUser} />}
   {tab==="pedidos" && <PedidosComponent orders={orders} toggleItemCheck={toggleItemCheck} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} setReembolsoConfirm={setReembolsoConfirm} setDraft={setDraft} newDraft={newDraft} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
 {tab==="cocina" && <CocinaComponent orders={orders} markKitchenListo={markKitchenListo} toggleItemCheck={toggleItemCheck} crearSolicitud={crearSolicitud} currentUser={currentUser} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} soundConfig={soundConfig} />}
-  {tab==="historial"    && <HistorialComponent history={history} activeOrders={orders} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} historyLoading={historyLoadingMore} historyExhausted={historyExhausted} onLoadMore={()=>loadHistory(false)} />}
+  {tab==="historial"    && <HistorialComponent history={history} historyDays={historyDays} loadedHistoryDays={loadedHistoryDays} activeOrders={orders} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} historyLoading={historyLoadingMore} historyExhausted={historyExhausted} onLoadMore={()=>loadHistory(false)} onLoadDay={loadHistoryDay} />}
   {tab==="auditoria"    && <AuditoriaComponent history={history} solicitudes={solicitudes} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
   {tab==="inventario"   && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/>}
   {tab==="carta"        && <CartaComponent menu={menu} cartaCatFilter={cartaCatFilter} setCartaCatFilter={setCartaCatFilter} showAdd={showAdd} setShowAdd={setShowAdd} newItem={newItem} setNewItem={setNewItem} addMenuItem={addMenuItem} deleteMenuItem={deleteMenuItem} isMobile={isMobile} s={s} Y={Y} fmt={fmt} ALL_CATS={ALL_CATS} />}
