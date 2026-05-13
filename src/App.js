@@ -4,7 +4,7 @@ import { initializeApp, getApps } from "firebase/app";
 import { getAuth, signInAnonymously } from "firebase/auth";
 import {
  getFirestore, doc, setDoc, getDoc, collection, query,
- orderBy, limit, where, onSnapshot, Timestamp, startAfter
+ orderBy, limit, where, onSnapshot, Timestamp, startAfter, getDocs, runTransaction
 } from "firebase/firestore";
 
 const FIREBASE_CONFIG = {
@@ -60,6 +60,167 @@ async function sha256(str) {
  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
 }
 
+const asArray = (value) => Array.isArray(value) ? value : [];
+const orderKey = (order) => order?.id ?? order?.id_pedido ?? null;
+const itemKey = (item) => String(item?.cartId || item?.id || item?.name || "");
+const jsonStable = (value) => {
+ try { return JSON.stringify(value ?? null); }
+ catch { return ""; }
+};
+const sameData = (a, b) => jsonStable(a) === jsonStable(b);
+const moneyTotal = (items) => asArray(items).reduce((s, i) => s + (Number(i?.price) || 0) * (Number(i?.qty) || 0), 0);
+const numberOrNull = (value) => {
+ const n = Number(value);
+ return Number.isFinite(n) ? n : null;
+};
+
+const cleanForFirestore = (value) => {
+ if (value === undefined) return undefined;
+ if (Array.isArray(value)) return value.map(cleanForFirestore).filter(v => v !== undefined);
+ if (value && typeof value === "object") {
+  return Object.entries(value).reduce((acc, [key, val]) => {
+   const cleaned = cleanForFirestore(val);
+   if (cleaned !== undefined) acc[key] = cleaned;
+   return acc;
+  }, {});
+ }
+ return value;
+};
+
+const mapById = (list, keyFn) => {
+ const map = new Map();
+ asArray(list).forEach(item => {
+  const key = keyFn(item);
+  if (key) map.set(String(key), item);
+ });
+ return map;
+};
+
+const patchObjectByIntent = (serverObj = {}, baseObj = {}, desiredObj = {}, skip = new Set()) => {
+ const merged = { ...serverObj };
+ const keys = new Set([...Object.keys(baseObj || {}), ...Object.keys(desiredObj || {})]);
+ keys.forEach(key => {
+  if (skip.has(key)) return;
+  const baseVal = baseObj?.[key];
+  const desiredHasKey = Object.prototype.hasOwnProperty.call(desiredObj || {}, key);
+  const desiredVal = desiredObj?.[key];
+  if (sameData(baseVal, desiredVal)) return;
+  if (!desiredHasKey || desiredVal === undefined) delete merged[key];
+  else merged[key] = desiredVal;
+ });
+ return merged;
+};
+
+const mergeItemsByIntent = (baseItems, desiredItems, serverItems) => {
+ const baseMap = mapById(baseItems, itemKey);
+ const desiredMap = mapById(desiredItems, itemKey);
+ const serverKeys = new Set();
+ const merged = [];
+
+ asArray(serverItems).forEach(serverItem => {
+  const key = itemKey(serverItem);
+  serverKeys.add(key);
+  const baseItem = baseMap.get(key);
+  const desiredItem = desiredMap.get(key);
+
+  if (!baseItem) {
+   merged.push(serverItem);
+   return;
+  }
+
+  if (!desiredItem) {
+   const nextQty = (Number(serverItem?.qty) || 0) - (Number(baseItem?.qty) || 0);
+   if (nextQty > 0) merged.push({ ...serverItem, qty: nextQty });
+   return;
+  }
+
+  let next = patchObjectByIntent(serverItem, baseItem, desiredItem);
+  const baseQty = Number(baseItem?.qty) || 0;
+  const desiredQty = Number(desiredItem?.qty) || 0;
+  const serverQty = Number(serverItem?.qty) || 0;
+  if (baseQty !== desiredQty) next.qty = Math.max(0, serverQty + desiredQty - baseQty);
+  if (next.qty > 0) merged.push(next);
+ });
+
+ asArray(desiredItems).forEach(desiredItem => {
+  const key = itemKey(desiredItem);
+  if (!baseMap.has(key) && !serverKeys.has(key)) merged.push(desiredItem);
+ });
+
+ return merged;
+};
+
+const mergeOrdersByIntent = (baseList, desiredList, serverList) => {
+ const baseMap = mapById(baseList, orderKey);
+ const desiredMap = mapById(desiredList, orderKey);
+ const serverMap = mapById(serverList, orderKey);
+ const touchedIds = new Set();
+
+ const result = asArray(serverList)
+  .filter(serverOrder => {
+   const id = String(orderKey(serverOrder) || "");
+   return !(baseMap.has(id) && !desiredMap.has(id));
+  })
+  .map(serverOrder => {
+   const id = String(orderKey(serverOrder) || "");
+   const baseOrder = baseMap.get(id);
+   const desiredOrder = desiredMap.get(id);
+   if (!baseOrder || !desiredOrder || sameData(baseOrder, desiredOrder)) return serverOrder;
+
+   touchedIds.add(id);
+   const itemsChanged = !sameData(baseOrder.items, desiredOrder.items);
+   const totalChanged = !sameData(baseOrder.total, desiredOrder.total);
+   let mergedOrder = patchObjectByIntent(serverOrder, baseOrder, desiredOrder, new Set(["items", "total"]));
+   if (itemsChanged) {
+    const mergedItems = mergeItemsByIntent(baseOrder.items, desiredOrder.items, serverOrder.items);
+    const baseTotal = numberOrNull(baseOrder.total);
+    const desiredTotal = numberOrNull(desiredOrder.total);
+    const serverTotal = numberOrNull(serverOrder.total);
+    const mergedTotal = baseTotal !== null && desiredTotal !== null && serverTotal !== null
+     ? Math.max(0, serverTotal + desiredTotal - baseTotal)
+     : moneyTotal(mergedItems);
+    mergedOrder = { ...mergedOrder, items: mergedItems, total: mergedTotal };
+   } else if (totalChanged) {
+    mergedOrder.total = desiredOrder.total;
+   }
+   return mergedOrder;
+  });
+
+ asArray(desiredList).forEach(desiredOrder => {
+  const id = String(orderKey(desiredOrder) || "");
+  if (!id || baseMap.has(id) || serverMap.has(id) || touchedIds.has(id)) return;
+  result.push(desiredOrder);
+ });
+
+ return result;
+};
+
+const mergeListByIntent = (baseList, desiredList, serverList, keyFn) => {
+ const baseMap = mapById(baseList, keyFn);
+ const desiredMap = mapById(desiredList, keyFn);
+ const serverMap = mapById(serverList, keyFn);
+ const result = asArray(serverList)
+  .filter(serverItem => {
+   const id = String(keyFn(serverItem) || "");
+   return !(baseMap.has(id) && !desiredMap.has(id));
+  })
+  .map(serverItem => {
+   const id = String(keyFn(serverItem) || "");
+   const baseItem = baseMap.get(id);
+   const desiredItem = desiredMap.get(id);
+   if (!baseItem || !desiredItem || sameData(baseItem, desiredItem)) return serverItem;
+   return patchObjectByIntent(serverItem, baseItem, desiredItem);
+  });
+
+ asArray(desiredList).forEach(desiredItem => {
+  const id = String(keyFn(desiredItem) || "");
+  if (!id || baseMap.has(id) || serverMap.has(id)) return;
+  result.push(desiredItem);
+ });
+
+ return result;
+};
+
 // ─── MOTOR MULTI-LOCAL ────────────────────────────────────────────────────────
 const FS = (localId) => ({
  _localId: localId,
@@ -74,14 +235,53 @@ const FS = (localId) => ({
  async getOrders() {
  try { const s = await getDoc(this.ordersRef()); return s.exists() ? (s.data().list ?? []) : []; } catch { return []; }
  },
- async saveOrders(list) {
- try { await setDoc(this.ordersRef(), { list, ts: new Date().toISOString() }); } catch (e) { console.error(e); }
+ async saveOrders(list, baseList = [], historyOrders = []) {
+  const desiredList = asArray(list);
+  const base = asArray(baseList);
+  const historyList = asArray(historyOrders).filter(o => orderKey(o));
+  try {
+   const ordersRef = this.ordersRef();
+   return await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ordersRef);
+    const serverList = snap.exists() ? asArray(snap.data().list) : [];
+
+    historyList.forEach(order => {
+     const id = String(orderKey(order));
+     const stillActive = serverList.some(active => String(orderKey(active)) === id);
+     if (!stillActive) throw new Error("ORDER_ALREADY_CLOSED");
+    });
+
+    const merged = mergeOrdersByIntent(base, desiredList, serverList);
+    tx.set(ordersRef, cleanForFirestore({ list: merged, ts: new Date().toISOString() }));
+    historyList.forEach(order => {
+     tx.set(doc(this.historyCol(), String(orderKey(order))), cleanForFirestore(order));
+    });
+    return merged;
+   });
+  } catch (e) {
+   console.error("saveOrders error:", e);
+   throw e;
+  }
  },
  async getMenu() {
  try { const s = await getDoc(this.menuRef()); return s.exists() ? (s.data().list ?? []) : []; } catch { return []; }
  },
- async saveMenu(list) {
- try { await setDoc(this.menuRef(), { list, ts: new Date().toISOString() }); } catch (e) { console.error(e); }
+ async saveMenu(list, baseList = []) {
+  const desiredList = asArray(list);
+  const base = asArray(baseList);
+  try {
+   const menuRef = this.menuRef();
+   return await runTransaction(db, async (tx) => {
+    const snap = await tx.get(menuRef);
+    const serverList = snap.exists() ? asArray(snap.data().list) : [];
+    const merged = mergeListByIntent(base, desiredList, serverList, item => item?.id);
+    tx.set(menuRef, cleanForFirestore({ list: merged, ts: new Date().toISOString() }));
+    return merged;
+   });
+  } catch (e) {
+   console.error("saveMenu error:", e);
+   throw e;
+  }
  },
  async saveConfig(data) {
  try { await setDoc(this.configRef(), data, { merge: true }); } catch (e) { console.error(e); }
@@ -89,8 +289,9 @@ const FS = (localId) => ({
  async addHistory(order) {
   try { 
    // Usamos order.id para que, si se envía 2 veces, simplemente se sobreescriba a sí mismo
-   await setDoc(doc(this.historyCol(), order.id), order); 
-  } catch (e) { console.error(e); }
+   await setDoc(doc(this.historyCol(), String(orderKey(order))), cleanForFirestore(order));
+   return true;
+  } catch (e) { console.error(e); return false; }
  },
  async getStaff() {
   try {
@@ -5745,16 +5946,71 @@ export default function App() {
 
  // ── Sequential save queue: prevents race-condition order loss ───────
  const saveQueueRef = useRef(Promise.resolve());
+ const activeSessionRef = useRef("");
+ const currentSessionKey = currentUser
+  ? `${currentUser.localId || ""}:${currentUser.userId || currentUser.name || ""}:${currentUser.id || ""}`
+  : "";
+ const getStartTabFor = (user) => user?.id === 'cocinero' ? 'cocina'
+  : user?.id === 'cajero' ? 'pedidos'
+  : user?.id === 'mesero' ? 'dashboard'
+  : 'dashboard';
+
+ const resetSessionState = () => {
+  ordersRef.current = [];
+  saveQueueRef.current = Promise.resolve();
+  cobrarProcessingRef.current = false;
+  waiterDrinkRef.current = {};
+  waiterDrinkReadyRef.current = false;
+  if (waiterDrinkTimerRef.current) clearTimeout(waiterDrinkTimerRef.current);
+  setOrders([]);
+  setHistory([]);
+  setMenu(MENU_BASE);
+  setDraft(newDraft());
+  setCartaCatFilter("Todos");
+  setShowAdd(false);
+  setNewItem({ name:"", cat:"Hamburguesas", price:"" });
+  setEditingOrder(null);
+  setConfirmDelete(null);
+  setAnulacionModal(null);
+  setMesaModal(null);
+  setSolicitudes([]);
+  setStaff([]);
+  setCaja(null);
+  setCobrarTarget(null);
+  setSplitTarget(null);
+  setMergeModal(null);
+  setMergeName("");
+  setAddToLlevarModal(null);
+  setReembolsoConfirm(null);
+  setLlevarModal(false);
+  setMesasArr([]);
+  setHistoryLoaded(false);
+  setHistoryLoadingMore(false);
+  setHistoryExhausted(false);
+  historyPageRef.current = null;
+  setLoaded(false);
+  setTab(getStartTabFor(currentUser));
+ };
+
+ useEffect(() => {
+  activeSessionRef.current = currentSessionKey;
+  resetSessionState();
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [currentSessionKey]);
 
  useEffect(() => {
  if (!currentUser) return;
  setLoaded(false);
  const localFS = FS(currentUser.localId);
+ const sessionAtStart = activeSessionRef.current;
+ let active = true;
+ const isCurrentSession = () => active && activeSessionRef.current === sessionAtStart;
 
  // ── Helper: getDoc once with localStorage fallback ────────────────
  const getOnce = async (ref, lsKey, setState, transform) => {
   try {
    const snap = await getDoc(ref);
+   if (!isCurrentSession()) return;
    const val = snap.exists() ? transform(snap.data()) : null;
    if (val !== null) {
     setState(val);
@@ -5763,14 +6019,14 @@ export default function App() {
     // Try localStorage fallback
     try {
      const fb = JSON.parse(localStorage.getItem(lsKey) || "null");
-     if (fb?.v) setState(fb.v);
+     if (fb?.v && isCurrentSession()) setState(fb.v);
     } catch(_) {}
    }
   } catch(e) {
    console.warn(`getOnce(${lsKey}) failed:`, e.message);
    try {
     const fb = JSON.parse(localStorage.getItem(lsKey) || "null");
-    if (fb?.v) setState(fb.v);
+    if (fb?.v && isCurrentSession()) setState(fb.v);
    } catch(_) {}
   }
  };
@@ -5781,24 +6037,32 @@ export default function App() {
   // ── 1. ORDERS — single-doc listener via FS helper (mrpapachos_{id}/orders) ──
   unsubOrders = onSnapshot(
    localFS.ordersRef(),
-   (snap) => { setOrders(snap.exists() ? (snap.data().list ?? []) : []); },
+   (snap) => {
+    if (!isCurrentSession()) return;
+    const nextOrders = snap.exists() ? (snap.data().list ?? []) : [];
+    ordersRef.current = nextOrders;
+    setOrders(nextOrders);
+   },
    (err) => console.error("orders listener:", err.message)
   );
 
   // ── 2. CAJA — onSnapshot (estado compartido cajero↔mesero) ───────
   unsubCaja = onSnapshot(localFS.cajaRef(), async (docSnap) => {
+   if (!isCurrentSession()) return;
    if (!docSnap.exists()) { setCaja(null); return; }
    const data = docSnap.data();
    if (data.isOpen && data.closedAt) {
-    const fixed = { ...data, isOpen: false, _autoFixedAt: new Date().toISOString() };
-    try { await setDoc(localFS.cajaRef(), fixed); } catch(e) { console.error("autofix caja:", e); }
-    setCaja(fixed); return;
-   }
+   const fixed = { ...data, isOpen: false, _autoFixedAt: new Date().toISOString() };
+   try { await setDoc(localFS.cajaRef(), fixed); } catch(e) { console.error("autofix caja:", e); }
+   if (!isCurrentSession()) return;
+   setCaja(fixed); return;
+  }
    setCaja(data);
   }, (err) => console.error("caja listener:", err.message));
 
   // ── 3. SOLICITUDES — onSnapshot (notificaciones en vivo) ─────────
   unsubSolicitudes = onSnapshot(localFS.solicitudesRef(), (docSnap) => {
+   if (!isCurrentSession()) return;
    setSolicitudes(docSnap.exists() ? (docSnap.data().list || []) : []);
   }, (err) => console.error("solicitudes listener:", err.message));
 
@@ -5809,11 +6073,12 @@ export default function App() {
    (val) => setMenu([...MENU_BASE, ...(val || [])]),
    (data) => data.list || []
   );
-  if (menu.length === 0) setMenu(MENU_BASE);
+  if (isCurrentSession() && menu.length === 0) setMenu(MENU_BASE);
 
   // ── 5. STAFF — getDoc una vez + localStorage de respaldo ─────────
   try {
    const snap = await getDoc(localFS.staffRef());
+   if (!isCurrentSession()) return;
    if (snap.exists()) {
     const users = snap.data().users;
     if (Array.isArray(users) && users.length > 0) {
@@ -5823,12 +6088,12 @@ export default function App() {
    } else {
     // Fallback localStorage
     const fb = JSON.parse(localStorage.getItem(`staff_backup_${currentUser.localId}`) || "null");
-    if (fb?.users?.length) setStaff(fb.users);
+    if (fb?.users?.length && isCurrentSession()) setStaff(fb.users);
    }
   } catch(e) {
    console.warn("staff getDoc:", e.message);
    const fb = JSON.parse(localStorage.getItem(`staff_backup_${currentUser.localId}`) || "null");
-   if (fb?.users?.length) setStaff(fb.users);
+   if (fb?.users?.length && isCurrentSession()) setStaff(fb.users);
   }
 
   // ── 6. CONFIG (mesas) — getDoc una vez ───────────────────────────
@@ -5842,12 +6107,13 @@ export default function App() {
   // ── 7. HISTORY — NO se carga aquí. Se carga lazy al abrir el tab ─
   //    Ver loadHistory() abajo. El estado `history` empieza vacío.
 
-  setLoaded(true);
+  if (isCurrentSession()) setLoaded(true);
  };
 
  setupListeners();
 
  return () => {
+  active = false;
   [unsubOrders, unsubSolicitudes, unsubCaja]
    .forEach(fn => { try { if (fn) fn(); } catch(e) {} });
  };
@@ -5862,9 +6128,10 @@ export default function App() {
  const historyPageRef = useRef(null); // last doc cursor for pagination
 
  const loadHistory = async (reset = false) => {
-  if (!currentUser) return;
-  if (historyLoadingMore) return;
-  setHistoryLoadingMore(true);
+ if (!currentUser) return;
+ if (historyLoadingMore) return;
+ const sessionAtCall = activeSessionRef.current;
+ setHistoryLoadingMore(true);
   try {
    const localFS = FS(currentUser.localId);
    const PAGE = 90;
@@ -5875,6 +6142,7 @@ export default function App() {
     : query(localFS.historyCol(), orderBy("createdAt","desc"), limit(PAGE));
 
    const snap = await getDocs(q);
+   if (activeSessionRef.current !== sessionAtCall) return;
    const docs = snap.docs.map(d => ({ _fid: d.id, ...d.data() }));
 
    if (reset) {
@@ -5892,7 +6160,7 @@ export default function App() {
   } catch(e) {
    console.error("loadHistory:", e.message);
   } finally {
-   setHistoryLoadingMore(false);
+   if (activeSessionRef.current === sessionAtCall) setHistoryLoadingMore(false);
   }
  };
 
@@ -5925,9 +6193,44 @@ export default function App() {
   } catch(e) { console.warn("reloadStaff:", e.message); }
  };
  
- const saveOrders = async (newOrdersArray) => {
-  try { await FS(currentUser.localId).saveOrders(newOrdersArray); }
-  catch (e) { console.error("Error guardando pedidos:", e); }
+ const upsertHistoryLocal = (ordersToAdd) => {
+  const entries = asArray(ordersToAdd).filter(o => orderKey(o));
+  if (!entries.length) return;
+  setHistory(prev => {
+   const byId = new Map(prev.map(h => [String(h._fid || orderKey(h)), h]));
+   entries.forEach(order => byId.set(String(orderKey(order)), { _fid: String(orderKey(order)), ...order }));
+   return Array.from(byId.values()).sort((a, b) => String(b.createdAt || b.paidAt || "").localeCompare(String(a.createdAt || a.paidAt || "")));
+  });
+ };
+
+ const saveOrders = async (newOrdersArray, options = {}) => {
+  if (!currentUser) return null;
+  const baseOrders = options.baseOrders || ordersRef.current;
+  const historyOrders = options.historyOrders || (options.historyOrder ? [options.historyOrder] : []);
+  const localId = currentUser.localId;
+  const sessionAtCall = activeSessionRef.current;
+  const op = saveQueueRef.current.catch(() => null).then(async () => {
+   try {
+    const committed = await FS(localId).saveOrders(newOrdersArray, baseOrders, historyOrders);
+    if (activeSessionRef.current === sessionAtCall) {
+     ordersRef.current = committed;
+     setOrders(committed);
+     upsertHistoryLocal(historyOrders);
+    }
+    return committed;
+   } catch (e) {
+    console.error("Error guardando pedidos:", e);
+    if (activeSessionRef.current === sessionAtCall) {
+     const msg = e?.message === "ORDER_ALREADY_CLOSED"
+      ? "Ese pedido ya fue cerrado en otra sesion. Actualizando pantalla..."
+      : "No se pudo guardar el cambio. Revisa la conexion.";
+     showToast(msg, "#e74c3c");
+    }
+    return null;
+   }
+  });
+  saveQueueRef.current = op;
+  return op;
  };
  const toggleItemCheck = async (order, itemIdx, isFood) => {
 
@@ -5975,23 +6278,38 @@ export default function App() {
 
   try {
    const newOrders = ordersRef.current.map(o => o.id === order.id ? updatedOrder : o);
-   await FS(currentUser.localId).saveOrders(newOrders);
-   ordersRef.current = newOrders;
+   setOrders(newOrders);
+   await saveOrders(newOrders);
   } catch(e) { console.error("Error al marcar item:", e); }
  };
+ const persistentMenuItems = (items) => asArray(items).filter(i => {
+  const id = String(i?.id || "");
+  return id.startsWith("CUSTOM_") || (id.startsWith("TP") && !["TP01","TP02","TP03","TP04","TP05"].includes(id));
+ });
  const saveMenu = async (v) => {
-  setMenu(v);
-  await FS(currentUser.localId).saveMenu(v.filter(i=>i.id.startsWith("CUSTOM_")||i.id.startsWith("TP")&&!["TP01","TP02","TP03","TP04","TP05"].includes(i.id)));
-  await reloadMenu();
+  if (!currentUser) return null;
+  const localId = currentUser.localId;
+  const sessionAtCall = activeSessionRef.current;
+  const desiredCustom = persistentMenuItems(v);
+  const baseCustom = persistentMenuItems(menu);
+  setMenu([...MENU_BASE, ...desiredCustom]);
+  try {
+   const savedCustom = await FS(localId).saveMenu(desiredCustom, baseCustom);
+   if (activeSessionRef.current === sessionAtCall) {
+    setMenu([...MENU_BASE, ...savedCustom]);
+    try { localStorage.setItem(`menu_cache_${localId}`, JSON.stringify({ v: savedCustom, ts: Date.now() })); } catch(_) {}
+   }
+   return savedCustom;
+  } catch(e) {
+   console.error("Error guardando carta:", e);
+   if (activeSessionRef.current === sessionAtCall) showToast("No se pudo guardar la carta", "#e74c3c");
+   return null;
+  }
  };
  const addHistory = async (o) => {
   // Optimistic local update — historial tab shows new entry immediately, no re-fetch needed
-  setHistory(prev => {
-   const exists = prev.some(h => h._fid === o.id || h.id === o.id);
-   if (exists) return prev.map(h => (h._fid === o.id || h.id === o.id) ? { _fid: o.id, ...o } : h);
-   return [{ _fid: o.id, ...o }, ...prev];
-  });
-  await FS(currentUser.localId).addHistory(o);
+  upsertHistoryLocal([o]);
+  return await FS(currentUser.localId).addHistory(o);
  };
  const saveSolicitudes = async (list) => {
   const threshold = Date.now() - 48 * 60 * 60 * 1000;
@@ -6518,7 +6836,8 @@ const saveCaja = async (data) => {
 
  const newOrders = cur.map(x => x.id === existingOrder.id ? updated : x);
  setOrders(newOrders);
- await saveOrders(newOrders);
+ const saved = await saveOrders(newOrders);
+ if (!saved) { cobrarProcessingRef.current = false; return; }
  cobrarProcessingRef.current = false;
  setDraft(newDraft());
  showToast("✅ 🥡 Ítems agregados y cobrados · Cocina notificada");
@@ -6563,7 +6882,8 @@ const saveCaja = async (data) => {
  };
  const newOrders = cur.filter(x => x.id !== originalOrder.id);
  setOrders(newOrders);
- await Promise.all([addHistory(finalOrder), saveOrders(newOrders)]);
+ const saved = await saveOrders(newOrders, { historyOrder: finalOrder });
+ if (!saved) { cobrarProcessingRef.current = false; return; }
  showToast("✅ Cuenta completa cobrada y archivada");
  } else {
  const newTotal = remainingItems.reduce((s,i) => s+i.price*i.qty, 0);
@@ -6652,13 +6972,15 @@ const saveCaja = async (data) => {
   const llevarListo = { ...finished, status: "pagado", kitchenStatus: "pendiente" };
   const newOrders = cur.map(x => x.id === o.id ? llevarListo : x);
   setOrders(newOrders);
-  await saveOrders(newOrders);
+  const saved = await saveOrders(newOrders);
+  if (!saved) { cobrarProcessingRef.current = false; return; }
   cobrarProcessingRef.current = false;
   showToast("✅ 🥡 Para llevar cobrado — enviado a cocina");
  } else {
   const newOrders = cur.filter(x => x.id !== o.id);
   setOrders(newOrders);
-  await Promise.all([addHistory(finished), saveOrders(newOrders)]);
+  const saved = await saveOrders(newOrders, { historyOrder: finished });
+  if (!saved) { cobrarProcessingRef.current = false; return; }
   cobrarProcessingRef.current = false;
   showToast("✅ Pedido cobrado y archivado");
  }
@@ -6672,7 +6994,8 @@ const saveCaja = async (data) => {
  const newOrders = cur.filter(x=>x.id!==id);
  setOrders(newOrders);
  const finished = { ...o, status:"pagado" };
- await Promise.all([addHistory(finished), saveOrders(newOrders)]);
+ const saved = await saveOrders(newOrders, { historyOrder: finished });
+ if (!saved) return;
  showToast("✅ Pedido entregado y archivado");
  };
 
@@ -6694,7 +7017,8 @@ const saveCaja = async (data) => {
  };
  const newOrders = cur.filter(x => x.id !== order.id);
  setOrders(newOrders);
- await Promise.all([addHistory(reembolsado), saveOrders(newOrders)]);
+ const saved = await saveOrders(newOrders, { historyOrder: reembolsado });
+ if (!saved) return;
  setReembolsoConfirm(null);
  showToast("↩️ Pedido reembolsado y archivado", "#e67e22");
  };
@@ -6705,13 +7029,16 @@ const saveCaja = async (data) => {
  const newOrders = cur.filter(x=>x.id!==id);
  setOrders(newOrders);
  const finished = {...o, status:"cancelado", cancelledAt:new Date().toISOString(), createdAt:o.createdAt||new Date().toISOString()};
- await Promise.all([addHistory(finished), saveOrders(newOrders)]);
+ const saved = await saveOrders(newOrders, { historyOrder: finished });
+ if (!saved) return;
  showToast("🚫 Pedido cancelado","#e74c3c");
  };
 
  const deleteOrderPermanent = async (id) => {
  const newOrders = ordersRef.current.filter(x=>x.id!==id);
- setOrders(newOrders); await saveOrders(newOrders);
+ setOrders(newOrders);
+ const saved = await saveOrders(newOrders);
+ if (!saved) return;
  setConfirmDelete(null); showToast("🗑 Pedido eliminado","#888");
  };
 
@@ -6719,6 +7046,8 @@ const saveCaja = async (data) => {
  const anularPedido = async (originalOrder, replacementItems, motivo, _skip=false) => {
  const cur = ordersRef.current;
  const now = new Date().toISOString();
+ const localIdAtAnulacion = currentUser.localId;
+ const sessionAtAnulacion = activeSessionRef.current;
 // En submitOrder y anularPedido:
 const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
  const hasReplacement = replacementItems && replacementItems.length > 0;
@@ -6728,23 +7057,23 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
  if (hasReplacement) {
   const repTotal = replacementItems.reduce((s,i) => s+i.price*i.qty, 0);
   const replacementOrder = { id:newId, table:originalOrder.table, orderType:originalOrder.orderType, phone:originalOrder.phone||"", deliveryAddress:originalOrder.deliveryAddress||"", notes:originalOrder.notes||"", items:replacementItems, total:repTotal, isPaid:false, status:"pendiente", kitchenStatus:"pendiente", createdAt:now, replacesId:originalOrder.id, taperCost:0, _cajaSessionId: originalOrder._cajaSessionId || cajaRef2.current?.sessionId || null, _cajaOpenedAt: originalOrder._cajaOpenedAt || cajaRef2.current?.openedAt || null, _mesero: currentUser?.name || null };
-  updatedOrders = [...updatedOrders, replacementOrder];
+ updatedOrders = [...updatedOrders, replacementOrder];
  }
  setOrders(updatedOrders);
- await saveOrders(updatedOrders);
+ const savedAnulacion = await saveOrders(updatedOrders);
+ if (!savedAnulacion) return;
  setAnulacionModal(null);
  showToast("🚫 Pedido anulado" + (hasReplacement ? " · Reemplazo enviado a cocina" : ""), "#e74c3c");
 
  // After 25 seconds: move anulled order to history and clean from active orders
  setTimeout(async () => {
-  try {
-   const cur2 = ordersRef.current;
-   const stillThere = cur2.find(o => o.id === originalOrder.id && o.anulado);
-   if (stillThere) {
-    const cleaned = cur2.filter(o => o.id !== originalOrder.id);
-    setOrders(cleaned);
-    await saveOrders(cleaned);
-    await addHistory({ ...anuladoOrder, cancelledAt: now, createdAt: originalOrder.createdAt || now });
+ try {
+   const historyOrder = { ...anuladoOrder, cancelledAt: now, createdAt: originalOrder.createdAt || now };
+   const committed = await FS(localIdAtAnulacion).saveOrders([], [anuladoOrder], [historyOrder]);
+   if (activeSessionRef.current === sessionAtAnulacion) {
+    ordersRef.current = committed;
+    setOrders(committed);
+    upsertHistoryLocal([historyOrder]);
    }
   } catch(e) { console.error("anular cleanup error:", e); }
  }, 25500);
@@ -6753,18 +7082,25 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
  const saveEditedOrder = async (updated) => {
  const cur = ordersRef.current;
  const newOrders = cur.map(o=>o.id===updated.id?updated:o);
- setOrders(newOrders); await saveOrders(newOrders);
+ setOrders(newOrders);
+ const saved = await saveOrders(newOrders);
+ if (!saved) return;
  setEditingOrder(null); showToast("✏️ Pedido actualizado","#f39c12");
  };
 
  const addMenuItem = async () => {
  if (!newItem.name.trim()||!newItem.price) return;
- const item = {id:"CUSTOM_"+Date.now(),cat:newItem.cat,name:newItem.name,price:parseFloat(newItem.price),desc:""};
- await saveMenu([...menu,item]);
+ const item = {id:`CUSTOM_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,cat:newItem.cat,name:newItem.name,price:parseFloat(newItem.price),desc:""};
+ const saved = await saveMenu([...menu,item]);
+ if (!saved) return;
  setNewItem({name:"",cat:"Hamburguesas",price:""}); setShowAdd(false);
  showToast(` "${item.name}" agregado`);
  };
- const deleteMenuItem = async (id) => { await saveMenu(menu.filter(i=>i.id!==id)); showToast(" Platillo eliminado","#e74c3c"); };
+ const deleteMenuItem = async (id) => {
+  const saved = await saveMenu(menu.filter(i=>i.id!==id));
+  if (!saved) return;
+  showToast(" Platillo eliminado","#e74c3c");
+ };
 
  const Y = "#FFD700";
  const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
