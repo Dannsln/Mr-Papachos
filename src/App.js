@@ -5057,7 +5057,7 @@ function HistorialComponent({ history, historyDays, loadedHistoryDays, activeOrd
 
   const renderOrderCard = (o, idx) => {
    const pe = getPay(o,"efectivo"); const py = getPay(o,"yape"); const pt = getPay(o,"tarjeta");
-   const isCanceled = o.status === "cancelado";
+   const isCanceled = o.status === "cancelado" || o.status === "anulado" || !!o.anulado;
    return (
     <div key={o._fid||o.id||idx} style={{background:"#1c1c1c", border:`1px solid ${isCanceled?"#e74c3c44":"#333"}`, borderRadius:10, padding:"14px", marginBottom:10, opacity:isCanceled?0.6:1}}>
      {/* Cabecera */}
@@ -7447,7 +7447,7 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
  // After 25 seconds: move anulled order to history and clean from active orders
  setTimeout(async () => {
  try {
-   const historyOrder = { ...anuladoOrder, cancelledAt: now, createdAt: originalOrder.createdAt || now };
+   const historyOrder = { ...anuladoOrder, status: "cancelado", cancelledAt: now, createdAt: originalOrder.createdAt || now };
    const committed = await FS(localIdAtAnulacion).saveOrders([], [anuladoOrder], [historyOrder]);
    if (activeSessionRef.current === sessionAtAnulacion) {
     ordersRef.current = committed;
