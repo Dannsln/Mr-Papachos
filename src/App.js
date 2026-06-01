@@ -6972,147 +6972,167 @@ const saveCaja = async (data) => {
   return fn(...args);
  };
 
- const submitOrder = async (forceMerge = null) => {
- if (!cajaAbierta) { showToast("🔴 Abre la caja antes de tomar pedidos", "#e74c3c"); return; }
- if (draft.orderType === "mesa" && !draft.table.trim()) return;
- if (!draft.items.length) return;
- // ── Guard: llevar con cobro diferido solo para admins ──────────────
- // (removed — all llevar orders now wait for payment regardless of role)
- const total = draftTotal;
+const submitOrder = async (forceMerge = null) => {
+  if (!cajaAbierta) { showToast("🔴 Abre la caja antes de tomar pedidos", "#e74c3c"); return; }
+  if (draft.orderType === "mesa" && !draft.table.trim()) return;
+  if (!draft.items.length) return;
+  const total = draftTotal;
 
- // ── PEDIDO MIXTO (mesa + llevar): split automatically ────────────────
- // Mesa items → cocina ahora. Llevar items → esperando cobro (no van a cocina aún).
- const llevarItems = draft.items.filter(i => i.isLlevar);
- const mesaItems   = draft.items.filter(i => !i.isLlevar);
- if (forceMerge === null && draft.orderType === "mesa" && llevarItems.length > 0 && mesaItems.length > 0) {
-  const llevarTotal = llevarItems.reduce((s,i)=>s+i.price*i.qty,0);
-  const mesaTotal   = mesaItems.reduce((s,i)=>s+i.price*i.qty,0);
-  // Ítems de mesa → cocina inmediatamente
-  const mesaOrder = {
-   id: Date.now().toString(),
-   orderType: "mesa", table: draft.table, phone: "", deliveryAddress: "",
-   notes: draft.notes || "", items: mesaItems, total: mesaTotal,
-   isPaid: false, status: "pendiente", kitchenStatus: "pendiente",
-   createdAt: new Date().toISOString(), taperCost: 0,
-   _cajaSessionId: cajaRef2.current?.sessionId || null,
-   _cajaOpenedAt: cajaRef2.current?.openedAt || null,
-   _mesero: currentUser?.name || null,
-   payTiming: "despues",
-  };
-  // Ítems para llevar → esperan cobro, NO van a cocina todavía
-  const llevarOrder = {
-   id: (Date.now() + 1).toString(),
-   orderType: "llevar",
-   table: draft.table ? `[Llevar — Mesa ${draft.table}]` : "Para llevar",
-   phone: draft.phone || "", deliveryAddress: draft.deliveryAddress || "",
-   notes: draft.notes || "", items: llevarItems, total: llevarTotal,
-   isPaid: false, status: "esperando_cobro", kitchenStatus: "esperando_cobro",
-   createdAt: new Date().toISOString(), taperCost: 0,
-   _cajaSessionId: cajaRef2.current?.sessionId || null,
-   _cajaOpenedAt: cajaRef2.current?.openedAt || null,
-   _mesero: currentUser?.name || null,
-   _linkedMesaTable: draft.table,
-  };
-  const newOrders = [...ordersRef.current, mesaOrder, llevarOrder];
-  setOrders(newOrders); await saveOrders(newOrders);
-  setDraft(newDraft());
-  showToast(`🍽 Mesa enviada a cocina · 🥡 Para llevar esperando cobro`, "#3498db");
-  setTab("pedidos");
-  return;
- }
+  // 1. Blindar el argumento
+  const isMergeAction = forceMerge === "merge";
 
- const existingMesaOrder = ordersRef.current.find(o => o.table === draft.table.trim() && o.orderType === "mesa" && !o.isPaid) ?? null;
+  // 2. Prevenir Race Conditions (Doble clic)
+  if (isMergeAction && !mergeModal) return;
 
- if (existingMesaOrder && forceMerge === null) {
- setMergeModal({ existingOrder: existingMesaOrder, newDraftData: { ...draft, total } });
- setMergeName(""); return;
- }
+  const existingMesaOrder = ordersRef.current.find(o => o.table === draft.table.trim() && o.orderType === "mesa" && !o.isPaid) ?? null;
 
- let finalItems = forceMerge === "merge" ? [...mergeModal.newDraftData.items] : [...draft.items];
-
- if (forceMerge === "merge" && mergeModal) {
- const existing = mergeModal.existingOrder;
- const isLlevarDraft = mergeModal.newDraftData.orderType === "llevar";
- const adicionAt = new Date().toISOString();
- const batchId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
- const nameTag = mergeName.trim() ? `[Llevar: ${mergeName.trim()}]` : "";
- const newItems = finalItems.map((i, idx) => ({
-  ...i,
-  cartId: `${i.cartId || i.id}-ADD-${batchId}-${idx}`,
-  _isAdicion: true,
-  _addedBy: currentUser?.name || null,
-  _addedAt: adicionAt,
-  _additionBatchId: batchId,
-  ...(isLlevarDraft ? { isLlevar: true } : {}),
-  individualNotes: isLlevarDraft && nameTag
-   ? (i.individualNotes || []).map(n => n ? `${nameTag} ${n}` : nameTag)
-   : (i.individualNotes || []),
- }));
- const mergedItems = [...(existing.items || []), ...newItems];
- const hasKitchenFoodAddition = newItems.some(isKitchenFoodItem);
- const hasBeverageAddition = newItems.some(isBeverageItem);
- const wakesKitchenView = hasKitchenFoodAddition || hasBeverageAddition;
- const updated = {
-  ...existing,
-  items: mergedItems,
-  total: mergedItems.reduce((s, i) => s + i.price * i.qty, 0),
-  notes: [existing.notes, mergeModal.newDraftData.notes].filter(Boolean).join(" | "),
-  taperCost: 0,
-  kitchenStatus: wakesKitchenView ? 'pendiente' : existing.kitchenStatus,
-  _cajaSessionId: existing._cajaSessionId || cajaRef2.current?.sessionId || null,
-  _cajaOpenedAt: existing._cajaOpenedAt || cajaRef2.current?.openedAt || null,
-  _adicionPor: currentUser?.name || null,
-  _adicionAt: adicionAt,
-  _lastAdditionItems: newItems,
-  _foodReadyBeforeLastAddition: existing.kitchenStatus === 'listo' && !hasKitchenFoodAddition,
- };
- const mergedList = ordersRef.current.map(o => o.id === existing.id ? updated : o);
- setOrders(mergedList);
- await saveOrders(mergedList);
- setDraft(newDraft()); setMergeModal(null); setMergeName(""); showToast(` Ítems agregados a Mesa ${existing.table}`); setTab("pedidos"); return;
- }
-
- if (mergeModal) { setMergeModal(null); setMergeName(""); }
- const finalDraft = { ...draft, items: finalItems, taperCost: 0 }; 
-
- if (draft.orderType === "llevar") {
-  // ── Detectar si hay un pedido para llevar ya PAGADO con el mismo nombre ──
-  // Esto evita crear dos registros separados cuando se adiciona un ítem a un pedido ya cobrado.
-  const existingPaidLlevar = ordersRef.current.find(o =>
-   o.orderType === "llevar" &&
-   o.isPaid &&
-   !o.anulado &&
-   o.table?.trim().toLowerCase() === (finalDraft.table || "").trim().toLowerCase()
-  );
-  if (existingPaidLlevar && forceMerge !== "llevar_new") {
-   // Mostrar modal para agregar ítems al pedido pagado existente
-   setAddToLlevarModal({ existingOrder: existingPaidLlevar, newItems: finalItems, newTotal: total });
-   return;
+  // 3. Mostrar modal SOLO si no se está forzando una acción explícita
+  if (existingMesaOrder && !isMergeAction && forceMerge !== "nuevo") {
+    setMergeModal({ existingOrder: existingMesaOrder, newDraftData: { ...draft, total } });
+    setMergeName(""); return;
   }
 
-  // Para llevar: siempre espera cobro antes de ir a cocina
-  const order = {
-   id: Date.now().toString(), ...finalDraft, total,
-   isPaid: false, status: "esperando_cobro", kitchenStatus: "esperando_cobro",
-   createdAt: new Date().toISOString(),
-   _cajaSessionId: cajaRef2.current?.sessionId || null,
-   _cajaOpenedAt: cajaRef2.current?.openedAt || null,
-   _mesero: currentUser?.name || null,
-  };
-  const newOrders = [...ordersRef.current, order];
-  setOrders(newOrders); await saveOrders(newOrders);
-  setDraft(newDraft());
-  showToast(`🥡 Para llevar registrado — esperando cobro del cajero`, "#3498db");
-  setTab("pedidos");
- } else if (draft.payTiming === "ahora") {
-  setCobrarTarget({ type: 'new', data: { id:Date.now().toString(), ...finalDraft, total, createdAt:new Date().toISOString(), _cajaSessionId: cajaRef2.current?.sessionId || null, _cajaOpenedAt: cajaRef2.current?.openedAt || null, _mesero: currentUser?.name || null } });
- } else {
-  const order = { id:Date.now().toString(), ...finalDraft, total, isPaid: false, status:"pendiente", kitchenStatus:"pendiente", createdAt:new Date().toISOString(), _cajaSessionId: cajaRef2.current?.sessionId || null, _cajaOpenedAt: cajaRef2.current?.openedAt || null, _mesero: currentUser?.name || null };
-  const newOrders = [...ordersRef.current, order];
-  setOrders(newOrders); await saveOrders(newOrders);
-  setDraft(newDraft()); showToast(` Pedido enviado a cocina`); setTab("pedidos");
- }
- };
+  let finalItems = isMergeAction ? [...mergeModal.newDraftData.items] : [...draft.items];
+
+  // 4. LÓGICA DE FUSIÓN (Adición) 
+  if (isMergeAction && mergeModal) {
+    const existing = mergeModal.existingOrder;
+    const isLlevarDraft = mergeModal.newDraftData.orderType === "llevar";
+    const adicionAt = new Date().toISOString();
+    const batchId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const nameTag = mergeName.trim() ? `[Llevar: ${mergeName.trim()}]` : "";
+
+    const newItems = finalItems.map((i, idx) => ({
+      ...i,
+      cartId: `${i.cartId || i.id}-ADD-${batchId}-${idx}`,
+      _isAdicion: true,
+      _addedBy: currentUser?.name || null,
+      _addedAt: adicionAt,
+      _additionBatchId: batchId,
+      ...(isLlevarDraft ? { isLlevar: true } : {}),
+      individualNotes: isLlevarDraft && nameTag
+        ? (i.individualNotes || []).map(n => n ? `${nameTag} ${n}` : nameTag)
+        : (i.individualNotes || []),
+    }));
+
+    const mergedItems = [...(existing.items || []), ...newItems];
+    const hasKitchenFoodAddition = newItems.some(isKitchenFoodItem);
+    const hasBeverageAddition = newItems.some(isBeverageItem);
+    const wakesKitchenView = hasKitchenFoodAddition || hasBeverageAddition;
+
+    const updated = {
+      ...existing,
+      items: mergedItems,
+      total: mergedItems.reduce((s, i) => s + i.price * i.qty, 0),
+      notes: [existing.notes, mergeModal.newDraftData.notes].filter(Boolean).join(" | "),
+      taperCost: 0,
+      kitchenStatus: wakesKitchenView ? 'pendiente' : existing.kitchenStatus,
+      _cajaSessionId: existing._cajaSessionId || cajaRef2.current?.sessionId || null,
+      _cajaOpenedAt: existing._cajaOpenedAt || cajaRef2.current?.openedAt || null,
+      _adicionPor: currentUser?.name || null,
+      _adicionAt: adicionAt,
+      _lastAdditionItems: newItems,
+      _foodReadyBeforeLastAddition: existing.kitchenStatus === 'listo' && !hasKitchenFoodAddition,
+    };
+
+    const mergedList = ordersRef.current.map(o => o.id === existing.id ? updated : o);
+    setOrders(mergedList);
+    await saveOrders(mergedList);
+    setDraft(newDraft()); setMergeModal(null); setMergeName(""); 
+    showToast(`✅ Ítems agregados a Mesa ${existing.table}`); 
+    setTab("pedidos");
+    return; 
+  }
+
+  // Limpiar estado residual del modal si decidimos separarlo ("nuevo")
+  if (mergeModal) { setMergeModal(null); setMergeName(""); }
+  const finalDraft = { ...draft, items: finalItems, taperCost: 0 };
+
+  // 5. LÓGICA DE PEDIDO MIXTO
+  const llevarItems = finalDraft.items.filter(i => i.isLlevar);
+  const mesaItems   = finalDraft.items.filter(i => !i.isLlevar);
+  
+  if (finalDraft.orderType === "mesa" && llevarItems.length > 0 && mesaItems.length > 0) {
+    const llevarTotal = llevarItems.reduce((s,i)=>s+i.price*i.qty,0);
+    const mesaTotal   = mesaItems.reduce((s,i)=>s+i.price*i.qty,0);
+
+    const mesaOrder = {
+      id: Date.now().toString(),
+      orderType: "mesa", table: draft.table, phone: "", deliveryAddress: "",
+      notes: draft.notes || "", items: mesaItems, total: mesaTotal,
+      isPaid: false, status: "pendiente", kitchenStatus: "pendiente",
+      createdAt: new Date().toISOString(), taperCost: 0,
+      _cajaSessionId: cajaRef2.current?.sessionId || null,
+      _cajaOpenedAt: cajaRef2.current?.openedAt || null,
+      _mesero: currentUser?.name || null,
+      payTiming: "despues",
+    };
+
+    const llevarOrder = {
+      id: (Date.now() + 1).toString(),
+      orderType: "llevar",
+      table: draft.table ? `[Llevar — Mesa ${draft.table}]` : "Para llevar",
+      phone: draft.phone || "", deliveryAddress: draft.deliveryAddress || "",
+      notes: draft.notes || "", items: llevarItems, total: llevarTotal,
+      isPaid: false, status: "esperando_cobro", kitchenStatus: "esperando_cobro",
+      createdAt: new Date().toISOString(), taperCost: 0,
+      _cajaSessionId: cajaRef2.current?.sessionId || null,
+      _cajaOpenedAt: cajaRef2.current?.openedAt || null,
+      _mesero: currentUser?.name || null,
+      _linkedMesaTable: draft.table,
+    };
+
+    const newOrders = [...ordersRef.current, mesaOrder, llevarOrder];
+    setOrders(newOrders); await saveOrders(newOrders);
+    setDraft(newDraft());
+    showToast(`🍽 Mesa enviada a cocina · 🥡 Para llevar esperando cobro`, "#3498db");
+    setTab("pedidos");
+    return;
+  }
+
+  // 6. FLUJO NORMAL LLEVAR/MESA
+  if (draft.orderType === "llevar") {
+    const existingPaidLlevar = ordersRef.current.find(o =>
+      o.orderType === "llevar" &&
+      o.isPaid &&
+      !o.anulado &&
+      o.table?.trim().toLowerCase() === (finalDraft.table || "").trim().toLowerCase()
+    );
+    
+    if (existingPaidLlevar && forceMerge !== "llevar_new") {
+      setAddToLlevarModal({ existingOrder: existingPaidLlevar, newItems: finalItems, newTotal: total });
+      return;
+    }
+
+    const order = {
+      id: Date.now().toString(), ...finalDraft, total,
+      isPaid: false, status: "esperando_cobro", kitchenStatus: "esperando_cobro",
+      createdAt: new Date().toISOString(),
+      _cajaSessionId: cajaRef2.current?.sessionId || null,
+      _cajaOpenedAt: cajaRef2.current?.openedAt || null,
+      _mesero: currentUser?.name || null,
+    };
+    
+    const newOrders = [...ordersRef.current, order];
+    setOrders(newOrders); await saveOrders(newOrders);
+    setDraft(newDraft());
+    showToast(`🥡 Para llevar registrado — esperando cobro del cajero`, "#3498db");
+    setTab("pedidos");
+    
+  } else if (draft.payTiming === "ahora") {
+    setCobrarTarget({ 
+      type: 'new', 
+      data: { id: Date.now().toString(), ...finalDraft, total, createdAt: new Date().toISOString(), _cajaSessionId: cajaRef2.current?.sessionId || null, _cajaOpenedAt: cajaRef2.current?.openedAt || null, _mesero: currentUser?.name || null } 
+    });
+  } else {
+    const order = { 
+      id: Date.now().toString(), ...finalDraft, total, isPaid: false, status: "pendiente", kitchenStatus: "pendiente", createdAt: new Date().toISOString(), _cajaSessionId: cajaRef2.current?.sessionId || null, _cajaOpenedAt: cajaRef2.current?.openedAt || null, _mesero: currentUser?.name || null 
+    };
+    const newOrders = [...ordersRef.current, order];
+    setOrders(newOrders); await saveOrders(newOrders);
+    setDraft(newDraft()); showToast(`🍽️ Pedido enviado a cocina`); setTab("pedidos");
+  }
+};
 
  const handleConfirmCobro = async (paymentData) => {
  if (!cobrarTarget) return;
