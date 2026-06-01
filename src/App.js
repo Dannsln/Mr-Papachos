@@ -6984,7 +6984,13 @@ const submitOrder = async (forceMerge = null) => {
   // 2. Prevenir Race Conditions (Doble clic)
   if (isMergeAction && !mergeModal) return;
 
-  const existingMesaOrder = ordersRef.current.find(o => o.table === draft.table.trim() && o.orderType === "mesa" && !o.isPaid) ?? null;
+  const existingMesaOrder = ordersRef.current.find(o => 
+  o.table === draft.table.trim() && 
+  o.orderType === "mesa" && 
+  !o.isPaid && 
+  !o.anulado && 
+  o.status !== "anulado"
+) ?? null;
 
   // 3. Mostrar modal SOLO si no se está forzando una acción explícita
   if (existingMesaOrder && !isMergeAction && forceMerge !== "nuevo") {
@@ -7092,12 +7098,13 @@ const submitOrder = async (forceMerge = null) => {
 
   // 6. FLUJO NORMAL LLEVAR/MESA
   if (draft.orderType === "llevar") {
-    const existingPaidLlevar = ordersRef.current.find(o =>
-      o.orderType === "llevar" &&
-      o.isPaid &&
-      !o.anulado &&
-      o.table?.trim().toLowerCase() === (finalDraft.table || "").trim().toLowerCase()
-    );
+  const existingPaidLlevar = ordersRef.current.find(o =>
+  o.orderType === "llevar" &&
+  o.isPaid &&
+  !o.anulado &&
+  o.status !== "anulado" &&
+  o.table?.trim().toLowerCase() === (finalDraft.table || "").trim().toLowerCase()
+);
     
     if (existingPaidLlevar && forceMerge !== "llevar_new") {
       setAddToLlevarModal({ existingOrder: existingPaidLlevar, newItems: finalItems, newTotal: total });
