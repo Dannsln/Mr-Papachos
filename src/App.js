@@ -529,6 +529,40 @@ const FS = (localId) => ({
     }
    });
   } catch(e) { console.error(e); }
+ },
+ // ── Reconciliación de un día de caja ─────────────────────────
+ // El resumen guardado en `historial_dias/{dayKey}` se mantiene con
+ // increment()/delta y puede quedar desincronizado (por ejemplo, por el bug
+ // de splitPayments corregido arriba, o por cualquier reintento de escritura).
+ // Esta función NO borra ni modifica ningún pedido: solo vuelve a sumar
+ // desde los pedidos reales de ese día y SOBRESCRIBE el resumen cacheado
+ // con el valor verdadero. Es segura de correr las veces que haga falta.
+ async recalcDaySummary(dayKey) {
+  try {
+   let snap = await getDocs(query(this.historyDayOrdersCol(dayKey)));
+   let orders = snap.docs.map(d => withHistoryMeta({ _fid: d.id, ...d.data() }));
+   if (orders.length === 0) {
+    // Días antiguos que solo viven en la colección legacy (sin partición por día)
+    const legacySnap = await getDocs(query(this.historyCol(), where("_historyDay", "==", dayKey)));
+    orders = legacySnap.docs.map(d => withHistoryMeta({ _fid: d.id, ...d.data() }));
+   }
+   const [real] = historySummaryFromOrders(orders);
+   const recomputed = real || { dayKey, monthKey: dayKey.slice(0,7), total:0, ef:0, ya:0, ta:0, count:0, cancelados:0, lastActivityAt:"" };
+   await setDoc(this.historyDayRef(dayKey), {
+    dayKey: recomputed.dayKey,
+    monthKey: recomputed.monthKey,
+    total: recomputed.total,
+    ef: recomputed.ef,
+    ya: recomputed.ya,
+    ta: recomputed.ta,
+    count: recomputed.count,
+    cancelados: recomputed.cancelados,
+    lastActivityAt: recomputed.lastActivityAt || "",
+    updatedAt: new Date().toISOString(),
+    _reconciledAt: new Date().toISOString(),
+   }, { merge: false }); // sin merge: reemplaza el resumen entero por el real
+   return recomputed;
+  } catch (e) { console.error("recalcDaySummary error:", e); return null; }
  }
 });
 
@@ -4730,7 +4764,8 @@ function SolicitarCorreccionModal({ order, onSubmit, onClose, s, Y, fmt, getPay 
  );
 }
 
-function HistorialComponent({ history, historyDays, loadedHistoryDays, activeOrders, isMobile, s, Y, fmt, getPay, printOrder, isAdmin, currentUser, crearSolicitud, updateHistoryDoc, historyLoading, historyExhausted, onLoadMore, onLoadDay }) {
+function HistorialComponent({ history, historyDays, loadedHistoryDays, activeOrders, isMobile, s, Y, fmt, getPay, printOrder, isAdmin, currentUser, crearSolicitud, updateHistoryDoc, historyLoading, historyExhausted, onLoadMore, onLoadDay, recalcDaySummary }) {
+ const [reconciling, setReconciling] = useState(null); // dayKey en proceso
  const [expandedDays,   setExpandedDays]   = useState([dateToLocalDayKey(new Date())]);
  const [expandedMonths, setExpandedMonths] = useState([`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}`]);
  const [histDate, setHistDate] = useState("");
@@ -4876,7 +4911,13 @@ function HistorialComponent({ history, historyDays, loadedHistoryDays, activeOrd
    <EditCobroModal order={editCobroModal} onClose={()=>setEditCobroModal(null)} s={s} Y={Y} fmt={fmt}
     onSave={async ({payments, newTotal, motivo})=>{
      if (!editCobroModal._fid) return;
-     await updateHistoryDoc(editCobroModal._fid, { payments, total: newTotal, _correctedAt: new Date().toISOString(), _correctedBy: currentUser?.name, _correctedMotivo: motivo, ...(editCobroModal.splitPayments ? { splitPayments: undefined } : {}) });
+     // NOTA: antes se enviaba "splitPayments: undefined" para borrar el desglose viejo,
+     // pero cleanForFirestore() elimina cualquier campo con valor undefined ANTES de
+     // escribir a Firestore, así que ese campo nunca se llegaba a limpiar y quedaba el
+     // arreglo viejo (con los montos previos a la corrección) conviviendo con el total
+     // ya corregido. Usamos [] en su lugar: sobrevive a cleanForFirestore y sí queda
+     // guardado, dejando claro que ese pedido ya no está dividido en partes.
+     await updateHistoryDoc(editCobroModal._fid, { payments, total: newTotal, _correctedAt: new Date().toISOString(), _correctedBy: currentUser?.name, _correctedMotivo: motivo, ...(editCobroModal.splitPayments?.length ? { splitPayments: [] } : {}) });
      setEditCobroModal(null);
     }}
    />
@@ -5001,6 +5042,22 @@ function HistorialComponent({ history, historyDays, loadedHistoryDays, activeOrd
           </div>
          </div>
          <div style={{display:"flex", alignItems:"center", gap:12}}>
+          {isAdmin && recalcDaySummary && (
+           <button
+            title="Recalcula efectivo/yape/tarjeta de este día a partir de los pedidos reales (no borra nada)"
+            style={{background:"transparent", border:"1px solid #444", borderRadius:6, color:"#888", fontSize:11, padding:"3px 6px", cursor:"pointer"}}
+            disabled={reconciling===d.sortKey}
+            onClick={async (e) => {
+             e.stopPropagation();
+             setReconciling(d.sortKey);
+             const r = await recalcDaySummary(d.sortKey);
+             setReconciling(null);
+             if (r) alert(`Recalculado ${d.date}:\n💵 ${fmt(r.ef)}  📱 ${fmt(r.ya)}  💳 ${fmt(r.ta)}\nTotal: ${fmt(r.total)}`);
+             else alert("No se pudo recalcular. Revisa la consola.");
+            }}>
+            {reconciling===d.sortKey ? "…" : "🔧"}
+           </button>
+          )}
           <div style={{fontWeight:900, fontSize:17, color:"#27ae60"}}>{fmt(d.total)}</div>
           <div style={{background:"#2a2a2a", borderRadius:"50%", width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", color:Y, transition:"transform .3s", transform:isExpanded?"rotate(180deg)":"none", fontSize:11}}>▼</div>
          </div>
@@ -5843,6 +5900,10 @@ function SolicitudesPanel({ solicitudes, onResolve, currentUser, isMobile, s, Y,
                await updateHistoryDoc(sol.histFid, {
                 payments: {efectivo:finalEf, yape:finalYa, tarjeta:finalTa},
                 total: finalTotal,
+                // Igual que en EditCobroModal: si el pedido estaba dividido, el desglose
+                // viejo queda obsoleto en cuanto se aprueba una corrección de cobro —
+                // lo limpiamos para que nadie vuelva a sumarlo por error más adelante.
+                splitPayments: [],
                 _correctedAt: new Date().toISOString(),
                 _correctedBy: currentUser.name,
                 _correctedMotivo: sol.motivo,
@@ -6673,6 +6734,17 @@ export default function App() {
     return id === String(fid) ? withHistoryMeta({ ...order, ...data }) : order;
    }));
   } catch(e) { console.error("updateHistoryDoc error:", e); }
+ };
+
+ // Recalcula el resumen (ef/ya/ta/total) de un día de historial a partir de los
+ // pedidos reales, y actualiza el estado local de historyDays para que se vea
+ // reflejado al toque en el Dashboard/Historial. No borra ni cambia pedidos.
+ const recalcDaySummary = async (dayKey) => {
+  const recomputed = await FS(currentUser.localId).recalcDaySummary(dayKey);
+  if (recomputed) {
+   setHistoryDays(prev => mergeHistoryDaySummaries(prev, [normalizeHistoryDaySummary(dayKey, recomputed)]));
+  }
+  return recomputed;
  };
 
  const cajaRef2 = useRef(null); // mirror of caja state for sync access in async closures
@@ -7848,7 +7920,7 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
   {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} isTablet={isTablet} mesasArr={mesasArr} cajaAbierta={cajaAbierta} currentUser={currentUser} />}
   {tab==="pedidos" && <PedidosComponent orders={orders} toggleItemCheck={toggleItemCheck} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} setReembolsoConfirm={setReembolsoConfirm} setDraft={setDraft} newDraft={newDraft} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
 {tab==="cocina" && <CocinaComponent orders={orders} markKitchenListo={markKitchenListo} toggleItemCheck={toggleItemCheck} crearSolicitud={crearSolicitud} currentUser={currentUser} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} soundConfig={soundConfig} />}
-  {tab==="historial"    && <HistorialComponent history={history} historyDays={historyDays} loadedHistoryDays={loadedHistoryDays} activeOrders={orders} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} historyLoading={historyLoadingMore} historyExhausted={historyExhausted} onLoadMore={()=>loadHistory(false)} onLoadDay={loadHistoryDay} />}
+  {tab==="historial"    && <HistorialComponent history={history} historyDays={historyDays} loadedHistoryDays={loadedHistoryDays} activeOrders={orders} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} historyLoading={historyLoadingMore} historyExhausted={historyExhausted} onLoadMore={()=>loadHistory(false)} onLoadDay={loadHistoryDay} recalcDaySummary={recalcDaySummary} />}
   {tab==="auditoria"    && <AuditoriaComponent history={history} solicitudes={solicitudes} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
   {tab==="inventario"   && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/>}
   {tab==="carta"        && <CartaComponent menu={menu} cartaCatFilter={cartaCatFilter} setCartaCatFilter={setCartaCatFilter} showAdd={showAdd} setShowAdd={setShowAdd} newItem={newItem} setNewItem={setNewItem} addMenuItem={addMenuItem} deleteMenuItem={deleteMenuItem} isMobile={isMobile} s={s} Y={Y} fmt={fmt} ALL_CATS={ALL_CATS} />}
