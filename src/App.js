@@ -529,40 +529,6 @@ const FS = (localId) => ({
     }
    });
   } catch(e) { console.error(e); }
- },
- // ── Reconciliación de un día de caja ─────────────────────────
- // El resumen guardado en `historial_dias/{dayKey}` se mantiene con
- // increment()/delta y puede quedar desincronizado (por ejemplo, por el bug
- // de splitPayments corregido arriba, o por cualquier reintento de escritura).
- // Esta función NO borra ni modifica ningún pedido: solo vuelve a sumar
- // desde los pedidos reales de ese día y SOBRESCRIBE el resumen cacheado
- // con el valor verdadero. Es segura de correr las veces que haga falta.
- async recalcDaySummary(dayKey) {
-  try {
-   let snap = await getDocs(query(this.historyDayOrdersCol(dayKey)));
-   let orders = snap.docs.map(d => withHistoryMeta({ _fid: d.id, ...d.data() }));
-   if (orders.length === 0) {
-    // Días antiguos que solo viven en la colección legacy (sin partición por día)
-    const legacySnap = await getDocs(query(this.historyCol(), where("_historyDay", "==", dayKey)));
-    orders = legacySnap.docs.map(d => withHistoryMeta({ _fid: d.id, ...d.data() }));
-   }
-   const [real] = historySummaryFromOrders(orders);
-   const recomputed = real || { dayKey, monthKey: dayKey.slice(0,7), total:0, ef:0, ya:0, ta:0, count:0, cancelados:0, lastActivityAt:"" };
-   await setDoc(this.historyDayRef(dayKey), {
-    dayKey: recomputed.dayKey,
-    monthKey: recomputed.monthKey,
-    total: recomputed.total,
-    ef: recomputed.ef,
-    ya: recomputed.ya,
-    ta: recomputed.ta,
-    count: recomputed.count,
-    cancelados: recomputed.cancelados,
-    lastActivityAt: recomputed.lastActivityAt || "",
-    updatedAt: new Date().toISOString(),
-    _reconciledAt: new Date().toISOString(),
-   }, { merge: false }); // sin merge: reemplaza el resumen entero por el real
-   return recomputed;
-  } catch (e) { console.error("recalcDaySummary error:", e); return null; }
  }
 });
 
@@ -4764,8 +4730,7 @@ function SolicitarCorreccionModal({ order, onSubmit, onClose, s, Y, fmt, getPay 
  );
 }
 
-function HistorialComponent({ history, historyDays, loadedHistoryDays, activeOrders, isMobile, s, Y, fmt, getPay, printOrder, isAdmin, currentUser, crearSolicitud, updateHistoryDoc, historyLoading, historyExhausted, onLoadMore, onLoadDay, recalcDaySummary }) {
- const [reconciling, setReconciling] = useState(null); // dayKey en proceso
+function HistorialComponent({ history, historyDays, loadedHistoryDays, activeOrders, isMobile, s, Y, fmt, getPay, printOrder, isAdmin, currentUser, crearSolicitud, updateHistoryDoc, historyLoading, historyExhausted, onLoadMore, onLoadDay }) {
  const [expandedDays,   setExpandedDays]   = useState([dateToLocalDayKey(new Date())]);
  const [expandedMonths, setExpandedMonths] = useState([`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}`]);
  const [histDate, setHistDate] = useState("");
@@ -4917,7 +4882,15 @@ function HistorialComponent({ history, historyDays, loadedHistoryDays, activeOrd
      // arreglo viejo (con los montos previos a la corrección) conviviendo con el total
      // ya corregido. Usamos [] en su lugar: sobrevive a cleanForFirestore y sí queda
      // guardado, dejando claro que ese pedido ya no está dividido en partes.
-     await updateHistoryDoc(editCobroModal._fid, { payments, total: newTotal, _correctedAt: new Date().toISOString(), _correctedBy: currentUser?.name, _correctedMotivo: motivo, ...(editCobroModal.splitPayments?.length ? { splitPayments: [] } : {}) });
+     await updateHistoryDoc(editCobroModal._fid, {
+      payments, total: newTotal,
+      _correctedAt: new Date().toISOString(), _correctedBy: currentUser?.name, _correctedMotivo: motivo,
+      // Guardamos el desglose ANTERIOR para poder mostrar antes/después en la
+      // tarjeta del pedido y en Auditoría — así un error de tipeo como el de
+      // Mesa 10 (efectivo↔yape) se detecta con solo mirar la tarjeta.
+      _paymentsBefore: { efectivo: editCobroModal.payments?.efectivo||0, yape: editCobroModal.payments?.yape||0, tarjeta: editCobroModal.payments?.tarjeta||0, total: editCobroModal.total||0 },
+      ...(editCobroModal.splitPayments?.length ? { splitPayments: [] } : {}),
+     });
      setEditCobroModal(null);
     }}
    />
@@ -5042,22 +5015,6 @@ function HistorialComponent({ history, historyDays, loadedHistoryDays, activeOrd
           </div>
          </div>
          <div style={{display:"flex", alignItems:"center", gap:12}}>
-          {isAdmin && recalcDaySummary && (
-           <button
-            title="Recalcula efectivo/yape/tarjeta de este día a partir de los pedidos reales (no borra nada)"
-            style={{background:"transparent", border:"1px solid #444", borderRadius:6, color:"#888", fontSize:11, padding:"3px 6px", cursor:"pointer"}}
-            disabled={reconciling===d.sortKey}
-            onClick={async (e) => {
-             e.stopPropagation();
-             setReconciling(d.sortKey);
-             const r = await recalcDaySummary(d.sortKey);
-             setReconciling(null);
-             if (r) alert(`Recalculado ${d.date}:\n💵 ${fmt(r.ef)}  📱 ${fmt(r.ya)}  💳 ${fmt(r.ta)}\nTotal: ${fmt(r.total)}`);
-             else alert("No se pudo recalcular. Revisa la consola.");
-            }}>
-            {reconciling===d.sortKey ? "…" : "🔧"}
-           </button>
-          )}
           <div style={{fontWeight:900, fontSize:17, color:"#27ae60"}}>{fmt(d.total)}</div>
           <div style={{background:"#2a2a2a", borderRadius:"50%", width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", color:Y, transition:"transform .3s", transform:isExpanded?"rotate(180deg)":"none", fontSize:11}}>▼</div>
          </div>
@@ -5182,15 +5139,32 @@ function HistorialComponent({ history, historyDays, loadedHistoryDays, activeOrd
        </div>
       );
      })()}
-     {/* Pago normal */}
-     {!isCanceled&&!o.splitPayments?.length&&(
-      <div style={{fontSize:11,color:"#aaa",marginBottom:10,background:"#0a0a0a",padding:"8px 12px",borderRadius:6}}>
-       <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-        <span style={{fontWeight:800,color:"#777"}}>PAGO:</span>
+     {/* Pago registrado — SIEMPRE visible, incluso en pedidos divididos.
+         Antes esto se ocultaba si o.splitPayments?.length>0, que fue justo
+         el punto ciego que costó horas de auditoría manual en Firestore. */}
+     {!isCanceled&&(
+      <div style={{fontSize:11,color:"#aaa",marginBottom:10,background:"#0a0a0a",padding:"8px 12px",borderRadius:6,border:o.splitPayments?.length>0?"1px solid #3a2a10":"none"}}>
+       <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+        <span style={{fontWeight:800,color:"#777"}}>PAGO REGISTRADO:</span>
         {[pe>0&&`💵 ${fmt(pe)}`,py>0&&`📱 Yape ${fmt(py)}`,pt>0&&`💳 ${fmt(pt)}`].filter(Boolean).join(" · ")}
+        {o.splitPayments?.length>0&&<span style={{fontSize:9,color:"#e67e22",fontWeight:700}}>· debe coincidir con la suma de las divisiones de abajo ↓</span>}
        </div>
        {o.descuentoPct>0&&<div style={{marginTop:4,color:"#27ae60",fontWeight:700}}>🏷 −{o.descuentoPct}% {o.descuentoMotivo?`· ${o.descuentoMotivo}`:""}<span style={{color:"#555",marginLeft:6}}>| Original: {fmt(o.totalOriginal)}</span></div>}
-       {o._correctedAt&&<div style={{marginTop:4,color:"#e67e22",fontWeight:700}}>✏️ Corregido por {o._correctedBy}{o._correctedMotivo&&` · "${o._correctedMotivo}"`}</div>}
+       {o._correctedAt&&(
+        <div style={{marginTop:4}}>
+         <div style={{color:"#e67e22",fontWeight:700}}>✏️ Corregido por {o._correctedBy}{o._correctedMotivo&&` · "${o._correctedMotivo}"`} · {timeStr(o._correctedAt)}</div>
+         {o._paymentsBefore&&(()=>{
+          const be=o._paymentsBefore.efectivo||0, by=o._paymentsBefore.yape||0, bt=o._paymentsBefore.tarjeta||0;
+          return (
+           <div style={{marginTop:3,fontSize:10,color:"#888",display:"flex",gap:10,flexWrap:"wrap"}}>
+            <span>Antes: {[be>0&&`💵${fmt(be)}`,by>0&&`📱${fmt(by)}`,bt>0&&`💳${fmt(bt)}`].filter(Boolean).join(" ")||"—"}</span>
+            <span style={{color:"#555"}}>→</span>
+            <span style={{color:"#27ae60"}}>Después: {[pe>0&&`💵${fmt(pe)}`,py>0&&`📱${fmt(py)}`,pt>0&&`💳${fmt(pt)}`].filter(Boolean).join(" ")||"—"}</span>
+           </div>
+          );
+         })()}
+        </div>
+       )}
        {o._additions?.length>0&&(
         <div style={{marginTop:6,paddingTop:6,borderTop:"1px solid #1a1a1a"}}>
          <div style={{fontSize:10,color:"#555",marginBottom:4}}>➕ ADICIONES ({o._additions.length})</div>
@@ -5355,17 +5329,41 @@ const AUDIT_TYPE_META = {
  sol_rechazada:  { label:"❌ Solicitud rechazada",    color:"#e74c3c", bg:"#1f0505" },
 };
 
-function AuditoriaComponent({ history, solicitudes, isMobile, s, Y, fmt }) {
+function AuditoriaComponent({ history, solicitudes, isMobile, s, Y, fmt, historyDays, loadedHistoryDays, onLoadDay, onLoadMoreDays, historyDaysExhausted }) {
  const [filterType, setFilterType] = useState("todos");
  const [filterMonth, setFilterMonth] = useState("");
  const [expanded, setExpanded]     = useState(null);
+ // ── Carga perezosa por lotes de días (evita leer TODO el historial de golpe) ──
+ const AUDIT_DAYS_BATCH = 5;
+ const [auditVisibleDays, setAuditVisibleDays] = useState(AUDIT_DAYS_BATCH);
+ const sortedDayKeys = useMemo(() => (historyDays||[]).map(d=>d?.dayKey).filter(Boolean).sort().reverse(), [historyDays]);
+ const daysToShow = sortedDayKeys.slice(0, auditVisibleDays);
+ const moreDaysAvailable = auditVisibleDays < sortedDayKeys.length || !historyDaysExhausted;
+
+ useEffect(() => {
+  daysToShow.forEach(dayKey => {
+   if (!loadedHistoryDays?.has(dayKey)) onLoadDay?.(dayKey);
+  });
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [daysToShow.join(",")]);
+
+ const loadMoreAuditDays = () => {
+  if (auditVisibleDays < sortedDayKeys.length) {
+   setAuditVisibleDays(v => v + AUDIT_DAYS_BATCH);
+  } else if (!historyDaysExhausted) {
+   onLoadMoreDays?.(); // pide más resúmenes de día (barato); los pedidos completos
+   setAuditVisibleDays(v => v + AUDIT_DAYS_BATCH); // se cargarán solos vía el efecto de arriba
+  }
+ };
 
  // ── Build audit events from history + solicitudes ────────────────
  const events = useMemo(() => {
   const ev = [];
+  const visibleDaySet = new Set(daysToShow);
 
-  // From history orders
-  history.forEach(o => {
+  // From history orders — solo los días que ya cargamos en este lote,
+  // para no mezclar datos parciales de días que aún no se pidieron.
+  history.filter(o => !o._historyDay || visibleDaySet.has(o._historyDay)).forEach(o => {
    const base = {
     id: `h-${o._fid||o.id}`,
     createdAt: o.createdAt,
@@ -5404,9 +5402,12 @@ function AuditoriaComponent({ history, solicitudes, isMobile, s, Y, fmt }) {
 
    // Corrección de cobro ya aplicada (admin editó directamente)
    if (o._correctedAt) {
+    const bef = o._paymentsBefore;
+    const beforeStr = bef ? [bef.efectivo>0&&`💵${fmt(bef.efectivo)}`,bef.yape>0&&`📱${fmt(bef.yape)}`,bef.tarjeta>0&&`💳${fmt(bef.tarjeta)}`].filter(Boolean).join(" ") : null;
+    const afterStr = [o.payments?.efectivo>0&&`💵${fmt(o.payments.efectivo)}`,o.payments?.yape>0&&`📱${fmt(o.payments.yape)}`,o.payments?.tarjeta>0&&`💳${fmt(o.payments.tarjeta)}`].filter(Boolean).join(" ");
     ev.push({ ...base, id:`h-cor-${o._fid||o.id}`, type:"correccion",
      who: o._correctedBy || "—",
-     detail: o._correctedMotivo ? `"${o._correctedMotivo}"` : "Sin motivo",
+     detail: `${o._correctedMotivo ? `"${o._correctedMotivo}"` : "Sin motivo"}${beforeStr ? ` — Antes: ${beforeStr} → Después: ${afterStr}` : ""}`,
      paidAt: o._correctedAt,
     });
    }
@@ -5470,7 +5471,7 @@ function AuditoriaComponent({ history, solicitudes, isMobile, s, Y, fmt }) {
   });
 
   return ev.sort((a,b) => new Date(b.paidAt||b.createdAt) - new Date(a.paidAt||a.createdAt));
- }, [history, solicitudes]);
+ }, [history, solicitudes, daysToShow.join(",")]);
 
  // ── Filter ────────────────────────────────────────────────────────
  const months = [...new Set(events.map(e => {
@@ -5503,6 +5504,9 @@ function AuditoriaComponent({ history, solicitudes, isMobile, s, Y, fmt }) {
    <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, flexWrap:"wrap", gap:8}}>
     <div style={s.title}>🔍 AUDITORÍA DEL SISTEMA</div>
     <div style={{fontSize:11, color:"#555", fontStyle:"italic"}}>Solo lectura — ningún registro puede eliminarse</div>
+   </div>
+   <div style={{fontSize:11, color:"#666", marginBottom:12}}>
+    Mostrando {daysToShow.length} día{daysToShow.length!==1?"s":""} más reciente{daysToShow.length!==1?"s":""} de historial{moreDaysAvailable && " — carga más abajo si necesitas revisar días anteriores"}
    </div>
 
    {/* Filtros */}
@@ -5621,6 +5625,13 @@ function AuditoriaComponent({ history, solicitudes, isMobile, s, Y, fmt }) {
      </div>
     );
    })}
+   {moreDaysAvailable && (
+    <div style={{textAlign:"center", marginTop:14}}>
+     <button style={{...s.btn("secondary"), padding:"8px 18px", fontSize:12}} onClick={loadMoreAuditDays}>
+      Cargar {AUDIT_DAYS_BATCH} días más
+     </button>
+    </div>
+   )}
   </div>
  );
 }
@@ -5907,6 +5918,7 @@ function SolicitudesPanel({ solicitudes, onResolve, currentUser, isMobile, s, Y,
                 _correctedAt: new Date().toISOString(),
                 _correctedBy: currentUser.name,
                 _correctedMotivo: sol.motivo,
+                _paymentsBefore: { efectivo: sol.oldPayments?.efectivo||0, yape: sol.oldPayments?.yape||0, tarjeta: sol.oldPayments?.tarjeta||0, total: sol.orderTotal||0 },
                });
               }
               setEditingSol(null);
@@ -6542,13 +6554,13 @@ export default function App() {
  // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [tab, currentUser]);
 
- useEffect(() => {
-  if (tab !== "auditoria" || !historyDays.length) return;
-  historyDays.forEach(day => {
-   if (day?.dayKey) loadHistoryDay(day.dayKey);
-  });
- // eslint-disable-next-line react-hooks/exhaustive-deps
- }, [tab, historyDays.length]);
+ // NOTA de rendimiento: antes había aquí un efecto que, al abrir "Auditoría",
+ // cargaba de golpe TODOS los pedidos completos de TODOS los días ya conocidos
+ // (loadHistoryDay por cada día de historyDays). Eso multiplicaba las lecturas
+ // de Firestore por la cantidad de pedidos de cada día — con varias semanas de
+ // historial, una sola visita a Auditoría podía costar miles de lecturas.
+ // Ahora AuditoriaComponent carga los días de a poco (ver auditVisibleDays
+ // dentro del componente) y solo pide los que realmente se van a mostrar.
 
  const reloadMenu = async () => {  try {
    const snap = await getDoc(FS(currentUser.localId).menuRef());
@@ -6734,17 +6746,6 @@ export default function App() {
     return id === String(fid) ? withHistoryMeta({ ...order, ...data }) : order;
    }));
   } catch(e) { console.error("updateHistoryDoc error:", e); }
- };
-
- // Recalcula el resumen (ef/ya/ta/total) de un día de historial a partir de los
- // pedidos reales, y actualiza el estado local de historyDays para que se vea
- // reflejado al toque en el Dashboard/Historial. No borra ni cambia pedidos.
- const recalcDaySummary = async (dayKey) => {
-  const recomputed = await FS(currentUser.localId).recalcDaySummary(dayKey);
-  if (recomputed) {
-   setHistoryDays(prev => mergeHistoryDaySummaries(prev, [normalizeHistoryDaySummary(dayKey, recomputed)]));
-  }
-  return recomputed;
  };
 
  const cajaRef2 = useRef(null); // mirror of caja state for sync access in async closures
@@ -7920,8 +7921,8 @@ const newId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
   {tab==="nuevo" && <NuevoPedidoComponent draft={draft} setDraft={setDraft} menu={menu} addItem={addItem} changeQty={changeQty} updateIndividualNote={updateIndividualNote} draftTotal={draftTotal} fmt={fmt} submitOrder={submitOrder} newDraft={newDraft} s={s} Y={Y} isDesktop={isDesktop} isMobile={isMobile} isTablet={isTablet} mesasArr={mesasArr} cajaAbierta={cajaAbierta} currentUser={currentUser} />}
   {tab==="pedidos" && <PedidosComponent orders={orders} toggleItemCheck={toggleItemCheck} setTab={setTab} finishPaidOrder={finishPaidOrder} setCobrarTarget={setCobrarTarget} setSplitTarget={setSplitTarget} setEditingOrder={setEditingOrder} printOrder={printOrder} cancelOrder={cancelOrder} setConfirmDelete={setConfirmDelete} setAnulacionModal={setAnulacionModal} setReembolsoConfirm={setReembolsoConfirm} setDraft={setDraft} newDraft={newDraft} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
 {tab==="cocina" && <CocinaComponent orders={orders} markKitchenListo={markKitchenListo} toggleItemCheck={toggleItemCheck} crearSolicitud={crearSolicitud} currentUser={currentUser} isMobile={isMobile} isDesktop={isDesktop} s={s} Y={Y} soundConfig={soundConfig} />}
-  {tab==="historial"    && <HistorialComponent history={history} historyDays={historyDays} loadedHistoryDays={loadedHistoryDays} activeOrders={orders} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} historyLoading={historyLoadingMore} historyExhausted={historyExhausted} onLoadMore={()=>loadHistory(false)} onLoadDay={loadHistoryDay} recalcDaySummary={recalcDaySummary} />}
-  {tab==="auditoria"    && <AuditoriaComponent history={history} solicitudes={solicitudes} isMobile={isMobile} s={s} Y={Y} fmt={fmt} />}
+  {tab==="historial"    && <HistorialComponent history={history} historyDays={historyDays} loadedHistoryDays={loadedHistoryDays} activeOrders={orders} isMobile={isMobile} s={s} Y={Y} fmt={fmt} getPay={getPay} printOrder={printOrder} isAdmin={currentUser?.id==="admin"} currentUser={currentUser} crearSolicitud={crearSolicitud} updateHistoryDoc={updateHistoryDoc} historyLoading={historyLoadingMore} historyExhausted={historyExhausted} onLoadMore={()=>loadHistory(false)} onLoadDay={loadHistoryDay} />}
+  {tab==="auditoria"    && <AuditoriaComponent history={history} solicitudes={solicitudes} isMobile={isMobile} s={s} Y={Y} fmt={fmt} historyDays={historyDays} loadedHistoryDays={loadedHistoryDays} onLoadDay={loadHistoryDay} onLoadMoreDays={()=>loadHistory(false)} historyDaysExhausted={historyExhausted} />}
   {tab==="inventario"   && <Inventario menu={menu} orders={orders} history={history} isMobile={isMobile} s={s} Y={Y} fmt={fmt}/>}
   {tab==="carta"        && <CartaComponent menu={menu} cartaCatFilter={cartaCatFilter} setCartaCatFilter={setCartaCatFilter} showAdd={showAdd} setShowAdd={setShowAdd} newItem={newItem} setNewItem={setNewItem} addMenuItem={addMenuItem} deleteMenuItem={deleteMenuItem} isMobile={isMobile} s={s} Y={Y} fmt={fmt} ALL_CATS={ALL_CATS} />}
   {tab==="solicitudes"  && <SolicitudesPanel solicitudes={solicitudes} onResolve={resolverSolicitud} currentUser={currentUser} isMobile={isMobile} s={s} Y={Y} fmt={fmt} updateHistoryDoc={updateHistoryDoc} />}
